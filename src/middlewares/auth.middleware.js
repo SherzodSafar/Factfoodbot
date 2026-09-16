@@ -25,20 +25,37 @@ export function verifyInitData(initData, botToken = config.bot.token) {
   const hash = params.get('hash');
   if (!hash) return { ok: false, reason: 'hash topilmadi' };
 
-  // hash va signature tekshiruvga kirmaydi
-  const pairs = [];
+  // Telegram mijozlarining turli versiyalari `signature` maydonini turlicha
+  // hisobga oladi. Shuning uchun ikkala variantni ham tekshiramiz —
+  // ikkalasi ham bot tokeni bilan imzolangan, ya'ni xavfsizlik pasaymaydi.
+  const entries = [];
   for (const [key, value] of params.entries()) {
-    if (key === 'hash' || key === 'signature') continue;
-    pairs.push(`${key}=${value}`);
+    if (key === 'hash') continue;
+    entries.push([key, value]);
   }
-  const dataCheckString = pairs.sort().join('\n');
+
+  const buildCheckString = (withSignature) =>
+    entries
+      .filter(([key]) => withSignature || key !== 'signature')
+      .map(([key, value]) => `${key}=${value}`)
+      .sort()
+      .join('\n');
 
   const secretKey = crypto.createHmac('sha256', 'WebAppData').update(botToken).digest();
-  const computed = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
+  const expected = Buffer.from(hash, 'hex');
 
-  const a = Buffer.from(computed, 'hex');
-  const b = Buffer.from(hash, 'hex');
-  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+  const matches = [false, true].some((withSignature) => {
+    const computed = crypto
+      .createHmac('sha256', secretKey)
+      .update(buildCheckString(withSignature))
+      .digest('hex');
+    const actual = Buffer.from(computed, 'hex');
+    return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+  });
+
+  if (!matches) {
+    // Sabab aniqlash uchun: qaysi maydonlar kelgani (qiymatlarsiz) jurnalga yoziladi
+    console.warn(`[auth] Imzo mos kelmadi. Kelgan maydonlar: ${entries.map(([key]) => key).join(', ')}`);
     return { ok: false, reason: 'Imzo (hash) mos kelmadi' };
   }
 
