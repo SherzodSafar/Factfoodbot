@@ -2,7 +2,11 @@
  * Admin Panel uchun backend bilan aloqa.
  * Token localStorage'da saqlanadi va har so'rovga qo'shiladi.
  */
-const BASE = import.meta.env.VITE_API_URL || '';
+/**
+ * Backend manzili (Mini App bilan bir xil mantiq).
+ */
+const PRODUCTION_API = 'https://factfood-api.onrender.com';
+const BASE = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? '' : PRODUCTION_API);
 const TOKEN_KEY = 'factfood_admin_token';
 
 export const getToken = () => {

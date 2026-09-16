@@ -5,11 +5,14 @@ export default function Login({ onSuccess }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [slow, setSlow] = useState(false);
 
   const submit = async (event) => {
     event.preventDefault();
     setError('');
     setLoading(true);
+    // Bepul serverda birinchi so'rov sekin bo'lishi mumkin
+    const slowTimer = setTimeout(() => setSlow(true), 6000);
     try {
       const data = await api.login(password);
       setToken(data.token);
@@ -17,6 +20,8 @@ export default function Login({ onSuccess }) {
     } catch (err) {
       setError(err.message);
     } finally {
+      clearTimeout(slowTimer);
+      setSlow(false);
       setLoading(false);
     }
   };
@@ -42,7 +47,13 @@ export default function Login({ onSuccess }) {
           {loading ? 'Tekshirilmoqda...' : 'Kirish'}
         </button>
 
-        <span className="login__hint">Parol .env faylidagi ADMIN_PASSWORD</span>
+        {slow && (
+          <span className="login__hint">
+            Server uyg'onmoqda, biroz kuting... (birinchi kirishda ~1 daqiqa)
+          </span>
+        )}
+
+        <span className="login__hint">Parol — ADMIN_PASSWORD o'zgaruvchisi</span>
       </form>
     </div>
   );

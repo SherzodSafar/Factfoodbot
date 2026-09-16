@@ -98,6 +98,7 @@ ul { margin: 0; padding: 0; list-style: none; }
 
 .loader { min-height: 70vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; }
 .loader p { color: var(--muted); font-size: 14px; }
+.loader__hint { font-size: 12.5px !important; opacity: 0.75; text-align: center; max-width: 260px; animation: fade 0.4s ease; line-height: 1.5; }
 .loader__spinner {
   width: 30px; height: 30px; border-radius: 50%;
   border: 2.5px solid var(--line); border-top-color: var(--text); animation: spin 0.7s linear infinite;

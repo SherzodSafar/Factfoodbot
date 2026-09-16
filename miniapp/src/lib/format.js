@@ -1,11 +1,11 @@
 /** Narx: 45000 → "45 000 so'm" */
 export function formatPrice(value) {
-  return `${Number(value || 0).toLocaleString('ru-RU').replace(/ /g, ' ')} so'm`;
+  return `${Number(value || 0).toLocaleString('ru-RU').replace(/\u00A0/g, ' ')} so'm`;
 }
 
 /** Narx (qisqa): 45000 → "45 000" */
 export function formatNumber(value) {
-  return Number(value || 0).toLocaleString('ru-RU').replace(/ /g, ' ');
+  return Number(value || 0).toLocaleString('ru-RU').replace(/\u00A0/g, ' ');
 }
 
 /** Sana: "16.09.2026, 21:40" */

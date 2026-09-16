@@ -6,9 +6,10 @@ import react from '@vitejs/plugin-react';
  * Ishlab chiqishda: http://localhost:5174
  * Build qilingach backend uni /admin manzilida tarqatadi.
  */
-export default defineConfig(({ mode }) => ({
+export default defineConfig(() => ({
   plugins: [react()],
-  base: mode === 'production' ? '/admin/' : '/',
+  // Vercel'da alohida loyiha sifatida ildizda turadi
+  base: process.env.VITE_BASE || '/',
   server: {
     host: true,
     port: 5174,

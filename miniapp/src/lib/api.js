@@ -3,7 +3,14 @@
  */
 import { getInitData } from './telegram.js';
 
-const BASE = import.meta.env.VITE_API_URL || '';
+/**
+ * Backend manzili.
+ *  - ishlab chiqishda (npm run dev) — bo'sh: so'rovlar Vite proxy orqali localhost:3000 ga ketadi
+ *  - bulutda (Vercel) — Render'dagi backend
+ * VITE_API_URL o'zgaruvchisi orqali boshqasini ko'rsatish mumkin.
+ */
+const PRODUCTION_API = 'https://factfood-api.onrender.com';
+const BASE = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? '' : PRODUCTION_API);
 
 async function request(path, options = {}) {
   const response = await fetch(`${BASE}/api/client${path}`, {

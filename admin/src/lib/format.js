@@ -1,5 +1,5 @@
 export function formatPrice(value) {
-  return `${Number(value || 0).toLocaleString('ru-RU').replace(/ /g, ' ')} so'm`;
+  return `${Number(value || 0).toLocaleString('ru-RU').replace(/\u00A0/g, ' ')} so'm`;
 }
 
 export function formatDate(value) {
