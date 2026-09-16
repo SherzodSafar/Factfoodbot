@@ -26,9 +26,10 @@ jobs:
 
       - name: Mini App (Vercel)
         run: |
-          code=$(curl -sL -o /tmp/v.html -w "%{http_code}" --max-time 60 https://factfood-app-sher-75c3.vercel.app/)
+          code=$(curl -sL -o /tmp/v.html -D /tmp/v.head -w "%{http_code}" --max-time 60 https://factfood-app-sher-75c3.vercel.app/)
           echo "Vercel Mini App → HTTP $code"
-          grep -o 'assets/index-[^"]*' /tmp/v.html || head -c 300 /tmp/v.html
+          grep -iE 'x-vercel|set-cookie|location|x-robots' /tmp/v.head || true
+          grep -o 'assets/index-[^"]*' /tmp/v.html || head -c 200 /tmp/v.html
 
       - name: Admin Panel (Render)
         run: |
@@ -38,6 +39,7 @@ jobs:
 
       - name: Admin Panel (Vercel)
         run: |
-          code=$(curl -sL -o /tmp/va.html -w "%{http_code}" --max-time 60 https://factfood-admin-sher-75c3.vercel.app/)
+          code=$(curl -sL -o /tmp/va.html -D /tmp/va.head -w "%{http_code}" --max-time 60 https://factfood-admin-sher-75c3.vercel.app/)
           echo "Vercel Admin → HTTP $code"
-          grep -o 'assets/index-[^"]*' /tmp/va.html || head -c 300 /tmp/va.html
+          grep -iE 'x-vercel|set-cookie|location|x-robots' /tmp/va.head || true
+          grep -o 'assets/index-[^"]*' /tmp/va.html || head -c 200 /tmp/va.html
