@@ -1,0 +1,33 @@
+# Bepul Render serveri 15 daqiqa jimlikdan keyin "uxlaydi" va keyingi
+# murojaatda ~1 daqiqa uyg'onadi. Bu ish har 10 daqiqada serverga bitta
+# so'rov yuborib, uni doim uyg'oq holatda saqlaydi — shunda bot va Mini App
+# har doim bir zumda javob beradi.
+#
+# Serverni boshqa manzilga ko'chirsangiz, quyidagi API_URL ni o'zgartiring.
+
+name: Serverni uyg'oq saqlash
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Backendga so'rov yuborish
+        run: |
+          API_URL="https://factfood-api.onrender.com/api/health"
+          echo "So'rov: $API_URL"
+          for i in 1 2 3; do
+            code=$(curl -s -o /tmp/out.json -w "%{http_code}" --max-time 90 "$API_URL" || echo "000")
+            echo "Urinish $i → HTTP $code"
+            if [ "$code" = "200" ]; then
+              cat /tmp/out.json
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "Server javob bermadi (uxlab qolgan bo'lishi mumkin)"
+          exit 0
