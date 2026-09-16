@@ -35,14 +35,19 @@ Telegram  ──webhook──►  Backend (Render)  ──►  PostgreSQL (Neon)
 
 ## 🔄 Kodni yangilash
 
-Har qanday o'zgarishni GitHub'ga yuborsangiz, uchala xizmat **o'zi qayta
-quriladi va yangilanadi** (auto-deploy yoqilgan):
-
 ```bash
 git add .
 git commit -m "o'zgarish"
 git push
 ```
+
+So'ng Render'da yangi versiyani chiqaring: xizmatni oching →
+**Manual Deploy → Deploy latest commit**.
+
+> **Buni butunlay avtomatik qilish (1 marta, 1 daqiqa):**
+> Render → xizmat → *Settings* → *Build & Deploy* → *Repository* bo'limida
+> **Connect GitHub account** tugmasini bosing va omborga ruxsat bering.
+> Shundan keyin har bir `git push` uchala xizmatni o'zi yangilaydi.
 
 ## 🔑 Sozlamalarni o'zgartirish (parol, token va h.k.)
 
