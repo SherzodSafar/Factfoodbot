@@ -1,0 +1,73 @@
+// FactFood — ma'lumotlar bazasi sxemasi (PostgreSQL / Neon)
+// Hujjat: https://www.prisma.io/docs
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Mijozlar — Telegram orqali kirgan foydalanuvchilar
+model User {
+  id         Int      @id @default(autoincrement())
+  telegramId String   @unique @map("telegram_id")
+  firstName  String   @map("first_name")
+  lastName   String?  @map("last_name")
+  username   String?
+  phone      String?
+  photoUrl   String?  @map("photo_url")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  orders Order[]
+
+  @@map("users")
+}
+
+/// Mahsulotlar — pizzalar va ichimliklar
+model Product {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String   @default("")
+  imageUrl    String   @map("image_url")
+  oldPrice    Int?     @map("old_price")
+  newPrice    Int      @map("new_price")
+  category    String   @default("Pizza")
+  ingredients String[] @default([])
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("products")
+}
+
+/// Buyurtmalar
+model Order {
+  id        Int         @id @default(autoincrement())
+  userId    Int         @map("user_id")
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items     Json
+  total     Int
+  location  String      @default("")
+  latitude  Float?
+  longitude Float?
+  phone     String?
+  comment   String?
+  status    OrderStatus @default(PENDING)
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("orders")
+}
+
+/// Buyurtma holati: kutilmoqda / yetkazildi / bekor qilindi
+enum OrderStatus {
+  PENDING
+  DELIVERED
+  CANCELLED
+}

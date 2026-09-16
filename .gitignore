@@ -1,0 +1,25 @@
+# Muhit o'zgaruvchilari (MAXFIY — hech qachon GitHub'ga tushmaydi)
+.env
+.env.local
+*.env.backup
+
+# Paketlar
+node_modules/
+**/node_modules/
+
+# Build natijalari
+dist/
+build/
+miniapp/dist/
+admin/dist/
+
+# Prisma generatsiya qilgan client
+src/generated/
+**/generated/prisma/
+
+# Loglar va vaqtinchalik fayllar
+*.log
+npm-debug.log*
+.DS_Store
+.vscode/
+.idea/

@@ -1,0 +1,43 @@
+{
+  "name": "factfood-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "FactFood — Telegram Mini App pizza yetkazib berish xizmati (Backend + Bot)",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon --watch src --watch prisma src/index.js",
+    "setup": "node scripts/setup.js",
+    "install:all": "npm install && npm install --prefix miniapp && npm install --prefix admin",
+    "db:push": "prisma db push",
+    "db:generate": "prisma generate",
+    "db:seed": "node prisma/seed.js",
+    "db:studio": "prisma studio",
+    "dev:miniapp": "npm run dev --prefix miniapp",
+    "dev:admin": "npm run dev --prefix admin",
+    "dev:all": "concurrently -k -n \"BACKEND,MINIAPP,ADMIN\" -c \"green,magenta,cyan\" \"npm run dev\" \"npm run dev:miniapp\" \"npm run dev:admin\"",
+    "build": "npm run build --prefix miniapp && npm run build --prefix admin",
+    "go": "npm run build && npm start",
+    "ngrok:link": "node scripts/link-ngrok.js",
+    "bot:info": "node scripts/bot-info.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^4.22.3",
+    "telegraf": "^4.16.3"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5",
+    "nodemon": "^3.1.14",
+    "prisma": "^6.19.3"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
