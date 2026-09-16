@@ -1,0 +1,43 @@
+# Barcha jonli manzillarni tekshiradi: backend, baza, Mini App va Admin Panel
+# (Render va Vercel nusxalari). Qo'lda ishga tushiriladi yoki har kuni ertalab.
+
+name: Tizim holatini tekshirish
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 4 * * *'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Backend va baza
+        run: |
+          code=$(curl -s -o /tmp/h.json -w "%{http_code}" --max-time 120 https://factfood-api.onrender.com/api/health)
+          echo "Backend → HTTP $code"
+          cat /tmp/h.json; echo
+
+      - name: Mini App (Render)
+        run: |
+          code=$(curl -sL -o /tmp/r.html -w "%{http_code}" --max-time 60 https://factfood.onrender.com/)
+          echo "Render Mini App → HTTP $code"
+          grep -o 'assets/index-[^"]*' /tmp/r.html || echo "(fayllar topilmadi)"
+
+      - name: Mini App (Vercel)
+        run: |
+          code=$(curl -sL -o /tmp/v.html -w "%{http_code}" --max-time 60 https://factfood-app-sher-75c3.vercel.app/)
+          echo "Vercel Mini App → HTTP $code"
+          grep -o 'assets/index-[^"]*' /tmp/v.html || head -c 300 /tmp/v.html
+
+      - name: Admin Panel (Render)
+        run: |
+          code=$(curl -sL -o /tmp/ra.html -w "%{http_code}" --max-time 60 https://factfood-admin.onrender.com/)
+          echo "Render Admin → HTTP $code"
+          grep -o 'assets/index-[^"]*' /tmp/ra.html || echo "(fayllar topilmadi)"
+
+      - name: Admin Panel (Vercel)
+        run: |
+          code=$(curl -sL -o /tmp/va.html -w "%{http_code}" --max-time 60 https://factfood-admin-sher-75c3.vercel.app/)
+          echo "Vercel Admin → HTTP $code"
+          grep -o 'assets/index-[^"]*' /tmp/va.html || head -c 300 /tmp/va.html
