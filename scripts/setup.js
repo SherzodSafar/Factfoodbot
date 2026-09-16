@@ -9,10 +9,33 @@
 import 'dotenv/config';
 import { spawnSync } from 'node:child_process';
 
+/**
+ * Neon "pooler" (PgBouncer) ulanishi orqali jadval yaratib bo'lmaydi.
+ * Shuning uchun migratsiya paytida to'g'ridan-to'g'ri ulanish ishlatiladi:
+ * ep-xxx-pooler.neon.tech  →  ep-xxx.neon.tech
+ */
+function directUrl(url) {
+  if (!url) return url;
+  return process.env.DIRECT_URL || url.replace('-pooler.', '.');
+}
+
 const steps = [
-  { title: 'Prisma client generatsiya qilinmoqda', cmd: 'npx', args: ['prisma', 'generate'] },
-  { title: 'Bazada jadvallar yaratilmoqda', cmd: 'npx', args: ['prisma', 'db', 'push'] },
-  { title: 'Boshlang\'ich mahsulotlar yozilmoqda', cmd: 'node', args: ['prisma/seed.js'] },
+  {
+    title: 'Prisma client generatsiya qilinmoqda',
+    cmd: 'npx',
+    args: ['prisma', 'generate'],
+  },
+  {
+    title: 'Bazada jadvallar yaratilmoqda',
+    cmd: 'npx',
+    args: ['prisma', 'db', 'push'],
+    env: { DATABASE_URL: directUrl(process.env.DATABASE_URL) },
+  },
+  {
+    title: 'Boshlang\'ich mahsulotlar yozilmoqda',
+    cmd: 'node',
+    args: ['prisma/seed.js'],
+  },
 ];
 
 console.log('\n🍕  FactFood — sozlash boshlandi\n');
@@ -28,6 +51,7 @@ for (const [index, step] of steps.entries()) {
   const result = spawnSync(step.cmd, step.args, {
     stdio: 'inherit',
     shell: process.platform === 'win32',
+    env: { ...process.env, ...(step.env || {}) },
   });
 
   if (result.status !== 0) {

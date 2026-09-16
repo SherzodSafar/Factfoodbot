@@ -7,7 +7,7 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "nodemon --watch src --watch prisma src/index.js",
+    "dev": "nodemon src/index.js",
     "setup": "node scripts/setup.js",
     "install:all": "npm install && npm install --prefix miniapp && npm install --prefix admin",
     "db:push": "prisma db push",

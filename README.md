@@ -116,11 +116,8 @@ Bu buyruq avtomatik ravishda:
 - Telegram botning **Menu** tugmasini Mini App'ga bog'laydi
 - Bot buyruqlarini (`/start`, `/menu`, ...) sozlaydi
 
-**d)** `npm run dev:all` ishlayotgan terminalga o'ting, `Ctrl + C` bosing va qaytadan ishga tushiring (`.env` o'zgargani uchun):
-
-```bash
-npm run dev:all
-```
+**d)** Tayyor! Backend `.env` o'zgarganini o'zi sezadi va avtomatik qayta yonadi
+(terminalda `[BACKEND] ✅ Bot ishga tushdi` deb chiqadi).
 
 **e)** Telegramda botingizni oching va `/start` deb yozing 🎉
 

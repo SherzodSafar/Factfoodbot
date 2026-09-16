@@ -90,8 +90,7 @@ async function main() {
 
   console.log(
     `\n🎉 Tayyor! Endi Telegram'da @${me.username} ni oching va "/start" deb yozing.\n` +
-      '   ⚠️  Muhim: backend allaqachon ishlab turgan bo\'lsa, uni qayta yoqing\n' +
-      '       (Ctrl+C → npm run dev:all), chunki .env o\'zgardi.\n',
+      '   (Backend .env o\'zgarganini o\'zi sezadi va avtomatik qayta yonadi.)\n',
   );
 }
 
