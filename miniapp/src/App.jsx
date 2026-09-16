@@ -9,7 +9,8 @@ import Home from './pages/Home.jsx';
 import Catalog from './pages/Catalog.jsx';
 import Cart from './pages/Cart.jsx';
 import Profile from './pages/Profile.jsx';
-import { setBackButton } from './lib/telegram.js';
+import { isTelegram, setBackButton } from './lib/telegram.js';
+import { BOT_LINK, BOT_USERNAME } from './config.js';
 
 const ONBOARDING_KEY = 'factfood_onboarded';
 
@@ -46,6 +47,26 @@ export default function App() {
   if (!onboarded) return <Onboarding onFinish={finishOnboarding} />;
 
   if (loading) return <Loader />;
+
+  // Ilova Telegramdan tashqarida ochilgan bo'lsa — tushunarli yo'riqnoma
+  if (error && !isTelegram) {
+    return (
+      <div className="page">
+        <div className="empty">
+          <span>🍕</span>
+          <h3>Bu ilova Telegram ichida ishlaydi</h3>
+          <p>
+            Buyurtma berish uchun botni oching va pastdagi
+            <b> 🍕 Menyu </b>
+            tugmasini bosing.
+          </p>
+          <a className="btn btn--primary" href={BOT_LINK}>
+            @{BOT_USERNAME} ni ochish
+          </a>
+        </div>
+      </div>
+    );
+  }
 
   if (error) {
     return (

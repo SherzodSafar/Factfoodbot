@@ -1,14 +1,85 @@
 # 🍕 FactFood — Telegram Mini App + Admin Panel
 
-Pizza yetkazib berish xizmati uchun to'liq tayyor loyiha. Uch qismdan iborat:
+Pizza yetkazib berish xizmati. Loyiha **internetda ishlab turibdi** —
+kompyuterni yoqib qo'yish shart emas.
 
-| Qism | Texnologiya | Manzil (localhost) |
-|------|-------------|--------------------|
-| **Backend + Bot** | Node.js, Express, Telegraf, Prisma | `http://localhost:3000` |
-| **Mini App** (mijozlar) | React + Vite | `http://localhost:5173` |
-| **Admin Panel** (ma'murlar) | React + Vite | `http://localhost:5174` |
+## 🌍 Jonli manzillar
 
-Ma'lumotlar bazasi: **PostgreSQL (Neon)** — Prisma ORM orqali.
+| Qism | Manzil |
+|------|--------|
+| 🤖 **Telegram bot** | [@kafolatli_bot](https://t.me/kafolatli_bot) |
+| 📱 **Mini App** (mijozlar) | https://factfood.onrender.com |
+| 🖥 **Admin Panel** (ma'murlar) | https://factfood-admin.onrender.com |
+| ⚙️ **Backend API** | https://factfood-api.onrender.com |
+
+> Mini App havolasini oddiy brauzerda ochsangiz ishlamaydi — u faqat Telegram
+> ichida ochiladi (xavfsizlik uchun Telegram imzosi tekshiriladi).
+
+## 🧱 Qanday qurilgan
+
+```
+Telegram  ──webhook──►  Backend (Render)  ──►  PostgreSQL (Neon)
+                              ▲
+              Mini App ───────┤ (API)
+        (Render static)       │
+              Admin Panel ────┘
+        (Render static)
+```
+
+| Qism | Texnologiya | Xizmat |
+|------|-------------|--------|
+| Backend + Bot | Node.js, Express, Telegraf, Prisma | Render Web Service (bepul) |
+| Mini App | React + Vite | Render Static Site (bepul, CDN) |
+| Admin Panel | React + Vite | Render Static Site (bepul, CDN) |
+| Baza | PostgreSQL | Neon (bepul) |
+
+## 🔄 Kodni yangilash
+
+Har qanday o'zgarishni GitHub'ga yuborsangiz, uchala xizmat **o'zi qayta
+quriladi va yangilanadi** (auto-deploy yoqilgan):
+
+```bash
+git add .
+git commit -m "o'zgarish"
+git push
+```
+
+## 🔑 Sozlamalarni o'zgartirish (parol, token va h.k.)
+
+Bulutda `.env` fayli ishlatilmaydi — sozlamalar Render'da turadi:
+
+**Render → factfood-api → Environment** bo'limi:
+
+| O'zgaruvchi | Vazifasi |
+|-------------|----------|
+| `BOT_TOKEN` | Telegram bot tokeni |
+| `DATABASE_URL` | Neon bazasi manzili |
+| `WEBAPP_URL` | Mini App manzili (bot menyusi shunga ulanadi) |
+| `ADMIN_PASSWORD` | Admin panel paroli |
+| `ADMIN_SECRET` | Admin token imzosi uchun maxfiy kalit |
+| `ALLOW_DEV_AUTH` | `false` — Telegramsiz kirishni taqiqlaydi |
+| `BOT_MODE` | `webhook` (bulut) yoki `polling` (localhost) |
+
+O'zgaruvchini saqlasangiz server avtomatik qayta yonadi.
+
+> ⚠️ **Bepul tarif:** backend 15 daqiqa foydalanilmasa "uxlaydi". Keyingi
+> murojaatda ~1 daqiqa uyg'onadi — birinchi buyurtma yoki `/start` biroz
+> kechikishi mumkin. Mini App va Admin Panel esa statik CDN'da, ular
+> doim tez ochiladi.
+
+## 🩺 Tekshirish
+
+```bash
+npm run deploy:check -- https://factfood-api.onrender.com
+```
+
+Backend, baza, webhook va Mini App holatini bir zumda ko'rsatadi.
+
+---
+
+# 💻 Localhost'da ishga tushirish (ixtiyoriy)
+
+Quyidagilar faqat kompyuterda ishlab, kodni o'zgartirmoqchi bo'lsangiz kerak.
 
 ---
 
