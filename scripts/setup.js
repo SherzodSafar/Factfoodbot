@@ -61,7 +61,10 @@ for (const [index, step] of steps.entries()) {
   }
 }
 
-console.log('\n✅ Hammasi tayyor!\n');
-console.log('   Keyingi qadam:  npm run dev:all');
-console.log('   Mini App:       http://localhost:5173');
-console.log('   Admin panel:    http://localhost:5174\n');
+console.log('\n✅ Baza tayyor!\n');
+
+if (!process.env.RENDER) {
+  console.log('   Keyingi qadam:  npm run dev:all');
+  console.log('   Mini App:       http://localhost:5173');
+  console.log('   Admin panel:    http://localhost:5174\n');
+}

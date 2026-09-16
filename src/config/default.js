@@ -25,8 +25,14 @@ const config = {
 
   bot: {
     token: process.env.BOT_TOKEN || '',
-    // Mini App manzili (https). ngrok bergan domen shu yerga yoziladi.
+    // Mini App manzili (https). Vercel yoki ngrok bergan domen shu yerga yoziladi.
     webAppUrl: (process.env.WEBAPP_URL || '').replace(/\/+$/, ''),
+    // Backendning ochiq manzili. Render uni avtomatik beradi (RENDER_EXTERNAL_URL).
+    publicUrl: (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/+$/, ''),
+    // "webhook" — bulut uchun (Render), "polling" — localhost uchun.
+    // Ko'rsatilmasa: ochiq manzil bo'lsa webhook, bo'lmasa polling.
+    mode: (process.env.BOT_MODE || '').toLowerCase(),
+    webhookSecret: process.env.WEBHOOK_SECRET || '',
   },
 
   admin: {
@@ -36,8 +42,9 @@ const config = {
     tokenTtlMs: 7 * 24 * 60 * 60 * 1000,
   },
 
-  // Telegramsiz, oddiy brauzerda sinash imkoniyati (faqat localhost uchun)
-  allowDevAuth: toBool(process.env.ALLOW_DEV_AUTH, true),
+  // Telegramsiz, oddiy brauzerda sinash imkoniyati.
+  // Ishlab chiqarishda (production) xavfsizlik uchun o'chiq turadi.
+  allowDevAuth: toBool(process.env.ALLOW_DEV_AUTH, (process.env.NODE_ENV || 'development') !== 'production'),
 
   frontend: {
     miniappPort: Number(process.env.MINIAPP_PORT || 5173),
@@ -52,6 +59,12 @@ const config = {
       'Buyurtmangiz muvaffaqiyatli qabul qilindi! Kuryerimiz tez orada bog\'lanadi 🍕',
   },
 };
+
+/** Bot qaysi rejimda ishlashi kerak: 'webhook' yoki 'polling' */
+export function resolveBotMode() {
+  if (config.bot.mode === 'webhook' || config.bot.mode === 'polling') return config.bot.mode;
+  return config.bot.publicUrl.startsWith('https://') ? 'webhook' : 'polling';
+}
 
 /** Sozlamalarni tekshirish — nimadir yetishmasa terminalda ogohlantiradi */
 export function validateConfig() {

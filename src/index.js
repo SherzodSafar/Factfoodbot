@@ -11,13 +11,13 @@ import path from 'node:path';
 import express from 'express';
 import cors from 'cors';
 
-import config, { validateConfig } from './config/default.js';
+import config, { validateConfig, resolveBotMode } from './config/default.js';
 import { connectDatabase, disconnectDatabase } from './database/connection.js';
 import prisma from './database/connection.js';
 import clientRoutes from './routes/client.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import registerBotRoutes from './routes/bot.routes.js';
-import { getBot } from './core/bot.js';
+import { getBot, syncBotProfile } from './core/bot.js';
 
 const app = express();
 
@@ -59,17 +59,24 @@ app.get('/api/health', async (req, res) => {
 app.use('/api/client', clientRoutes);
 app.use('/api/admin', adminRoutes);
 
+/**
+ * Telegram webhook manzili.
+ * Bulutda (Render) bot shu yo'l orqali xabarlarni qabul qiladi.
+ * Haqiqiy ishlov beruvchi bot ishga tushganda ulanadi.
+ */
+export const WEBHOOK_PATH = '/api/bot/webhook';
+let webhookHandler = null;
+
+app.post(WEBHOOK_PATH, (req, res, next) => {
+  if (!webhookHandler) return res.status(503).json({ ok: false, error: 'Bot tayyor emas' });
+  return webhookHandler(req, res, next);
+});
+
 /* --------------------- Tayyor frontendlar ------------------------- */
 
-const { miniappDist, adminDist } = config.frontend;
+const { miniappDist } = config.frontend;
 
-// Admin Panel → http://localhost:3000/admin
-if (fs.existsSync(adminDist)) {
-  app.use('/admin', express.static(adminDist));
-  app.get('/admin/*', (req, res) => res.sendFile(path.join(adminDist, 'index.html')));
-}
-
-// Mini App → http://localhost:3000/
+// Agar Mini App build qilingan bo'lsa, uni ham shu server tarqatadi (ixtiyoriy).
 if (fs.existsSync(miniappDist)) {
   app.use(express.static(miniappDist));
 }
@@ -85,15 +92,12 @@ app.get('*', (req, res) => {
     .status(200)
     .type('html')
     .send(
-      `<!doctype html><meta charset="utf-8"><title>FactFood</title>
-       <div style="font-family:system-ui;max-width:640px;margin:80px auto;padding:0 20px;line-height:1.7">
-         <h1 style="font-size:24px">🍕 FactFood serveri ishlayapti</h1>
-         <p>Mini App hali <b>build</b> qilinmagan.</p>
-         <p>Terminalda quyidagini bajaring:</p>
-         <pre style="background:#f4f4f5;padding:14px;border-radius:10px">npm run build</pre>
-         <p>Yoki ishlab chiqish rejimida: <code>npm run dev:all</code> →
-            Mini App <a href="http://localhost:${config.frontend.miniappPort}">localhost:${config.frontend.miniappPort}</a>,
-            Admin <a href="http://localhost:${config.frontend.adminPort}">localhost:${config.frontend.adminPort}</a></p>
+      `<!doctype html><meta charset="utf-8"><title>FactFood API</title>
+       <div style="font-family:system-ui;max-width:620px;margin:80px auto;padding:0 20px;line-height:1.7">
+         <h1 style="font-size:24px">🍕 FactFood API ishlayapti</h1>
+         <p>Bu — backend server. Mijozlar uchun ilova va admin panel alohida manzillarda.</p>
+         <p><a href="/api/health">/api/health</a> — server holati</p>
+         ${config.bot.webAppUrl ? `<p>Mini App: <a href="${config.bot.webAppUrl}">${config.bot.webAppUrl}</a></p>` : ''}
        </div>`,
     );
 });
@@ -138,28 +142,54 @@ async function bootstrap() {
 
   // 2. API serverni yoqish
   const server = app.listen(config.port, () => {
-    console.log(`✅ API server:  http://localhost:${config.port}`);
-    if (fs.existsSync(adminDist)) {
-      console.log(`✅ Admin panel: http://localhost:${config.port}/admin`);
-    }
+    console.log(`✅ API server:  ${config.bot.publicUrl || `http://localhost:${config.port}`}`);
     if (config.bot.webAppUrl) {
       console.log(`✅ Mini App:    ${config.bot.webAppUrl}`);
     } else {
-      console.log('⚠️  WEBAPP_URL bo\'sh — ngrok\'ni yoqib "npm run ngrok:link" ni bajaring');
+      console.log('⚠️  WEBAPP_URL bo\'sh — Mini App manzili ulanmagan');
     }
   });
 
   // 3. Botni yoqish
   const bot = await registerBotRoutes();
   if (bot) {
-    bot
-      .launch({ dropPendingUpdates: true }, () => {
-        console.log(`✅ Bot ishga tushdi: @${bot.botInfo?.username || '...'}\n`);
-      })
-      .catch((error) => {
-        console.error('❌ Bot ishga tushmadi:', error.message);
-        console.error('   BOT_TOKEN to\'g\'riligini tekshiring (@BotFather).\n');
-      });
+    const mode = resolveBotMode();
+
+    try {
+      if (mode === 'webhook') {
+        // --- Bulut rejimi: Telegram xabarlarni serverimizga yuboradi ---
+        const domain = config.bot.publicUrl;
+        if (!domain.startsWith('https://')) {
+          throw new Error('Webhook uchun PUBLIC_URL (https) kerak');
+        }
+
+        webhookHandler = await bot.createWebhook({
+          domain,
+          path: WEBHOOK_PATH,
+          dropPendingUpdates: true,
+          ...(config.bot.webhookSecret ? { secretToken: config.bot.webhookSecret } : {}),
+        });
+
+        const me = await bot.telegram.getMe();
+        bot.botInfo = me;
+        console.log(`✅ Bot (webhook): @${me.username} → ${domain}${WEBHOOK_PATH}`);
+      } else {
+        // --- Localhost rejimi: bot Telegramdan xabarlarni o'zi so'rab turadi ---
+        await bot.telegram.deleteWebhook({ drop_pending_updates: true }).catch(() => {});
+        bot.launch({ dropPendingUpdates: true }, () => {
+          console.log(`✅ Bot (polling): @${bot.botInfo?.username || '...'}`);
+        }).catch((error) => {
+          console.error('❌ Bot ishga tushmadi:', error.message);
+        });
+      }
+
+      // "Menu" tugmasi va buyruqlarni avtomatik sozlash
+      await syncBotProfile();
+      console.log('');
+    } catch (error) {
+      console.error('❌ Bot ishga tushmadi:', error.message);
+      console.error('   BOT_TOKEN va PUBLIC_URL to\'g\'riligini tekshiring.\n');
+    }
   }
 
   // 4. Dasturni chiroyli to'xtatish

@@ -36,4 +36,43 @@ export async function sendMessage(telegramId, text, extra = {}) {
   }
 }
 
-export default { getBot, sendMessage };
+/**
+ * Telegram tomonidagi bot profilini sozlash:
+ *  - "Menu" tugmasini Mini App'ga bog'lash
+ *  - buyruqlar ro'yxatini o'rnatish
+ * Server har ishga tushganda avtomatik bajariladi — qo'lda hech narsa qilish shart emas.
+ */
+export async function syncBotProfile() {
+  const instance = getBot();
+  if (!instance) return false;
+
+  const commands = [
+    { command: 'start', description: 'Botni ishga tushirish' },
+    { command: 'menu', description: 'Menyuni ochish' },
+    { command: 'myorders', description: 'Mening buyurtmalarim' },
+    { command: 'help', description: 'Yordam' },
+  ];
+
+  try {
+    await instance.telegram.setMyCommands(commands);
+
+    if (config.bot.webAppUrl.startsWith('https://')) {
+      await instance.telegram.setChatMenuButton({
+        menuButton: {
+          type: 'web_app',
+          text: '🍕 Menyu',
+          web_app: { url: config.bot.webAppUrl },
+        },
+      });
+      console.log(`✅ Telegram "Menu" tugmasi ulandi: ${config.bot.webAppUrl}`);
+    } else {
+      console.log('⚠️  WEBAPP_URL berilmagan — "Menu" tugmasi sozlanmadi');
+    }
+    return true;
+  } catch (error) {
+    console.error('[bot] Profilni sozlab bo\'lmadi:', error.message);
+    return false;
+  }
+}
+
+export default { getBot, sendMessage, syncBotProfile };
