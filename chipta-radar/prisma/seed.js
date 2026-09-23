@@ -7,8 +7,9 @@
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { STATIONS } from '../src/services/stationData.js';
+import { withSchema } from '../src/database/url.js';
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({ datasourceUrl: withSchema(process.env.DATABASE_URL) || undefined });
 
 async function main() {
   let created = 0;

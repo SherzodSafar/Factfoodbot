@@ -67,7 +67,8 @@ bilan tekshiriladi, sayt "juda ko'p so'rov" desa — avtomatik tanaffus.
 | O'zgaruvchi | Vazifasi |
 |-------------|----------|
 | `BOT_TOKEN` | Telegram bot tokeni (@BotFather) |
-| `DATABASE_URL` | Neon bazasi manzili |
+| `DATABASE_URL` | Neon bazasi manzili. Jadvallar alohida `chipta_radar` sxemasida — bitta bazani boshqa loyiha bilan bo'lishsa ham, uning jadvallariga tegilmaydi |
+| `DB_SCHEMA` | *Ixtiyoriy.* Sxema nomi (standart `chipta_radar`) |
 | `WEBAPP_URL` | Mini App manzili (bot "Menu" tugmasi) |
 | `ADMIN_PASSWORD` | Admin panel paroli |
 | `ADMIN_SECRET`, `WEBHOOK_SECRET` | Maxfiy kalitlar (o'zgartirmang) |

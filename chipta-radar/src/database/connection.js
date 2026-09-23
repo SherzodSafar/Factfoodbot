@@ -10,6 +10,7 @@ const globalForPrisma = globalThis;
 export const prisma =
   globalForPrisma.__chiptaPrisma ??
   new PrismaClient({
+    datasourceUrl: config.database.url || undefined,
     log: config.env === 'development' ? ['warn', 'error'] : ['error'],
   });
 

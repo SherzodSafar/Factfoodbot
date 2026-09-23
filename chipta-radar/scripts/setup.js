@@ -9,16 +9,7 @@
  */
 import 'dotenv/config';
 import { spawnSync } from 'node:child_process';
-
-/**
- * Neon "pooler" (PgBouncer) ulanishi orqali jadval yaratib bo'lmaydi.
- * Shuning uchun migratsiya paytida to'g'ridan-to'g'ri ulanish ishlatiladi:
- * ep-xxx-pooler.neon.tech  →  ep-xxx.neon.tech
- */
-function directUrl(url) {
-  if (!url) return url;
-  return process.env.DIRECT_URL || url.replace('-pooler.', '.');
-}
+import { withSchema, directUrl } from '../src/database/url.js';
 
 const hasDatabase = Boolean(process.env.DATABASE_URL);
 
@@ -28,7 +19,8 @@ const steps = [
     title: 'Bazada jadvallar yaratilmoqda',
     cmd: 'npx',
     args: ['prisma', 'db', 'push', '--skip-generate'],
-    env: { DATABASE_URL: directUrl(process.env.DATABASE_URL) },
+    // Alohida sxema (chipta_radar) + to'g'ridan-to'g'ri ulanish (pooler emas)
+    env: { DATABASE_URL: directUrl(withSchema(process.env.DATABASE_URL)) },
   },
   hasDatabase && { title: 'Stansiyalar ro\'yxati yozilmoqda', cmd: 'node', args: ['prisma/seed.js'] },
 ].filter(Boolean);
