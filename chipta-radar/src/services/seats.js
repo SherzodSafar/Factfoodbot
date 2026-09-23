@@ -14,7 +14,6 @@ export const LAYOUTS = {
   platskart: { bays: 9, perBay: 4, side: true, capacity: 54 },
   kupe: { bays: 9, perBay: 4, side: false, capacity: 36 },
   sv: { bays: 9, perBay: 2, side: false, capacity: 18 },
-  lux: { bays: 9, perBay: 2, side: false, capacity: 18 },
 };
 
 export const SECTIONS = ['any', 'compartment', 'side'];

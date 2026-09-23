@@ -41,7 +41,7 @@ export function formatUptime(seconds) {
 }
 
 export const CAR_TYPES = {
-  platskart: 'Plaskartli', kupe: 'Kupe', sv: 'SV', lux: 'Lyuks', sitting: 'O\'rindiqli',
+  platskart: 'Plaskartli', kupe: 'Kupe', sv: 'SV/Lyuks', sitting: 'O\'rindiqli',
   business: 'Biznes', vip: 'VIP', general: 'Umumiy',
 };
 

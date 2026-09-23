@@ -23,8 +23,9 @@ test('vagon turlari: saytdagi barcha yozuvlar bitta kalitga keladi', () => {
     VIP: 'vip',
     SV: 'sv',
     'СВ': 'sv',
-    'Люкс': 'lux',
-    Lyuks: 'lux',
+    // ro'yxatda "SV", tafsilotda "Lyuks" — bitta vagon turi
+    'Люкс': 'sv',
+    Lyuks: 'sv',
     Umumiy: 'general',
     'Общий': 'general',
   };

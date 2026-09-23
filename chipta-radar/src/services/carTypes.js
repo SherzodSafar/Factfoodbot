@@ -11,8 +11,9 @@ import { normalizeSearch } from '../utils/text.js';
 export const CAR_TYPES = {
   platskart: { label: 'Plaskartli', short: 'Plaskart', emoji: '🛏', berths: true },
   kupe: { label: 'Kupe', short: 'Kupe', emoji: '🚪', berths: true },
-  sv: { label: 'SV (2 kishilik)', short: 'SV', emoji: '🛌', berths: true },
-  lux: { label: 'Lyuks', short: 'Lyuks', emoji: '✨', berths: true },
+  // Sayt ro'yxatda "SV", vagon tafsilotida esa xuddi shu vagonni "Lyuks" deb qaytaradi —
+  // ikkalasi bitta tur (2 kishilik kupe, hamma o'rin pastki)
+  sv: { label: 'SV / Lyuks', short: 'SV', emoji: '🛌', berths: true },
   sitting: { label: 'O\'rindiqli', short: 'O\'rindiq', emoji: '💺', berths: false },
   business: { label: 'Biznes', short: 'Biznes', emoji: '💼', berths: false },
   vip: { label: 'VIP', short: 'VIP', emoji: '👑', berths: false },
@@ -20,14 +21,13 @@ export const CAR_TYPES = {
 };
 
 /** Kuzatuv shaklida ko'rsatiladigan tartib */
-export const CAR_TYPE_ORDER = ['platskart', 'kupe', 'sitting', 'sv', 'lux', 'business', 'vip', 'general'];
+export const CAR_TYPE_ORDER = ['platskart', 'kupe', 'sitting', 'sv', 'business', 'vip', 'general'];
 
 // Sayt qaytaradigan yozuvlar (normallashtirilgan ko'rinishda)
 const ALIASES = {
   platskart: ['platskartniy', 'platskarta', 'platskart', 'plaskartli', 'plackartli', 'platskartli', 'plaskart', 'reserved seat', 'plazkart'],
   kupe: ['kupe', 'coupe', 'compartment', 'kupeyniy'],
-  sv: ['sv', 'sleeper', 'spalniy', 'myagkiy sv'],
-  lux: ['lyuks', 'lux', 'luxury', 'lyuks sv', 'myagkiy'],
+  sv: ['sv', 'sleeper', 'spalniy', 'myagkiy sv', 'lyuks', 'lux', 'luxury', 'lyuks sv', 'myagkiy'],
   sitting: [
     'sidyachiy', 'orindiqli', 'orindikli', 'sitting', 'seated', 'seat',
     'ekonom', 'economy', 'ekonom klass', 'turist', 'standart', 'standard',
