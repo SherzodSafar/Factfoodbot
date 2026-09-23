@@ -17,7 +17,7 @@ import { webAppReady, webAppUrl } from '../core/bot.js';
 import { parseQuery } from '../services/queryParser.js';
 import { searchReply, describeWatch, dateLine } from '../services/format.js';
 import { createWatches, ValidationError } from '../services/watchService.js';
-import { checkWatchNow } from '../services/watcher.js';
+import { checkWatchNow, withLiveState } from '../services/watcher.js';
 import { escapeHtml } from '../utils/text.js';
 
 const STATUS_LABELS = {
@@ -108,7 +108,8 @@ export async function openApp(ctx) {
 /*  Kuzatuvlar ro'yxati                                                */
 /* ------------------------------------------------------------------ */
 
-function watchText(watch) {
+function watchText(row) {
+  const watch = withLiveState(row);
   const last = watch.lastResult;
   let state = '';
   if (watch.status === 'ACTIVE') {

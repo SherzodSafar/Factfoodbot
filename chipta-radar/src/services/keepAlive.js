@@ -5,8 +5,7 @@
  * foydalanuvchi botga yozishi bilan u yana uyg'onadi.
  */
 import config from '../config/default.js';
-import { isDatabaseReady } from '../database/connection.js';
-import WatchModel from '../models/Watch.js';
+import { getActiveWatchCount } from './watcher.js';
 
 const INTERVAL_MS = 9 * 60 * 1000;
 
@@ -14,7 +13,8 @@ const state = { enabled: false, lastPingAt: null, lastPingOk: null, activeWatche
 
 async function ping() {
   try {
-    state.activeWatches = isDatabaseReady() ? await WatchModel.countActive() : 0;
+    // Kuzatuv xizmati xotirasidan — bazani uyg'otmaslik uchun
+    state.activeWatches = getActiveWatchCount();
     if (!state.activeWatches) return;
     const response = await fetch(`${config.bot.publicUrl}/api/health?source=keepalive`, {
       signal: AbortSignal.timeout(30_000),

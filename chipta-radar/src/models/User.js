@@ -2,6 +2,17 @@
  * User modeli — foydalanuvchilar bilan ishlash logikasi.
  */
 import prisma from '../database/connection.js';
+import { markWatchesChanged } from '../database/changes.js';
+
+/**
+ * Kuzatuv xizmati foydalanuvchi ma'lumotlarini ham xotirada saqlaydi
+ * (Telegram ID, bloklangani, tungi rejim) — o'zgarganda qayta o'qishi uchun belgilanadi.
+ */
+async function changed(promise) {
+  const result = await promise;
+  markWatchesChanged();
+  return result;
+}
 
 const UserModel = {
   findByTelegramId(telegramId) {
@@ -26,19 +37,19 @@ const UserModel = {
       lastSeenAt: new Date(),
       botBlocked: false,
     };
-    return prisma.user.upsert({
+    return changed(prisma.user.upsert({
       where: { telegramId },
       create: { telegramId, ...data },
       update: data,
-    });
+    }));
   },
 
   update(id, data) {
-    return prisma.user.update({ where: { id: Number(id) }, data });
+    return changed(prisma.user.update({ where: { id: Number(id) }, data }));
   },
 
   markBotBlocked(telegramId) {
-    return prisma.user.updateMany({ where: { telegramId: String(telegramId) }, data: { botBlocked: true } });
+    return changed(prisma.user.updateMany({ where: { telegramId: String(telegramId) }, data: { botBlocked: true } }));
   },
 
   count(where) {

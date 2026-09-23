@@ -5,7 +5,7 @@
 import 'dotenv/config';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { withSchema } from '../database/url.js';
+import { runtimeUrl } from '../database/url.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -29,8 +29,9 @@ const config = {
   port: toNumber(process.env.PORT, 3000),
 
   database: {
-    // Jadvallar alohida sxemada (standart: chipta_radar) — boshqa loyihalar jadvallariga tegilmaydi
-    url: withSchema(process.env.DATABASE_URL),
+    // Jadvallar alohida sxemada (standart: chipta_radar) — boshqa loyihalar jadvallariga tegilmaydi.
+    // Neon "uxlab" qolganda uzilgan ulanishlar qayta ishlatilmaydi (database/url.js).
+    url: runtimeUrl(process.env.DATABASE_URL),
   },
 
   bot: {

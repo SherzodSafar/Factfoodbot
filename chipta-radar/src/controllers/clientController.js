@@ -14,7 +14,7 @@ import { CAR_TYPES, CAR_TYPE_ORDER } from '../services/carTypes.js';
 import { summarizeCar, buildSeatMap, matchCars, normalizePrefs, seatFits } from '../services/seats.js';
 import { getSettings } from '../services/settings.js';
 import { createWatches, ValidationError } from '../services/watchService.js';
-import { checkWatchNow } from '../services/watcher.js';
+import { checkWatchNow, withLiveState } from '../services/watcher.js';
 import { todayISO, addDays, isISODate } from '../utils/dates.js';
 
 /* ------------------------------------------------------------------ */
@@ -48,7 +48,9 @@ function railwayErrorResponse(res, error) {
   return res.status(status).json({ ok: false, error: error.message, code: error.code || 'RAILWAY_ERROR' });
 }
 
-function publicWatch(watch) {
+function publicWatch(row) {
+  // Oxirgi tekshiruv vaqti va natijasi kuzatuv xizmati xotirasidan (bazaga har safar yozilmaydi)
+  const watch = withLiveState(row);
   return {
     id: watch.id,
     mode: watch.mode,

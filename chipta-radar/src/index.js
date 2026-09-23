@@ -21,7 +21,7 @@ import { searchTrains, getTrainDetail, getRailwayStatus } from './core/railway.j
 import { isKnownCarType } from './services/carTypes.js';
 import { loadSettings } from './services/settings.js';
 import { refreshStations } from './services/stations.js';
-import { startWatcher, stopWatcher, getWatcherStatus } from './services/watcher.js';
+import { startWatcher, stopWatcher, getWatcherStatus, flushWatcher } from './services/watcher.js';
 import { startKeepAlive } from './services/keepAlive.js';
 import { todayISO, addDays } from './utils/dates.js';
 
@@ -47,7 +47,10 @@ app.use((req, res, next) => {
 
 app.get('/api/health', async (req, res) => {
   let database = config.database.url ? 'error' : 'not-configured';
-  if (isDatabaseReady()) {
+  // "Uyg'oq saqlash" so'rovi bazani uyg'otmasligi kerak (Neon soatlarini tejash)
+  if (isDatabaseReady() && req.query.source === 'keepalive') {
+    database = 'ok';
+  } else if (isDatabaseReady()) {
     try {
       await prisma.$queryRaw`SELECT 1`;
       database = 'ok';
@@ -237,6 +240,8 @@ async function bootstrap() {
   const shutdown = async (signal) => {
     console.log(`\n${signal} — to'xtatilmoqda...`);
     stopWatcher();
+    // Kuzatuvlarning saqlanmagan "oxirgi tekshiruv" ma'lumotlari (ko'pi bilan 5 soniya kutiladi)
+    await Promise.race([flushWatcher().catch(() => 0), new Promise((resolve) => setTimeout(resolve, 5_000))]);
     try {
       getBot()?.stop(signal);
     } catch {

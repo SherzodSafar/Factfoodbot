@@ -13,7 +13,7 @@ import StationModel from '../models/Station.js';
 import { createAdminToken, passwordMatches } from '../middlewares/auth.middleware.js';
 import { searchTrains, getTrainDetail, getRailwayStatus, resetRailwaySession } from '../core/railway.js';
 import { sendMessage } from '../core/bot.js';
-import { getWatcherStatus, triggerSoon, checkWatchNow } from '../services/watcher.js';
+import { getWatcherStatus, triggerSoon, checkWatchNow, withLiveState } from '../services/watcher.js';
 import { getKeepAliveStatus } from '../services/keepAlive.js';
 import { getSettings, updateSettings } from '../services/settings.js';
 import { startBroadcast, getBroadcastStatus } from '../services/broadcast.js';
@@ -130,7 +130,7 @@ export async function stats(req, res, next) {
 export async function listWatches(req, res, next) {
   try {
     const data = await WatchModel.list({ status: req.query.status, q: String(req.query.q || '').trim(), page: pageOf(req) });
-    res.json({ ok: true, ...data });
+    res.json({ ok: true, ...data, items: data.items.map(withLiveState) });
   } catch (error) {
     next(error);
   }

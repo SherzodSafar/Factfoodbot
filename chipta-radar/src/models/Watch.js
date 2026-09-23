@@ -2,12 +2,20 @@
  * Watch modeli — kuzatuvlar ("joy chiqsa xabar ber" buyurtmalari).
  */
 import prisma from '../database/connection.js';
+import { markWatchesChanged } from '../database/changes.js';
+
+/** Yozuvdan so'ng kuzatuv xizmatiga "ro'yxat o'zgardi" deb bildirish */
+async function changed(promise) {
+  const result = await promise;
+  markWatchesChanged();
+  return result;
+}
 
 export const WATCH_STATUSES = ['ACTIVE', 'PAUSED', 'FOUND', 'EXPIRED', 'CANCELLED'];
 
 const WatchModel = {
   create(data) {
-    return prisma.watch.create({ data });
+    return changed(prisma.watch.create({ data }));
   },
 
   findById(id) {
@@ -53,22 +61,30 @@ const WatchModel = {
 
   /** Sanasi o'tib ketgan kuzatuvlarni yopish */
   expireBefore(today) {
-    return prisma.watch.updateMany({
+    return changed(prisma.watch.updateMany({
       where: { status: { in: ['ACTIVE', 'PAUSED'] }, date: { lt: today } },
       data: { status: 'EXPIRED' },
-    });
+    }));
   },
 
   update(id, data) {
+    return changed(prisma.watch.update({ where: { id: Number(id) }, data }));
+  },
+
+  /**
+   * Kuzatuv xizmatining o'z tekshiruv natijasini saqlashi.
+   * Ro'yxat o'zgarmaydi (xizmat xotiradagi nusxani o'zi yangilaydi), shuning uchun belgilanmaydi.
+   */
+  saveCheck(id, data) {
     return prisma.watch.update({ where: { id: Number(id) }, data });
   },
 
   remove(id) {
-    return prisma.watch.delete({ where: { id: Number(id) } });
+    return changed(prisma.watch.delete({ where: { id: Number(id) } }));
   },
 
   pauseAllForUser(userId) {
-    return prisma.watch.updateMany({ where: { userId: Number(userId), status: 'ACTIVE' }, data: { status: 'PAUSED' } });
+    return changed(prisma.watch.updateMany({ where: { userId: Number(userId), status: 'ACTIVE' }, data: { status: 'PAUSED' } }));
   },
 
   /** Admin panel uchun ro'yxat */

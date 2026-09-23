@@ -60,6 +60,11 @@ Telegram ──webhook──► Backend (Render, Node.js) ──► PostgreSQL (
 bir xil qidiruvlar keshlanadi, bir yo'nalish+sanadagi barcha kuzatuvlar bitta so'rov
 bilan tekshiriladi, sayt "juda ko'p so'rov" desa — avtomatik tanaffus.
 
+**Bazani tejash (Neon bepul rejasi):** kuzatuv xizmati faol kuzatuvlarni xotirada saqlaydi
+va har daqiqadagi tekshiruvni bazaga yozmaydi — faqat muhim o'zgarishda (joy paydo bo'ldi
+yoki tugadi, xabar yuborildi, xatolik) va soatiga bir marta. Shunda baza foydalanuvchilar
+faol bo'lmaganda "uxlaydi" va oylik bepul hisoblash soatlari tejaladi.
+
 ---
 
 ## 🔑 Sozlamalar (Render → chipta-radar-api → Environment)

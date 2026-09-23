@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { withSchema, directUrl, DEFAULT_SCHEMA } from '../src/database/url.js';
+import { withSchema, directUrl, runtimeUrl, DEFAULT_SCHEMA } from '../src/database/url.js';
 
 const NEON = 'postgresql://user:pass@ep-demo-123-pooler.c-6.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require';
 
@@ -40,4 +40,16 @@ test('jadval yaratish uchun Neon pooler o\'rniga to\'g\'ridan-to\'g\'ri ulanish'
   } finally {
     delete process.env.DIRECT_URL;
   }
+});
+
+test('server manzili: Neon uxlaganda uzilgan ulanishlar qayta ishlatilmaydi', () => {
+  delete process.env.DB_SCHEMA;
+  assert.equal(
+    runtimeUrl(NEON),
+    `${NEON}&schema=chipta_radar&max_idle_connection_lifetime=120&connect_timeout=15`,
+  );
+  // Foydalanuvchi o'zi bergan qiymatlar saqlanadi
+  const custom = 'postgresql://u:p@h/db?connect_timeout=30&max_idle_connection_lifetime=60';
+  assert.equal(runtimeUrl(custom), `${custom}&schema=chipta_radar`);
+  assert.equal(runtimeUrl(''), '');
 });
