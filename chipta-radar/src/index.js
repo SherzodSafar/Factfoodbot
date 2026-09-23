@@ -17,7 +17,8 @@ import clientRoutes from './routes/client.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import registerBotRoutes from './routes/bot.routes.js';
 import { getBot, syncBotProfile } from './core/bot.js';
-import { searchTrains, getRailwayStatus } from './core/railway.js';
+import { searchTrains, getTrainDetail, getRailwayStatus } from './core/railway.js';
+import { isKnownCarType } from './services/carTypes.js';
 import { loadSettings } from './services/settings.js';
 import { refreshStations } from './services/stations.js';
 import { startWatcher, stopWatcher, getWatcherStatus } from './services/watcher.js';
@@ -144,16 +145,37 @@ async function connectWithRetry() {
   }
 }
 
-/** Ishga tushganda eticket.railway.uz bilan aloqani bir marta tekshirish */
+/**
+ * Ishga tushganda eticket.railway.uz bilan aloqani bir marta tekshirish:
+ * poyezdlar ro'yxati va bitta poyezdning vagonlari (aniq joy raqamlari bilan).
+ */
 async function railwaySelfTest() {
   const date = addDays(todayISO(), 1);
+  const query = { from: '2900000', to: '2900700', date };
   try {
-    const { trains } = await searchTrains({ from: '2900000', to: '2900700', date }, { priority: 'low' });
+    const { trains } = await searchTrains(query, { priority: 'low' });
     const withSeats = trains.filter((train) => train.totalFree > 0);
     console.log(
       `✅ eticket.railway.uz: Toshkent → Samarqand (${date}) — ${trains.length} ta poyezd, ${withSeats.length} tasida joy bor` +
         (trains[0] ? ` (masalan ${trains[0].number} ${trains[0].title} ${trains[0].depTime})` : ''),
     );
+
+    // Saytdagi vagon turlari yozuvlari qaysi kalitga tushayotgani (noma'lumlari ⚠️ bilan)
+    const labels = new Map();
+    for (const train of trains) for (const car of train.cars) labels.set(car.rawLabel || car.label, car.type);
+    const summary = [...labels].map(([raw, type]) => `${raw}→${type}${isKnownCarType(type) ? '' : ' ⚠️'}`).join(', ');
+    if (summary) console.log(`   Vagon turlari: ${summary}`);
+
+    // Vagonlar va aniq joy raqamlari (turli vagon turlari bo'lgan poyezd afzal)
+    const sample = [...withSeats].sort((a, b) => b.cars.length - a.cars.length)[0];
+    if (sample) {
+      const { cars } = await getTrainDetail({ ...query, trainNumber: sample.number, trainId: sample.id }, { priority: 'low' });
+      const brief = cars
+        .slice(0, 6)
+        .map((car) => `${car.number}-vagon ${car.label}(${car.type}): ${car.places.length} joy [${car.places.slice(0, 8).join(',')}${car.places.length > 8 ? '…' : ''}]`)
+        .join('; ');
+      console.log(`✅ ${sample.number} vagonlari: ${cars.length} ta — ${brief}`);
+    }
   } catch (error) {
     console.error(`❌ eticket.railway.uz tekshiruvi: [${error.code || 'ERROR'}] ${error.message}`);
     const sample = getRailwayStatus().lastSample;
