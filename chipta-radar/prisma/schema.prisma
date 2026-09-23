@@ -1,0 +1,164 @@
+// Chipta Radar — ma'lumotlar bazasi sxemasi (PostgreSQL / Neon)
+// Hujjat: https://www.prisma.io/docs
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Foydalanuvchilar — Telegram orqali kirganlar
+model User {
+  id           Int      @id @default(autoincrement())
+  telegramId   String   @unique @map("telegram_id")
+  firstName    String   @map("first_name")
+  lastName     String?  @map("last_name")
+  username     String?
+  languageCode String?  @map("language_code")
+  /// Tunda (23:00–07:00) xabarlar ovozsiz keladi
+  quietNight   Boolean  @default(false) @map("quiet_night")
+  /// Admin tomonidan bloklangan
+  isBlocked    Boolean  @default(false) @map("is_blocked")
+  /// Foydalanuvchi botni to'xtatib qo'ygan (xabar yetib bormaydi)
+  botBlocked   Boolean  @default(false) @map("bot_blocked")
+  lastSeenAt   DateTime @default(now()) @map("last_seen_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  watches       Watch[]
+  notifications Notification[]
+  searches      SearchLog[]
+
+  @@map("users")
+}
+
+/// Temir yo'l stansiyalari (kodlar eticket.railway.uz bo'yicha)
+model Station {
+  code      String   @id
+  nameUz    String   @map("name_uz")
+  nameRu    String   @default("") @map("name_ru")
+  nameEn    String   @default("") @map("name_en")
+  region    String   @default("")
+  aliases   String[] @default([])
+  isPopular Boolean  @default(false) @map("is_popular")
+  sortOrder Int      @default(100) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("stations")
+}
+
+/// Kuzatuv turi: ANY — istalgan joy, EXACT — aniq joy (kupe/bokovoy, pastki/yuqori...)
+enum WatchMode {
+  ANY
+  EXACT
+}
+
+/// Kuzatuv holati
+enum WatchStatus {
+  ACTIVE
+  PAUSED
+  FOUND
+  EXPIRED
+  CANCELLED
+}
+
+/// Kuzatuvlar — "joy chiqsa xabar ber" buyurtmalari
+model Watch {
+  id             Int         @id @default(autoincrement())
+  userId         Int         @map("user_id")
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mode           WatchMode   @default(ANY)
+  fromCode       String      @map("from_code")
+  toCode         String      @map("to_code")
+  fromName       String      @map("from_name")
+  toName         String      @map("to_name")
+  /// Sana "YYYY-MM-DD" (Toshkent vaqti)
+  date           String
+  /// Vagon turlari (bo'sh = farqi yo'q)
+  carTypes       String[]    @default([]) @map("car_types")
+  /// Poyezd raqamlari (bo'sh = istalgan poyezd)
+  trainNumbers   String[]    @default([]) @map("train_numbers")
+  quantity       Int         @default(1)
+  /// Jo'nash vaqti oralig'i "HH:MM"
+  timeFrom       String?     @map("time_from")
+  timeTo         String?     @map("time_to")
+  maxPrice       Int?        @map("max_price")
+  /// EXACT: compartment (to'rttalik) | side (bokovoy) | any
+  section        String      @default("any")
+  /// EXACT: lower (pastki) | upper (yuqori) | any
+  berth          String      @default("any")
+  /// EXACT: compartment (bitta bo'limda) | car (bitta vagonda) | any (tarqoq)
+  together       String      @default("any")
+  /// EXACT: hojatxona yonidagi (1- va oxirgi) bo'limlarsiz
+  noToilet       Boolean     @default(false) @map("no_toilet")
+  status         WatchStatus @default(ACTIVE)
+  lastCheckedAt  DateTime?   @map("last_checked_at")
+  lastFoundAt    DateTime?   @map("last_found_at")
+  lastNotifiedAt DateTime?   @map("last_notified_at")
+  lastKeys       String[]    @default([]) @map("last_keys")
+  lastResult     Json?       @map("last_result")
+  lastError      String?     @map("last_error")
+  checksCount    Int         @default(0) @map("checks_count")
+  notifyCount    Int         @default(0) @map("notify_count")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+
+  notifications Notification[]
+
+  @@index([status, date])
+  @@index([userId])
+  @@map("watches")
+}
+
+/// Yuborilgan xabarlar tarixi
+model Notification {
+  id        Int      @id @default(autoincrement())
+  watchId   Int?     @map("watch_id")
+  watch     Watch?   @relation(fields: [watchId], references: [id], onDelete: SetNull)
+  userId    Int      @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// found | broadcast | admin
+  kind      String   @default("found")
+  text      String
+  seats     Int      @default(0)
+  delivered Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([userId])
+  @@map("notifications")
+}
+
+/// Qidiruvlar jurnali (mashhur yo'nalishlar statistikasi uchun)
+model SearchLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int?     @map("user_id")
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  fromCode  String   @map("from_code")
+  toCode    String   @map("to_code")
+  date      String
+  /// app | bot | admin
+  source    String   @default("app")
+  trains    Int      @default(0)
+  withSeats Int      @default(0) @map("with_seats")
+  ok        Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([fromCode, toCode])
+  @@map("search_logs")
+}
+
+/// Admin Paneldan o'zgartiriladigan sozlamalar
+model Setting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
+}

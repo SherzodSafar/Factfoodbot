@@ -1,0 +1,11 @@
+# Maxfiy sozlamalar
+.env
+.env.local
+
+# Paketlar va build natijalari
+node_modules/
+dist/
+
+# Loglar
+*.log
+.DS_Store

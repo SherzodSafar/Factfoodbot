@@ -1,0 +1,6 @@
+{
+  "watch": ["src", "prisma/schema.prisma", ".env"],
+  "ext": "js,json,prisma,env",
+  "ignore": ["node_modules", "miniapp", "admin", "test"],
+  "delay": 400
+}
