@@ -237,6 +237,15 @@ async function bootstrap() {
   await startBot();
   railwaySelfTest();
 
+  if (process.env.RAILWAY_INSPECT === '1') {
+    // Diagnostika: saytning ochiq JS fayllaridan API yo'llarini topish (scripts/railway-inspect.js)
+    setTimeout(() => {
+      import('../scripts/railway-inspect.js')
+        .then(({ inspectRailwaySite }) => inspectRailwaySite())
+        .catch((error) => console.error('[inspect] xato:', error.message));
+    }, 15_000);
+  }
+
   const shutdown = async (signal) => {
     console.log(`\n${signal} — to'xtatilmoqda...`);
     stopWatcher();
