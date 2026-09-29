@@ -180,6 +180,33 @@ export async function inspectRailwaySite() {
     if (count) out(`BELGI [${marker}] ${count} marta: …${sample}…`);
   }
 
+  // 5) Angular yo'nalishlari (sahifa manzillari: to'lov, kabinet va h.k.)
+  const routes = [];
+  for (const file of files) for (const match of file.text.matchAll(/path:"([^"]{1,80})"/g)) routes.push(match[1]);
+  out(`Sahifa yo'llari: ${uniqueSorted(routes).join('  ')}`);
+
+  // 6) Chuqur ko'rish: RAILWAY_INSPECT_NEEDLES="reserveSelectedExpressSeats(,addPassengerToOrder(" — har bir
+  //    uchrashgan joy atrofidagi kod keng oynada (RAILWAY_INSPECT_WINDOW, standart 2500 belgi) chiqariladi
+  const needles = (process.env.RAILWAY_INSPECT_NEEDLES || '').split('|').map((item) => item.trim()).filter(Boolean);
+  const windowSize = Number(process.env.RAILWAY_INSPECT_WINDOW) || 2500;
+  const maxHits = Number(process.env.RAILWAY_INSPECT_MAX_HITS) || 4;
+  for (const needle of needles) {
+    let hit = 0;
+    for (const file of files) {
+      let at = file.text.indexOf(needle);
+      while (at !== -1 && hit < maxHits) {
+        hit += 1;
+        const chunk = file.text.slice(Math.max(0, at - windowSize), at + windowSize).replace(/\s+/g, ' ');
+        const parts = Math.ceil(chunk.length / 1800);
+        for (let i = 0; i < parts; i += 1) {
+          out(`IGNA [${needle}] #${hit} ${i + 1}/${parts}: ${chunk.slice(i * 1800, (i + 1) * 1800)}`);
+        }
+        at = file.text.indexOf(needle, at + needle.length);
+      }
+    }
+    if (!hit) out(`IGNA [${needle}] topilmadi`);
+  }
+
   out(`Tugadi: ${Math.round((Date.now() - started) / 1000)} s`);
 }
 
