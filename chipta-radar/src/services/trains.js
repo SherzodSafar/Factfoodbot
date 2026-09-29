@@ -96,6 +96,12 @@ function extractTrainArray(json) {
   // "trains" kaliti umuman yo'q, lekin yo'nalish bor — demak shu sanada poyezd yo'q
   const forward = json?.data?.directions?.forward ?? json?.directions?.forward;
   if (forward && typeof forward === 'object') return [];
+  // Kun oxirida (oxirgi poyezd ketgach) yoki poyezd qatnamaydigan kunda sayt yo'nalishsiz
+  // javob qaytaradi: {"data":{"directions":{}},"error":null} — bu ham "poyezd yo'q"
+  const directions = json?.data?.directions ?? json?.directions;
+  if (directions && typeof directions === 'object' && !Array.isArray(directions) && !Object.keys(directions).length && !json?.error) {
+    return [];
+  }
   return null;
 }
 

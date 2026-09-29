@@ -61,6 +61,10 @@ test('poyezdlar ro\'yxati normallashtiriladi', () => {
 test('bo\'sh yo\'nalish — xatolik emas, bo\'sh ro\'yxat', () => {
   assert.deepEqual(normalizeTrainList({ data: { directions: { forward: {} } } }), []);
   assert.deepEqual(normalizeTrainList({ data: { directions: { forward: { trains: [] } } } }), []);
+  // Jonli saytda kuzatilgan: kun oxirida (oxirgi poyezd ketgach) shu javob keladi
+  assert.deepEqual(normalizeTrainList({ data: { directions: {} }, error: null }), []);
+  // Xatolik matni bo'lsa — bo'sh ro'yxat emas, aniq xatolik
+  assert.throws(() => normalizeTrainList({ data: { directions: {} }, error: { message: 'Server error' } }), UnexpectedShapeError);
 });
 
 test('kutilmagan javob — aniq xatolik (noto\'g\'ri "poyezd yo\'q" o\'rniga)', () => {

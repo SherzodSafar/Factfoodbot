@@ -7,12 +7,24 @@ import config from '../config/default.js';
 
 const globalForPrisma = globalThis;
 
+const isDev = config.env === 'development';
+
 export const prisma =
   globalForPrisma.__chiptaPrisma ??
   new PrismaClient({
     datasourceUrl: config.database.url || undefined,
-    log: config.env === 'development' ? ['warn', 'error'] : ['error'],
+    log: isDev ? ['warn', 'error'] : [{ emit: 'event', level: 'error' }],
   });
+
+if (!isDev && !globalForPrisma.__chiptaPrismaLog) {
+  globalForPrisma.__chiptaPrismaLog = true;
+  prisma.$on('error', (event) => {
+    // Neon bazasi uxlaganda uzilgan ulanish haqidagi xabar — Prisma o'zi yangi ulanish ochadi,
+    // so'rov xato bilan tugasa u chaqirgan joyda alohida ko'rinadi
+    if (/kind: Closed/.test(event.message)) return;
+    console.error('prisma:error', event.message);
+  });
+}
 
 if (config.env === 'development') {
   globalForPrisma.__chiptaPrisma = prisma;
