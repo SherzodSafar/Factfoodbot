@@ -16,7 +16,7 @@ export const DEFAULTS = {
   // Akkaunt va bron imkoniyatlari (Admin Paneldan boshqariladi)
   accountEnabled: true, // eticket hisobini ulash va buyurtmalarni ko'rish
   paymentEnabled: true, // bot ichida Payme/Click to'lov so'rovi
-  bookingEnabled: false, // botdan to'g'ridan-to'g'ri joy band qilish (sayt API hujjatsiz — ehtiyotkorlik)
+  bookingEnabled: true, // joy chiqqanda avtomatik bron + to'lov so'rovi (Admin Paneldan o'chirsa bo'ladi)
   maxPassengersPerUser: 10,
 };
 

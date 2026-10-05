@@ -100,6 +100,47 @@ test('akkauntni uzishni tasdiqlash tugmalari', () => {
   assert.ok(d.includes('m:account'), 'orqaga');
 });
 
+test('akkaunt klaviaturasi: ulangan holatda inline yo\'lovchi/to\'lov', () => {
+  const d = datas(ui.accountKeyboard({ connected: true }, '', {}));
+  assert.ok(d.includes('pass:list'), 'yo\'lovchilar');
+  assert.ok(d.includes('acc:pay'), 'to\'lov usuli');
+  assert.ok(d.includes('m:orders'), 'bronlarim');
+  // Ulanmagan: inline ulash tugmasi
+  assert.ok(datas(ui.accountKeyboard({ connected: false }, '')).includes('acc:connect'), 'inline ulash');
+});
+
+test('inline oqim tugmalari: bekor, rozilik, jins, saqlash', () => {
+  assert.ok(datas(ui.cancelFlowKeyboard()).includes('flow:cancel'));
+  assert.ok(datas(ui.connectConsentKeyboard()).includes('acc:connect:go'));
+  assert.deepEqual(datas(ui.genderKeyboard()).filter((x) => x.startsWith('pass:g:')), ['pass:g:M', 'pass:g:F']);
+  assert.ok(datas(ui.passengerConsentKeyboard()).includes('pass:save'));
+});
+
+test('yo\'lovchilar klaviaturasi: o\'chirish va qo\'shish', () => {
+  const kb = ui.passengersKeyboard([{ id: 5, name: 'ANVA**** I.', label: 'O\'zim', categoryLabel: 'katta' }]);
+  const d = datas(kb);
+  assert.ok(d.includes('pass:del:5'), 'o\'chirish');
+  assert.ok(d.includes('pass:add'), 'qo\'shish');
+});
+
+test('to\'lov usuli klaviaturasi: Payme/Click/telefon', () => {
+  const d = datas(ui.payMethodKeyboard({ provider: 'payme', phoneMasked: '+998 90 *** ** 67' }));
+  assert.ok(d.includes('acc:pay:payme') && d.includes('acc:pay:click'));
+  assert.ok(d.includes('acc:payphone'));
+});
+
+test('buyurtma to\'lovi klaviaturasi', () => {
+  const d = datas(ui.orderPayKeyboard('ORD-1'));
+  assert.ok(d.includes('pay:go:ORD-1:payme') && d.includes('pay:go:ORD-1:click'));
+});
+
+test('avto-bron klaviaturasi va kuzatuvdagi tugma', () => {
+  assert.ok(datas(ui.autoBookKeyboard({ id: 7, autoBook: false })).includes('ab:on:7'));
+  assert.ok(datas(ui.autoBookKeyboard({ id: 7, autoBook: true })).includes('ab:off:7'));
+  // Kuzatuvni boshqarishda avto-bron tugmasi
+  assert.ok(datas(ui.manageKeyboard({ id: 7, status: 'ACTIVE', autoBook: false })).includes('ab:7'));
+});
+
 test('topilgan chipta: akkaunt ulangan bo\'lsa bron/to\'lov Web App tugmasi', () => {
   const kb = ui.foundKeyboard({ id: 9 }, 'https://eticket.railway.uz/uz/home', { accountUrl: 'https://x.onrender.com/app/account' });
   assert.ok(webApps(kb).some((u) => u.includes('/app/account')), 'bron/to\'lov tugmasi');

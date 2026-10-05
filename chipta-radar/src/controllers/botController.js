@@ -27,6 +27,7 @@ import { todayISO } from '../utils/dates.js';
 import { escapeHtml, formatMoney } from '../utils/text.js';
 import ui from '../services/botUi.js';
 import wizard from '../services/botWizard.js';
+import flow from '../services/botFlow.js';
 import accountService from '../services/accountService.js';
 import { accountWebAppUrl } from '../core/bot.js';
 
@@ -445,9 +446,10 @@ async function onManage(ctx, action, id) {
 async function accountScreen(ctx) {
   const user = await ensureUser(ctx);
   if (!user) return null;
-  const [status, passengers] = await Promise.all([
+  const [status, passengers, payMethod] = await Promise.all([
     accountService.getAccountStatus(user.id),
     accountService.listPassengers(user.id).catch(() => []),
+    accountService.getPaymentMethod(user.id).catch(() => ({})),
   ]);
   const url = accountWebAppUrl();
 
@@ -457,7 +459,17 @@ async function accountScreen(ctx) {
   } else if (!status.features.accountEnabled) {
     lines.push('⚠️ Akkaunt ulash xizmati vaqtincha o\'chirilgan.');
   } else if (status.connected) {
-    lines.push('✅ <b>Akkaunt ulangan</b>', `📱 ${escapeHtml(status.loginMasked || '')}`, `👤 Saqlangan yo'lovchilar: <b>${passengers.length}</b>`, '', '🔒 Parolingiz saqlanmaydi. To\'lovni har doim o\'zingiz tasdiqlaysiz.');
+    const payLine = payMethod?.provider
+      ? `💳 To'lov: ${payMethod.provider === 'payme' ? 'Payme' : 'Click'}${payMethod.phoneMasked ? ` · ${payMethod.phoneMasked}` : ''}`
+      : '💳 To\'lov usuli sozlanmagan';
+    lines.push(
+      '✅ <b>Akkaunt ulangan</b>',
+      `📱 ${escapeHtml(status.loginMasked || '')}`,
+      `👤 Saqlangan yo'lovchilar: <b>${passengers.length}</b>`,
+      payLine,
+      '',
+      '🔒 Parolingiz saqlanmaydi. To\'lovni har doim o\'zingiz tasdiqlaysiz.',
+    );
   } else {
     if (status.status === 'EXPIRED') lines.push('⚠️ Kirish muddati tugagan — qaytadan ulang.', '');
     lines.push(
@@ -465,9 +477,8 @@ async function accountScreen(ctx) {
       '',
       '🔒 Parol <b>saqlanmaydi</b>, faqat kirish tokeni <b>shifrlangan</b> holda saqlanadi.',
     );
-    if (!url) lines.push('', 'ℹ️ Ulash sahifasi faqat botning rasmiy (https) manzilida ochiladi.');
   }
-  return { text: lines.join('\n'), keyboard: ui.accountKeyboard(status, url) };
+  return { text: lines.join('\n'), keyboard: ui.accountKeyboard(status, url, { payMethod }) };
 }
 
 async function showAccount(ctx) {
@@ -493,6 +504,7 @@ async function showOrders(ctx) {
     return ctx.replyWithHTML(lines.join('\n'), keyboard);
   }
 
+  const payButtons = [];
   try {
     const orders = await accountService.listOrders(user.id);
     if (!orders.length) {
@@ -505,13 +517,17 @@ async function showOrders(ctx) {
           `${paid ? '✅' : '⏳'} <b>№ ${escapeHtml(order.orderId)}</b>${order.amount ? ` · ${formatMoney(order.amount)}` : ''}`,
           `   ${escapeHtml(order.trainNumber || '')}${route ? ` · ${escapeHtml(route)}` : ''}${order.date ? ` · ${escapeHtml(order.date)}` : ''}${paid ? '' : ' · <i>to\'lov kutilmoqda</i>'}`,
         );
+        if (order.payable) payButtons.push([Markup.button.callback(`💳 № ${order.orderId} to'lash`, `pay:o:${order.orderId}`)]);
       }
-      lines.push('', '💳 To\'lash yoki boshqarish uchun quyidagi tugmani bosing.');
+      if (payButtons.length) lines.push('', '💳 To\'lov so\'rovi uchun buyurtmani tanlang:');
     }
   } catch (error) {
     lines.push(`⚠️ Buyurtmalarni olib bo'lmadi: ${escapeHtml(error.message)}`);
   }
-  const keyboard = ui.ordersKeyboard(status, url);
+  const base = ui.ordersKeyboard(status, url);
+  const keyboard = payButtons.length
+    ? Markup.inlineKeyboard([...payButtons, ...base.reply_markup.inline_keyboard])
+    : base;
   if (ctx.callbackQuery) { try { await ctx.editMessageText(lines.join('\n'), HTML(keyboard)); return undefined; } catch { /* yangi */ } }
   return ctx.replyWithHTML(lines.join('\n'), keyboard);
 }
@@ -520,8 +536,305 @@ async function disconnectAccount(ctx) {
   const user = await ensureUser(ctx);
   if (!user) return ctx.answerCbQuery();
   await accountService.disconnectAccount(user.id, { wipePassengers: false });
+  flow.clearFlow(ctx.from.id);
   await ctx.answerCbQuery('Akkaunt uzildi');
   return showAccount(ctx);
+}
+
+/* -------- Inline akkaunt ulash (login/parol botda) ---------------- */
+
+async function startConnect(ctx) {
+  const user = await ensureUser(ctx);
+  if (!user) return ctx.answerCbQuery();
+  const status = await accountService.getAccountStatus(user.id);
+  if (!status.features.accountEnabled) return ctx.answerCbQuery('Xizmat vaqtincha o\'chirilgan', { show_alert: true });
+  flow.startFlow(ctx.from.id, 'acc', 'login', {});
+  await ctx.answerCbQuery();
+  const text = '🔗 <b>eticket.railway.uz akkauntini ulash</b>\n\n1) Telefon raqami yoki emailingizni yuboring.\n\n<i>Masalan:</i> <code>+998 90 123 45 67</code>  <i>yoki</i>  <code>misol@gmail.com</code>';
+  try { await ctx.editMessageText(text, HTML(ui.cancelFlowKeyboard())); } catch { await ctx.replyWithHTML(text, ui.cancelFlowKeyboard()); }
+}
+
+async function finishConnect(ctx) {
+  const user = await ensureUser(ctx);
+  if (!user) return ctx.answerCbQuery();
+  const active = flow.getFlow(ctx.from.id);
+  if (!active || active.type !== 'acc' || !active.data.login || !active.data.password) {
+    await ctx.answerCbQuery('Ma\'lumot to\'liq emas, qaytadan boshlang', { show_alert: true });
+    return showAccount(ctx);
+  }
+  await ctx.answerCbQuery('Ulanmoqda...');
+  try {
+    await accountService.connectAccount(user.id, { login: active.data.login, password: active.data.password, consent: true });
+    flow.clearFlow(ctx.from.id);
+    return showAccount(ctx);
+  } catch (error) {
+    flow.clearFlow(ctx.from.id);
+    const msg = error instanceof ValidationError ? error.message : 'Ulab bo\'lmadi. Qaytadan urinib ko\'ring.';
+    const keyboard = Markup.inlineKeyboard([[Markup.button.callback('🔁 Qaytadan', 'acc:connect')], ui.backToMenuRow()]);
+    try { await ctx.editMessageText(`⚠️ ${escapeHtml(msg)}`, HTML(keyboard)); } catch { await ctx.replyWithHTML(`⚠️ ${escapeHtml(msg)}`, keyboard); }
+    return undefined;
+  }
+}
+
+/* -------- Inline to'lov usuli (default provider + telefon) --------- */
+
+async function showPayMethod(ctx) {
+  const user = await ensureUser(ctx);
+  if (!user) return ctx.answerCbQuery();
+  const status = await accountService.getAccountStatus(user.id);
+  if (!status.connected) { await ctx.answerCbQuery('Avval akkauntni ulang', { show_alert: true }); return showAccount(ctx); }
+  const method = await accountService.getPaymentMethod(user.id);
+  const text =
+    '💳 <b>To\'lov usuli</b>\n\n' +
+    'Avto-bron va tezkor to\'lov uchun to\'lov tizimi va telefon raqamini sozlang. ' +
+    'So\'rov shu ilovaga yuboriladi, to\'lovni o\'zingiz tasdiqlaysiz.\n\n' +
+    `Hozir: <b>${method.provider ? (method.provider === 'payme' ? 'Payme' : 'Click') : '—'}</b>${method.phoneMasked ? ` · ${escapeHtml(method.phoneMasked)}` : ''}`;
+  await ctx.answerCbQuery();
+  try { await ctx.editMessageText(text, HTML(ui.payMethodKeyboard(method))); } catch { await ctx.replyWithHTML(text, ui.payMethodKeyboard(method)); }
+}
+
+async function setPayProvider(ctx, provider) {
+  const user = await ensureUser(ctx);
+  if (!user) return ctx.answerCbQuery();
+  try {
+    await accountService.setPaymentMethod(user.id, { provider });
+    await ctx.answerCbQuery(`${provider === 'payme' ? 'Payme' : 'Click'} tanlandi`);
+  } catch (error) {
+    return ctx.answerCbQuery(error.message, { show_alert: true });
+  }
+  return showPayMethod(ctx);
+}
+
+async function startPayPhone(ctx) {
+  const user = await ensureUser(ctx);
+  if (!user) return ctx.answerCbQuery();
+  flow.startFlow(ctx.from.id, 'payphone', 'phone', {});
+  await ctx.answerCbQuery();
+  const text = '📱 Payme/Click\'ga bog\'langan telefon raqamini yuboring.\n\n<i>Masalan:</i> <code>90 123 45 67</code>';
+  try { await ctx.editMessageText(text, HTML(ui.cancelFlowKeyboard())); } catch { await ctx.replyWithHTML(text, ui.cancelFlowKeyboard()); }
+}
+
+/* -------- Inline yo'lovchilar ------------------------------------- */
+
+async function showPassengers(ctx) {
+  const user = await ensureUser(ctx);
+  if (!user) return ctx.answerCbQuery();
+  const passengers = await accountService.listPassengers(user.id).catch(() => []);
+  const lines = ['👤 <b>Saqlangan yo\'lovchilar</b>', ''];
+  if (!passengers.length) lines.push('Hali yo\'lovchi qo\'shilmagan.');
+  else for (const p of passengers) lines.push(`• ${p.label ? `<b>${escapeHtml(p.label)}</b> · ` : ''}${escapeHtml(p.name)} · ${escapeHtml(p.doc)}${p.categoryLabel ? ` · ${p.categoryLabel}` : ''}`);
+  lines.push('', '🔒 Ma\'lumotlar shifrlangan, faqat niqoblangan ko\'rinishda.');
+  const keyboard = ui.passengersKeyboard(passengers);
+  if (ctx.callbackQuery) { await ctx.answerCbQuery(); try { await ctx.editMessageText(lines.join('\n'), HTML(keyboard)); return undefined; } catch { /* yangi */ } }
+  return ctx.replyWithHTML(lines.join('\n'), keyboard);
+}
+
+const PASS_PROMPTS = {
+  first: '👤 <b>Yangi yo\'lovchi</b>\n\n1/5 — Ismni yuboring (hujjatdagidek):',
+  last: '2/5 — Familiyani yuboring:',
+  doc: '3/5 — Pasport yoki ID seriya va raqamini yuboring:\n<i>Masalan:</i> <code>AA1234567</code>',
+  birth: '4/5 — Tug\'ilgan sanani yuboring:\n<i>Format:</i> <code>YYYY-MM-DD</code> (masalan <code>1990-05-01</code>)',
+};
+
+async function startPassengerAdd(ctx) {
+  const user = await ensureUser(ctx);
+  if (!user) return ctx.answerCbQuery();
+  if (!user) return undefined;
+  const status = await accountService.getAccountStatus(user.id);
+  if (!status.features.passengersEnabled) return ctx.answerCbQuery('Shifrlash kaliti sozlanmagan', { show_alert: true });
+  flow.startFlow(ctx.from.id, 'pass', 'first', {});
+  await ctx.answerCbQuery();
+  try { await ctx.editMessageText(PASS_PROMPTS.first, HTML(ui.cancelFlowKeyboard())); } catch { await ctx.replyWithHTML(PASS_PROMPTS.first, ui.cancelFlowKeyboard()); }
+}
+
+function passengerSummary(data) {
+  return [
+    '👤 <b>Yangi yo\'lovchi</b>',
+    '',
+    `Ism: <b>${escapeHtml(data.firstName)}</b>`,
+    `Familiya: <b>${escapeHtml(data.lastName)}</b>`,
+    `Hujjat: <b>${escapeHtml(data.docNumber)}</b>`,
+    `Tug'ilgan sana: <b>${escapeHtml(data.birthDate)}</b>`,
+    `Jinsi: <b>${data.gender === 'F' ? 'Ayol' : 'Erkak'}</b>`,
+    '',
+    '🔒 Shifrlab saqlanadi. Tasdiqlang:',
+  ].join('\n');
+}
+
+async function setPassengerGender(ctx, gender) {
+  const active = flow.getFlow(ctx.from.id);
+  if (!active || active.type !== 'pass') return ctx.answerCbQuery();
+  flow.patchFlow(ctx.from.id, { step: 'confirm', data: { gender } });
+  await ctx.answerCbQuery();
+  const updated = flow.getFlow(ctx.from.id);
+  try { await ctx.editMessageText(passengerSummary(updated.data), HTML(ui.passengerConsentKeyboard())); } catch { await ctx.replyWithHTML(passengerSummary(updated.data), ui.passengerConsentKeyboard()); }
+}
+
+async function savePassenger(ctx) {
+  const user = await ensureUser(ctx);
+  if (!user) return ctx.answerCbQuery();
+  const active = flow.getFlow(ctx.from.id);
+  if (!active || active.type !== 'pass') { await ctx.answerCbQuery('Muddati tugadi', { show_alert: true }); return showPassengers(ctx); }
+  await ctx.answerCbQuery('Saqlanmoqda...');
+  try {
+    await accountService.addPassenger(user.id, { ...active.data, consent: true });
+    flow.clearFlow(ctx.from.id);
+    return showPassengers(ctx);
+  } catch (error) {
+    const msg = error instanceof ValidationError ? error.message : 'Saqlab bo\'lmadi';
+    return ctx.answerCbQuery(msg, { show_alert: true });
+  }
+}
+
+async function deletePassengerBot(ctx, id) {
+  const user = await ensureUser(ctx);
+  if (!user) return ctx.answerCbQuery();
+  try { await accountService.removePassenger(user.id, id); await ctx.answerCbQuery('O\'chirildi'); }
+  catch (error) { await ctx.answerCbQuery(error.message, { show_alert: true }); }
+  return showPassengers(ctx);
+}
+
+/* -------- Inline buyurtma to'lovi --------------------------------- */
+
+async function startOrderPay(ctx, orderId) {
+  const user = await ensureUser(ctx);
+  if (!user) return ctx.answerCbQuery();
+  const method = await accountService.getPaymentMethod(user.id);
+  await ctx.answerCbQuery();
+  const hint = method.phoneMasked ? `\n\nTelefon: <b>${escapeHtml(method.phoneMasked)}</b> (sozlamalardan o'zgartirish mumkin)` : '\n\n⚠️ Telefon sozlanmagan — Akkaunt → To\'lov usulidan kiriting.';
+  const text = `💳 <b>№ ${escapeHtml(orderId)}</b> uchun to'lov usulini tanlang:${hint}`;
+  try { await ctx.editMessageText(text, HTML(ui.orderPayKeyboard(orderId))); } catch { await ctx.replyWithHTML(text, ui.orderPayKeyboard(orderId)); }
+}
+
+async function doOrderPay(ctx, orderId, provider) {
+  const user = await ensureUser(ctx);
+  if (!user) return ctx.answerCbQuery();
+  const method = await accountService.getPaymentMethod(user.id);
+  if (!method.phone) { await ctx.answerCbQuery('Avval telefonni sozlang', { show_alert: true }); return showPayMethod(ctx); }
+  await ctx.answerCbQuery('So\'rov yuborilmoqda...');
+  try {
+    await accountService.requestPayment(user.id, { orderId, provider, phone: method.phone, consent: true });
+    const text = `✅ <b>${provider === 'payme' ? 'Payme' : 'Click'}</b> ilovangizga to'lov so'rovi yuborildi (${escapeHtml(method.phoneMasked || '')}).\n\nIlovada tasdiqlang. Bron ~10 daqiqada to'lanmasa bekor bo'ladi.`;
+    const keyboard = Markup.inlineKeyboard([[Markup.button.callback('🧾 Bronlarim', 'm:orders'), ...ui.backToMenuRow()]]);
+    try { await ctx.editMessageText(text, HTML(keyboard)); } catch { await ctx.replyWithHTML(text, keyboard); }
+  } catch (error) {
+    const msg = error instanceof ValidationError ? error.message : 'To\'lov so\'rovini yuborib bo\'lmadi';
+    await ctx.answerCbQuery(msg, { show_alert: true }).catch(() => {});
+  }
+  return undefined;
+}
+
+/* -------- Inline avto-bron sozlamasi ------------------------------ */
+
+async function showAutoBook(ctx, watchId) {
+  const user = await ensureUser(ctx);
+  if (!user) return ctx.answerCbQuery();
+  const watch = await WatchModel.findOwned(watchId, user.id);
+  if (!watch) return ctx.answerCbQuery('Kuzatuv topilmadi', { show_alert: true });
+  const [status, method, passengers] = await Promise.all([
+    accountService.getAccountStatus(user.id),
+    accountService.getPaymentMethod(user.id),
+    accountService.listPassengers(user.id).catch(() => []),
+  ]);
+
+  const lines = ['🤖 <b>Avtomatik bron</b>', '', `📍 ${escapeHtml(watch.fromName)} → ${escapeHtml(watch.toName)} · ${dateLine(watch.date)}`, ''];
+  lines.push('Joy chiqishi bilan bot o\'zi bron qilib, to\'lov so\'rovini yuboradi.', '');
+  const needs = [];
+  if (!status.connected) needs.push('• eticket akkauntini ulang');
+  if (!method.provider || !method.phone) needs.push('• to\'lov usuli (Payme/Click) va telefonni sozlang');
+  if (passengers.length < watch.quantity) needs.push(`• kamida ${watch.quantity} ta yo'lovchi saqlang (hozir ${passengers.length})`);
+
+  if (watch.autoBook) {
+    lines.push('✅ <b>Avto-bron yoqilgan.</b>', `To'lov: <b>${method.provider === 'payme' ? 'Payme' : method.provider === 'click' ? 'Click' : '—'}</b>${method.phoneMasked ? ` · ${escapeHtml(method.phoneMasked)}` : ''}`);
+  } else if (needs.length) {
+    lines.push('Yoqishdan oldin:', ...needs);
+  } else {
+    lines.push('Hammasi tayyor — yoqishingiz mumkin.');
+  }
+  await ctx.answerCbQuery();
+  try { await ctx.editMessageText(lines.join('\n'), HTML(ui.autoBookKeyboard(watch))); } catch { await ctx.replyWithHTML(lines.join('\n'), ui.autoBookKeyboard(watch)); }
+}
+
+async function toggleAutoBook(ctx, watchId, on) {
+  const user = await ensureUser(ctx);
+  if (!user) return ctx.answerCbQuery();
+  try {
+    await accountService.setAutoBook(user.id, watchId, { enabled: on });
+    await ctx.answerCbQuery(on ? '🤖 Avto-bron yoqildi' : 'Avto-bron o\'chirildi');
+  } catch (error) {
+    return ctx.answerCbQuery(error.message, { show_alert: true });
+  }
+  return showAutoBook(ctx, watchId);
+}
+
+async function cancelFlow(ctx) {
+  flow.clearFlow(ctx.from.id);
+  await ctx.answerCbQuery('Bekor qilindi');
+  return showAccount(ctx);
+}
+
+/* -------- Faol oqimda matn kiritilganda --------------------------- */
+
+async function handleFlowText(ctx, active, text) {
+  const id = ctx.from.id;
+
+  if (active.type === 'acc') {
+    if (active.step === 'login') {
+      flow.patchFlow(id, { step: 'password', data: { login: text } });
+      await ctx.deleteMessage().catch(() => {});
+      return ctx.replyWithHTML('2) Endi <b>parolingizni</b> yuboring.\n\n🔒 Parol saqlanmaydi va xabaringiz darhol o\'chiriladi.', ui.cancelFlowKeyboard());
+    }
+    if (active.step === 'password') {
+      flow.patchFlow(id, { step: 'consent', data: { password: text } });
+      await ctx.deleteMessage().catch(() => {});
+      const d = flow.getFlow(id)?.data || {};
+      const masked = d.login ? escapeHtml(d.login) : '';
+      return ctx.replyWithHTML(
+        `Ulashga tayyor:\n📱 <b>${masked}</b>\n\n`
+        + '«Botga o\'z nomimdan eticket.railway.uz da joy bron qilishga ruxsat beraman. Parolim saqlanmasligini va faqat kirish tokeni shifrlangan holda saqlanishini tushundim.»',
+        ui.connectConsentKeyboard(),
+      );
+    }
+    return undefined;
+  }
+
+  if (active.type === 'payphone') {
+    try {
+      const user = await ensureUser(ctx);
+      if (!user) return undefined;
+      const method = await accountService.setPaymentMethod(user.id, { phone: text });
+      flow.clearFlow(id);
+      return ctx.replyWithHTML(`✅ Telefon saqlandi: <b>${escapeHtml(method.phoneMasked || '')}</b>`, Markup.inlineKeyboard([[Markup.button.callback('💳 To\'lov usuli', 'acc:pay'), Markup.button.callback('🔐 Akkaunt', 'm:account')]]));
+    } catch (error) {
+      const msg = error instanceof ValidationError ? error.message : 'Saqlab bo\'lmadi';
+      return ctx.replyWithHTML(`⚠️ ${escapeHtml(msg)}`, ui.cancelFlowKeyboard());
+    }
+  }
+
+  if (active.type === 'pass') {
+    const order = ['first', 'last', 'doc', 'birth'];
+    const field = { first: 'firstName', last: 'lastName', doc: 'docNumber', birth: 'birthDate' };
+    const step = active.step;
+    if (order.includes(step)) {
+      // Oddiy validatsiya: sana bosqichida ISO tekshiramiz
+      if (step === 'birth' && !/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+        return ctx.replyWithHTML('Sana formati noto\'g\'ri. <code>YYYY-MM-DD</code> ko\'rinishida yuboring (masalan 1990-05-01).', ui.cancelFlowKeyboard());
+      }
+      flow.patchFlow(id, { data: { [field[step]]: text } });
+      const nextIndex = order.indexOf(step) + 1;
+      if (nextIndex < order.length) {
+        const nextStep = order[nextIndex];
+        flow.patchFlow(id, { step: nextStep });
+        return ctx.replyWithHTML(PASS_PROMPTS[nextStep], ui.cancelFlowKeyboard());
+      }
+      // birth to'ldirildi → jins tanlash
+      flow.patchFlow(id, { step: 'gender' });
+      return ctx.replyWithHTML('5/5 — Jinsini tanlang:', ui.genderKeyboard());
+    }
+    return undefined;
+  }
+
+  return undefined;
 }
 
 /* ------------------------------------------------------------------ */
@@ -589,14 +902,45 @@ export async function onCallback(ctx) {
 
     if (prefix === 'acc') {
       const action = rest[0];
+      if (action === 'connect' && rest[1] === 'go') return finishConnect(ctx);
+      if (action === 'connect') return startConnect(ctx);
+      if (action === 'pay' && (rest[1] === 'payme' || rest[1] === 'click')) return setPayProvider(ctx, rest[1]);
+      if (action === 'pay') return showPayMethod(ctx);
+      if (action === 'payphone') return startPayPhone(ctx);
       if (action === 'disc' && rest[1] !== 'yes') {
         await ctx.answerCbQuery();
-        try { await ctx.editMessageText('🔌 <b>Akkauntni uzasizmi?</b>\n\nKirish tokeni o\'chiriladi. Saqlangan yo\'lovchilar qoladi (ularni Web App\'dan o\'chirishingiz mumkin).', HTML(ui.disconnectConfirmKeyboard())); } catch { /* yangi */ }
+        try { await ctx.editMessageText('🔌 <b>Akkauntni uzasizmi?</b>\n\nKirish tokeni o\'chiriladi. Saqlangan yo\'lovchilar qoladi.', HTML(ui.disconnectConfirmKeyboard())); } catch { /* yangi */ }
         return undefined;
       }
       if (action === 'disc' && rest[1] === 'yes') return disconnectAccount(ctx);
       return ctx.answerCbQuery();
     }
+
+    if (prefix === 'pass') {
+      const action = rest[0];
+      if (action === 'list') return showPassengers(ctx);
+      if (action === 'add') return startPassengerAdd(ctx);
+      if (action === 'g') return setPassengerGender(ctx, rest[1]);
+      if (action === 'save') return savePassenger(ctx);
+      if (action === 'del') return deletePassengerBot(ctx, rest[1]);
+      return ctx.answerCbQuery();
+    }
+
+    if (prefix === 'pay') {
+      const action = rest[0];
+      if (action === 'o') return startOrderPay(ctx, rest[1]);
+      if (action === 'go') return doOrderPay(ctx, rest[1], rest[2]);
+      return ctx.answerCbQuery();
+    }
+
+    if (prefix === 'ab') {
+      const action = rest[0];
+      if (action === 'on') return toggleAutoBook(ctx, rest[1], true);
+      if (action === 'off') return toggleAutoBook(ctx, rest[1], false);
+      return showAutoBook(ctx, action); // ab:<watchId>
+    }
+
+    if (prefix === 'flow' && rest[0] === 'cancel') return cancelFlow(ctx);
 
     if (prefix === 'g') {
       const [action, id] = rest;
@@ -636,6 +980,10 @@ export async function onText(ctx) {
 
   const user = await ensureUser(ctx);
   if (!user) return;
+
+  // Faol inline oqim (akkaunt ulash, yo'lovchi qo'shish, to'lov telefoni) matn kutmoqda
+  const active = flow.getFlow(ctx.from.id);
+  if (active) return handleFlowText(ctx, active, text);
 
   // Sehrgarda stansiya bosqichida bo'lsa — nomdan topamiz
   const session = wizard.getSession(ctx.from.id);

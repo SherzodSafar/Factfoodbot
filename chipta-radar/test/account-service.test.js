@@ -155,10 +155,11 @@ test('uzish: token va yo\'lovchilar o\'chadi (so\'ralganda)', async () => {
   assert.equal(status.connected, false);
 });
 
-test('bron o\'chirilgan bo\'lsa — xato (admin yoqmaguncha)', async () => {
+test('bron: mavjud bo\'lmagan yo\'lovchi bilan — xato', async () => {
   await accountService.connectAccount(1, { login: '998901234567', password: 'secret', consent: true });
+  // bookingEnabled standart yoqilgan — endi yo'lovchi tekshiruvidan o'tmaydi
   await assert.rejects(
-    accountService.bookSeats(1, { order: { seats: [1], trainNumber: '1', from: 'a', to: 'b', date: '2030-01-01' }, passengerIds: [1] }),
-    /bron vaqtincha/,
+    accountService.bookSeats(1, { order: { seats: [1], trainNumber: '1', from: 'a', to: 'b', date: '2030-01-01' }, passengerIds: [999] }),
+    /topilmadi/,
   );
 });

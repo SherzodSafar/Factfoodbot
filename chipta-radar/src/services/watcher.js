@@ -29,7 +29,11 @@ import { sendMessage } from '../core/bot.js';
 import { evaluateWatch } from './matcher.js';
 import { foundMessage } from './format.js';
 import { getSettings } from './settings.js';
+import accountService from './accountService.js';
+import { formatMoney, escapeHtml } from '../utils/text.js';
+import { dateLine } from './format.js';
 import { todayISO } from '../utils/dates.js';
+import { Markup } from 'telegraf';
 
 // Hammasi sotilib, keyin yana paydo bo'lganda ham kamida shuncha kutiladi
 // (sayt joyni to'lov uchun vaqtincha band qilib, keyin qaytarishi mumkin)
@@ -210,7 +214,7 @@ export async function applyResult(watch, result, { notify = true, markNotified =
     watch.lastResult = lastResult;
     if (found) watch.lastFoundAt = now;
     unsaved.set(watch.id, (unsaved.get(watch.id) || 0) + 1);
-    return { watch, notified: false };
+    return { watch, notified: false, appeared: appeared.length };
   }
 
   const data = {
@@ -247,7 +251,98 @@ export async function applyResult(watch, result, { notify = true, markNotified =
   const updated = await WatchModel.saveCheck(watch.id, data);
   unsaved.delete(watch.id);
   patchCached(updated);
-  return { watch: updated, notified };
+  return { watch: updated, notified, appeared: appeared.length };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Avto-bron (joy chiqsa — bot o'zi bron qilib, to'lov so'rovini yuboradi) */
+/* ------------------------------------------------------------------ */
+
+function autoBookOkMessage(watch, o) {
+  return [
+    '🤖✅ <b>Avto-bron amalga oshdi!</b>',
+    '',
+    `📍 <b>${escapeHtml(watch.fromName)} → ${escapeHtml(watch.toName)}</b>`,
+    `📅 ${dateLine(watch.date)}`,
+    `🚆 ${escapeHtml(String(o.carNumber))}-vagon · joy: <b>${o.seats.join(', ')}</b>`,
+    o.amount ? `💰 ${formatMoney(o.amount)}` : '',
+    `🧾 Buyurtma: <b>${escapeHtml(o.orderId)}</b>`,
+    '',
+    o.paymentRequested
+      ? `💳 <b>${o.provider === 'payme' ? 'Payme' : 'Click'}</b> ilovangizga to'lov so'rovi yuborildi${o.phoneMasked ? ` (${escapeHtml(o.phoneMasked)})` : ''}. Ilovada tasdiqlang.`
+      : `💳 To'lov so'rovini yuborib bo'lmadi — buyurtmani <a href="${config.railway.buyUrl}">saytda</a> to'lang.`,
+    '⏳ Bron ~10 daqiqada to\'lanmasa bekor bo\'ladi — tezroq tasdiqlang.',
+  ].filter(Boolean).join('\n');
+}
+
+function autoBookKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.url('🎫 eticket.railway.uz', config.railway.buyUrl)],
+    [Markup.button.callback('🧾 Bronlarim', 'm:orders')],
+  ]);
+}
+
+const AUTOBOOK_FAIL = {
+  method: 'To\'lov usuli sozlanmagan.',
+  passengers: 'Yetarli saqlangan yo\'lovchi yo\'q.',
+  'no-train': 'Poyezd aniqlanmadi.',
+  error: 'Saytda bron qilib bo\'lmadi.',
+};
+
+function autoBookFailMessage(watch, o) {
+  return [
+    '🤖⚠️ <b>Avto-bron amalga oshmadi</b>',
+    '',
+    `📍 ${escapeHtml(watch.fromName)} → ${escapeHtml(watch.toName)} · ${dateLine(watch.date)}`,
+    (AUTOBOOK_FAIL[o.reason] || 'Bron qilib bo\'lmadi.') + (o.message ? ` (${escapeHtml(o.message)})` : ''),
+    '',
+    `Joy bor — <a href="${config.railway.buyUrl}">saytda</a> qo'lda bron qiling. Avto-bron o'chirildi.`,
+  ].join('\n');
+}
+
+/** Kuzatuvda avto-bron yoqilgan va yangi joy chiqqanda ishga tushadi */
+async function tryAutoBook(watch, result) {
+  const train = result.items[0]?.train;
+  if (!train) return;
+
+  let outcome;
+  try {
+    outcome = await accountService.autoBookOnFound(watch.userId, watch, train);
+  } catch (error) {
+    outcome = { ok: false, reason: 'error', message: error.message };
+  }
+  const now = new Date();
+
+  if (outcome.ok) {
+    try {
+      const updated = await WatchModel.update(watch.id, {
+        status: 'FOUND', autoBookStatus: 'PAID_REQUESTED', autoBookOrderId: outcome.orderId || null, autoBookAt: now,
+      });
+      patchCached(updated);
+    } catch { /* o'chirilgan bo'lishi mumkin */ }
+    console.log(`[watcher] Avto-bron #${watch.id}: ${outcome.orderId} (${outcome.seats?.join(',')})`);
+    if (watch.user) {
+      await sendMessage(watch.user.telegramId, autoBookOkMessage(watch, outcome), autoBookKeyboard(), {
+        quietNight: watch.user.quietNight,
+      }).catch(() => {});
+    }
+    return;
+  }
+
+  // Vaqtinchalik sabab — keyingi siklda qayta urinamiz (o'chirmaymiz)
+  if (outcome.reason === 'no-seats' || outcome.reason === 'disabled') return;
+
+  // Terminal sabab — avto-bronni o'chiramiz, foydalanuvchini ogohlantiramiz
+  try {
+    const updated = await WatchModel.update(watch.id, { autoBook: false, autoBookStatus: 'FAILED', autoBookAt: now });
+    patchCached(updated);
+  } catch { /* o'chirilgan */ }
+  console.warn(`[watcher] Avto-bron #${watch.id} bo'lmadi: ${outcome.reason}${outcome.message ? ` — ${outcome.message}` : ''}`);
+  if (watch.user) {
+    await sendMessage(watch.user.telegramId, autoBookFailMessage(watch, outcome), {}, {
+      quietNight: watch.user.quietNight,
+    }).catch(() => {});
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -360,6 +455,11 @@ export async function runCycle() {
         summary.checked += 1;
         if (result.items.length) summary.found += 1;
         if (applied.notified) summary.notified += 1;
+
+        // Avto-bron: yangi mos joy chiqdi va kuzatuvda avto-bron yoqilgan bo'lsa
+        if (watch.autoBook && applied.appeared > 0 && result.items.length && watch.autoBookStatus !== 'PAID_REQUESTED') {
+          await tryAutoBook(watch, result);
+        }
       } catch (error) {
         summary.errors += 1;
         console.error(`[watcher] Kuzatuv #${watch.id}:`, error.message);

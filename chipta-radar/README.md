@@ -31,16 +31,20 @@ paydo bo'lishi bilan darhol xabar beradi.
 - "Hojatxona yonidagi joylar kerak emas" (1- va 9-bo'limlar)
 - Xabarda aniq joylar: *„07-vagon: 9, 11 (3-bo'lim)"*
 
-### 4️⃣ Akkaunt va tez bron (ixtiyoriy)
+### 4️⃣ Akkaunt, yo'lovchilar va avto-bron
 - 🔐 **Akkaunt** — eticket.railway.uz hisobini ulash. **Parol saqlanmaydi** —
   faqat kirish tokeni **AES-256-GCM** bilan shifrlangan holda saqlanadi.
 - 👤 **Yo'lovchilar** — oila a'zolari/do'stlarni bir marta kiritib qo'yish
   (shifrlangan). Katta/bola **tug'ilgan sanadan** avtomatik aniqlanadi (16 yoshgacha — bola).
+- 💳 **To'lov usuli** — Payme yoki Click + telefon. Avto-bron va tezkor to'lov shuni ishlatadi.
 - 🧾 **Bronlarim** — buyurtmalarni ko'rish va **bot ichida to'lov so'rovi** (Payme/Click):
   ilovaga so'rov boradi, foydalanuvchi o'sha yerda tasdiqlaydi. **Karta ma'lumoti
   botga kelmaydi, bot o'zi pul yechmaydi.**
-- Bu bo'lim Telegram **Web App** sahifasi sifatida ochiladi (backendning o'zi beradi:
-  `.../app/account`). Admin Paneldan yoqib/o'chirib qo'ysa bo'ladi.
+- 🤖 **Avto-bron** — kuzatuvda yoqilsa, joy chiqishi bilan bot **o'zi bron qiladi** va
+  tanlangan to'lov tizimiga (Payme/Click) so'rov yuboradi; foydalanuvchi ilovada tasdiqlaydi.
+  Reserve amalga oshmasa pul harakati bo'lmaydi (to'lov so'rovi faqat muvaffaqiyatli bronda).
+- Hammasi **ikki ko'rinishda**: bot ichida **inline** (tugmalar + matn) va to'liq
+  Telegram **Web App** sahifasi (backend beradi: `.../app/account`). Admin Paneldan boshqariladi.
 
 ### Qo'shimcha
 - Botga oddiy matn: `Toshkent Samarqand ertaga`, `Ташкент Бухара 25.10` — tezkor javob

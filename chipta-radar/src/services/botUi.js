@@ -177,6 +177,7 @@ export function manageKeyboard(watch) {
   if (watch.status === 'PAUSED' || watch.status === 'FOUND') top.push(Markup.button.callback('▶️ Davom', `g:resume:${watch.id}`));
   top.push(Markup.button.callback('🔄 Tekshirish', `g:check:${watch.id}`));
   rows.push(top);
+  rows.push([Markup.button.callback(`🤖 Avto-bron: ${watch.autoBook ? 'YOQILGAN' : 'o\'chiq'}`, `ab:${watch.id}`)]);
   rows.push([Markup.button.callback('✅ Chipta oldim', `g:got:${watch.id}`), Markup.button.callback('🗑 O\'chirish', `g:del:${watch.id}`)]);
   rows.push([Markup.button.callback('📋 Ro\'yxat', 'm:watches'), ...backToMenuRow()]);
   return Markup.inlineKeyboard(rows);
@@ -194,18 +195,37 @@ export function foundKeyboard(watch, buyUrl, { accountUrl = '' } = {}) {
 /* -------------------- Akkaunt va ma'lumotlar ----------------------- */
 
 /**
- * Akkaunt ekranidagi tugmalar.
+ * Akkaunt ekranidagi tugmalar — hammasi inline, Web App ixtiyoriy.
  * @param status accountService.getAccountStatus natijasi
  * @param accountUrl Web App manzili ('' bo'lsa web_app tugmasi ko'rsatilmaydi)
+ * @param payMethod {provider, phoneMasked} — to'lov usuli sozlanganmi
  */
-export function accountKeyboard(status, accountUrl) {
+export function accountKeyboard(status, accountUrl, { payMethod } = {}) {
   const rows = [];
-  if (accountUrl) rows.push([Markup.button.webApp('🔐 Akkaunt va ma\'lumotlar', accountUrl)]);
   if (status?.connected) {
-    rows.push([Markup.button.callback('🧾 Bronlarim', 'm:orders'), Markup.button.callback('🔌 Uzish', 'acc:disc')]);
+    rows.push([Markup.button.callback('👤 Yo\'lovchilar', 'pass:list'), Markup.button.callback('🧾 Bronlarim', 'm:orders')]);
+    rows.push([Markup.button.callback(`💳 To'lov usuli${payMethod?.provider ? ' ✅' : ''}`, 'acc:pay')]);
+    if (accountUrl) rows.push([Markup.button.webApp('🖥 To\'liq sahifa (Web App)', accountUrl)]);
+    rows.push([Markup.button.callback('🔌 Akkauntni uzish', 'acc:disc')]);
+  } else {
+    rows.push([Markup.button.callback('🔗 Botda ulash', 'acc:connect')]);
+    if (accountUrl) rows.push([Markup.button.webApp('🖥 Web App orqali ulash', accountUrl)]);
   }
   rows.push(backToMenuRow());
   return Markup.inlineKeyboard(rows);
+}
+
+/** Oqimni bekor qilish tugmasi (login/parol/yo'lovchi kiritishda) */
+export function cancelFlowKeyboard() {
+  return Markup.inlineKeyboard([[Markup.button.callback('❌ Bekor qilish', 'flow:cancel')]]);
+}
+
+/** Akkaunt ulashga rozilik (login va parol kiritilgach) */
+export function connectConsentKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('✅ Roziman — ulash', 'acc:connect:go')],
+    [Markup.button.callback('❌ Bekor', 'flow:cancel')],
+  ]);
 }
 
 /** Akkauntni uzishni tasdiqlash */
@@ -214,6 +234,68 @@ export function disconnectConfirmKeyboard() {
     [Markup.button.callback('🔌 Ha, uzilsin', 'acc:disc:yes')],
     [Markup.button.callback('⬅️ Orqaga', 'm:account')],
   ]);
+}
+
+/* -------------------- Yo'lovchilar (inline) ------------------------ */
+
+export function passengersKeyboard(passengers = []) {
+  const rows = passengers.slice(0, 10).map((p) => [
+    Markup.button.callback(`${p.label ? `${p.label} · ` : ''}${p.name}${p.categoryLabel ? ` (${p.categoryLabel})` : ''}`, 'noop'),
+    Markup.button.callback('🗑', `pass:del:${p.id}`),
+  ]);
+  rows.push([Markup.button.callback('➕ Yo\'lovchi qo\'shish', 'pass:add')]);
+  rows.push([Markup.button.callback('🔐 Akkaunt', 'm:account'), ...backToMenuRow()]);
+  return Markup.inlineKeyboard(rows);
+}
+
+/** Yangi yo'lovchi: jinsini tanlash */
+export function genderKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('👨 Erkak', 'pass:g:M'), Markup.button.callback('👩 Ayol', 'pass:g:F')],
+    [Markup.button.callback('❌ Bekor', 'flow:cancel')],
+  ]);
+}
+
+/** Yangi yo'lovchi: shifrlab saqlashga rozilik */
+export function passengerConsentKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('🔒 Shifrlab saqlash', 'pass:save')],
+    [Markup.button.callback('❌ Bekor', 'flow:cancel')],
+  ]);
+}
+
+/* -------------------- To'lov usuli va to'lov ----------------------- */
+
+/** Default to'lov usulini tanlash (Payme/Click) va telefon */
+export function payMethodKeyboard(method = {}) {
+  const mark = (p) => (method.provider === p ? ' ✅' : '');
+  return Markup.inlineKeyboard([
+    [Markup.button.callback(`Payme${mark('payme')}`, 'acc:pay:payme'), Markup.button.callback(`Click${mark('click')}`, 'acc:pay:click')],
+    [Markup.button.callback(method.phoneMasked ? `📱 Telefon: ${method.phoneMasked}` : '📱 Telefonni kiritish', 'acc:payphone')],
+    [Markup.button.callback('🔐 Akkaunt', 'm:account'), ...backToMenuRow()],
+  ]);
+}
+
+/** Buyurtma uchun to'lov: Payme/Click tanlash */
+export function orderPayKeyboard(orderId) {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('Payme', `pay:go:${orderId}:payme`), Markup.button.callback('Click', `pay:go:${orderId}:click`)],
+    [Markup.button.callback('⬅️ Bronlarim', 'm:orders')],
+  ]);
+}
+
+/* -------------------------- Avto-bron ------------------------------ */
+
+/** Kuzatuvda avto-bron holati va toggle */
+export function autoBookKeyboard(watch, { ready } = {}) {
+  const rows = [];
+  if (watch.autoBook) {
+    rows.push([Markup.button.callback('🤖 Avto-bron: YOQILGAN — o\'chirish', `ab:off:${watch.id}`)]);
+  } else {
+    rows.push([Markup.button.callback('🤖 Avto-bronni yoqish', `ab:on:${watch.id}`)]);
+  }
+  rows.push([Markup.button.callback('⬅️ Kuzatuv', `g:open:${watch.id}`), ...backToMenuRow()]);
+  return Markup.inlineKeyboard(rows);
 }
 
 /** Bronlarim / buyurtmalar ekrani */
@@ -236,4 +318,6 @@ export default {
   carKeyboard, sectionKeyboard, berthKeyboard, togetherKeyboard, qtyKeyboard,
   confirmKeyboard, manageKeyboard, foundKeyboard, CAR_CHOICES,
   accountKeyboard, disconnectConfirmKeyboard, ordersKeyboard,
+  cancelFlowKeyboard, connectConsentKeyboard, passengersKeyboard, genderKeyboard,
+  passengerConsentKeyboard, payMethodKeyboard, orderPayKeyboard, autoBookKeyboard,
 };

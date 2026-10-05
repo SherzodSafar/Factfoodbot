@@ -110,6 +110,20 @@ export function startMockRailway({ port = 0 } = {}) {
         return send(200, { data: { invoiceId: `INV-${payload.orderId}`, status: 'created' } });
       }
 
+      // Bron oqimi (hold → yo'lovchi → reserve)
+      if (req.url === '/api/v3/universal-orders/hold') {
+        if (!req.headers.authorization) return send(401, { message: 'Unauthorized' });
+        state.lastHold = payload;
+        return send(200, { data: { orderId: state.orderId || 'ORD-AUTO' } });
+      }
+      if (req.url === '/api/v3/universal-orders/add-passenger-info') {
+        state.passengerInfos = (state.passengerInfos || []).concat([payload]);
+        return send(200, { data: { ok: true } });
+      }
+      if (req.url === '/api/v3/universal-orders/reserve') {
+        return send(200, { data: { orderId: payload.orderId, amount: state.reserveAmount ?? 270000, expireAt: '2030-01-10T09:00:00' } });
+      }
+
       return send(404, { message: 'not found' });
     });
   });
