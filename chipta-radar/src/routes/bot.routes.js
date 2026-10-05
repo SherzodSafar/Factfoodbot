@@ -1,5 +1,6 @@
 /**
- * Bot handlerlari (yo'llari) shu yerda ro'yxatdan o'tkaziladi.
+ * Bot handlerlari (yo'llari). Interfeys to'liq inline tugmalarda —
+ * reply-klaviatura va Mini App ishlatilmaydi.
  */
 import { message } from 'telegraf/filters';
 import { getBot } from '../core/bot.js';
@@ -15,14 +16,10 @@ export async function registerBotRoutes() {
 
   bot.start(botController.start);
   bot.help(botController.help);
-  bot.command('search', botController.openApp);
+  bot.command('menu', botController.start);
   bot.command('watches', botController.myWatches);
 
-  bot.hears(botController.MENU.watches, botController.myWatches);
-  bot.hears(botController.MENU.help, botController.help);
-
   bot.on('callback_query', botController.onCallback);
-  bot.on(message('web_app_data'), botController.onWebAppData);
   bot.on(message('text'), botController.onText);
 
   bot.catch((error, ctx) => {

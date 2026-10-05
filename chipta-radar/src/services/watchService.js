@@ -9,7 +9,7 @@ import { normalizePrefs } from './seats.js';
 import { getSettings } from './settings.js';
 import { checkWatchNow } from './watcher.js';
 import { describeWatch, dateLine, trainLine, typeLine, suggestionLine } from './format.js';
-import { sendMessage, webAppReady, webAppUrl } from '../core/bot.js';
+import { sendMessage } from '../core/bot.js';
 import { escapeHtml } from '../utils/text.js';
 import { todayISO, addDays, isISODate, isTimeHM } from '../utils/dates.js';
 
@@ -163,9 +163,8 @@ export async function createWatches(user, input, { sendConfirmation = true } = {
   entries.sort((a, b) => a.watch.date.localeCompare(b.watch.date));
 
   if (sendConfirmation && entries.length) {
-    const buttons = [];
-    if (webAppReady()) buttons.push([Markup.button.webApp('📱 Kuzatuvlarim', webAppUrl({ tab: 'watches' }))]);
-    sendMessage(user.telegramId, confirmationText(entries), buttons.length ? Markup.inlineKeyboard(buttons) : {}, {
+    const keyboard = Markup.inlineKeyboard([[Markup.button.callback('📋 Kuzatuvlarim', 'm:watches'), Markup.button.callback('🏠 Asosiy menyu', 'm:home')]]);
+    sendMessage(user.telegramId, confirmationText(entries), keyboard, {
       quietNight: user.quietNight,
     }).catch(() => {});
   }

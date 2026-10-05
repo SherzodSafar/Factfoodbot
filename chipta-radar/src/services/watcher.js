@@ -18,14 +18,14 @@
  *     marta hammasi saqlanadi. Oraliqdagi "oxirgi tekshiruv" vaqti va natijasi API
  *     javoblariga xotiradan qo'shiladi (withLiveState).
  */
-import { Markup } from 'telegraf';
+import { foundKeyboard } from './botUi.js';
 import config from '../config/default.js';
 import { isDatabaseReady } from '../database/connection.js';
 import { watchesVersion } from '../database/changes.js';
 import WatchModel from '../models/Watch.js';
 import NotificationModel from '../models/Notification.js';
 import { searchTrains, getTrainDetail } from '../core/railway.js';
-import { sendMessage, webAppReady, webAppUrl } from '../core/bot.js';
+import { sendMessage } from '../core/bot.js';
 import { evaluateWatch } from './matcher.js';
 import { foundMessage } from './format.js';
 import { getSettings } from './settings.js';
@@ -151,15 +151,7 @@ export async function flushWatcher() {
 /* ------------------------------------------------------------------ */
 
 export function watchKeyboard(watch) {
-  const rows = [[Markup.button.url('🎫 eticket.railway.uz da sotib olish', config.railway.buyUrl)]];
-  if (webAppReady()) {
-    rows.push([Markup.button.webApp('📱 Joylarni ko\'rish', webAppUrl({ watch: watch.id }))]);
-  }
-  rows.push([
-    Markup.button.callback('✅ Chipta oldim', `wf:${watch.id}`),
-    Markup.button.callback('⏸ To\'xtatish', `wp:${watch.id}`),
-  ]);
-  return Markup.inlineKeyboard(rows);
+  return foundKeyboard(watch, config.railway.buyUrl);
 }
 
 function countSeats(result) {

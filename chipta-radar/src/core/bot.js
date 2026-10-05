@@ -60,15 +60,14 @@ export function webAppReady() {
 }
 
 export const BOT_COMMANDS = [
-  { command: 'start', description: 'Botni ishga tushirish' },
-  { command: 'search', description: 'Chipta qidirish (ilova)' },
+  { command: 'start', description: 'Asosiy menyu' },
   { command: 'watches', description: 'Mening kuzatuvlarim' },
-  { command: 'help', description: 'Yordam va misollar' },
+  { command: 'help', description: 'Yordam' },
 ];
 
 /**
  * Telegram tomonidagi bot profilini sozlash:
- *  - "Menu" tugmasini Mini App'ga bog'lash
+ *  - "Menu" tugmasi — oddiy buyruqlar ro'yxati (Mini App emas, hammasi inline)
  *  - buyruqlar ro'yxati va qisqa tavsif
  */
 export async function syncBotProfile() {
@@ -92,14 +91,9 @@ export async function syncBotProfile() {
       })
       .catch(() => {});
 
-    if (webAppReady()) {
-      await instance.telegram.setChatMenuButton({
-        menuButton: { type: 'web_app', text: '🚆 Chiptalar', web_app: { url: config.bot.webAppUrl } },
-      });
-      console.log(`✅ Telegram "Menu" tugmasi ulandi: ${config.bot.webAppUrl}`);
-    } else {
-      console.log('⚠️  WEBAPP_URL berilmagan — "Menu" tugmasi sozlanmadi');
-    }
+    // "Menu" tugmasi — buyruqlar ro'yxati (Mini App ishlatilmaydi)
+    await instance.telegram.setChatMenuButton({ menuButton: { type: 'commands' } }).catch(() => {});
+    console.log('✅ Telegram "Menu" tugmasi — buyruqlar ro\'yxati (inline interfeys)');
     return true;
   } catch (error) {
     console.error('[bot] Profilni sozlab bo\'lmadi:', error.message);
