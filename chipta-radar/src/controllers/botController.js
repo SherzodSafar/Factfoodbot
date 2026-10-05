@@ -53,8 +53,9 @@ export async function start(ctx) {
   const user = await ensureUser(ctx);
   if (!user) return;
   wizard.clearSession(ctx.from.id);
-  const hello = `Assalomu alaykum, <b>${escapeHtml(user.firstName)}</b>! 👋\n\n`;
-  await ctx.replyWithHTML(hello + ui.WELCOME, ui.mainMenu());
+  // Eski versiyadan qolgan pastki (reply) klaviaturani olib tashlaymiz — endi hammasi inline
+  await ctx.reply(`Assalomu alaykum, ${user.firstName}! 👋`, Markup.removeKeyboard()).catch(() => {});
+  await ctx.replyWithHTML(ui.WELCOME, ui.mainMenu());
 }
 
 async function showMenu(ctx) {
