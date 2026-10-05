@@ -48,8 +48,17 @@ const config = {
   admin: {
     password: process.env.ADMIN_PASSWORD || 'admin123',
     secret: process.env.ADMIN_SECRET || 'chipta-radar-default-secret-change-me',
+    // ADMIN_SECRET berilmagan (standart qiymat ishlatilmoqda)
+    secretIsDefault: !process.env.ADMIN_SECRET,
     // Admin tokenining amal qilish muddati: 7 kun
     tokenTtlMs: 7 * 24 * 60 * 60 * 1000,
+  },
+
+  /** Shaxsiy ma'lumotlar (eticket tokeni, yo'lovchilar) */
+  security: {
+    // Shifrlash kaliti: 32 bayt (64 ta hex belgi yoki base64). Bazadan alohida — faqat serverda.
+    // Berilmasa ADMIN_SECRET dan hosil qilinadi (services/vault.js).
+    dataKey: process.env.DATA_ENCRYPTION_KEY || '',
   },
 
   // Telegramsiz, oddiy brauzerda sinash imkoniyati (faqat localhost uchun).
@@ -88,6 +97,8 @@ const config = {
 
   frontend: {
     miniappDist: path.join(ROOT_DIR, 'miniapp', 'dist'),
+    // "Akkaunt va ma'lumotlar" Web App sahifasi — backendning o'zi /app/ manzilida beradi
+    webappDir: path.join(ROOT_DIR, 'public'),
   },
 };
 

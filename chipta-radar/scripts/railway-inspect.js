@@ -185,9 +185,16 @@ export async function inspectRailwaySite() {
   for (const file of files) for (const match of file.text.matchAll(/path:"([^"]{1,80})"/g)) routes.push(match[1]);
   out(`Sahifa yo'llari: ${uniqueSorted(routes).join('  ')}`);
 
-  // 6) Chuqur ko'rish: RAILWAY_INSPECT_NEEDLES="reserveSelectedExpressSeats(,addPassengerToOrder(" — har bir
-  //    uchrashgan joy atrofidagi kod keng oynada (RAILWAY_INSPECT_WINDOW, standart 2500 belgi) chiqariladi
-  const needles = (process.env.RAILWAY_INSPECT_NEEDLES || '').split('|').map((item) => item.trim()).filter(Boolean);
+  // 6) Chuqur ko'rish: bron/to'lov/hisob metodlari atrofidagi kod keng oynada chiqariladi
+  //    (yuboriladigan maydonlar ko'rinishi uchun). RAILWAY_INSPECT_NEEDLES="a|b" bilan qo'shimcha
+  //    ignalar berish mumkin; RAILWAY_INSPECT_WINDOW — oyna kengligi (standart 2500 belgi).
+  const DEFAULT_NEEDLES = [
+    'login(', 'getUserDetails(', 'reserveSelectedExpressSeats(', 'holdSelectedSorbonSeats(',
+    'addPassengerToOrder(', 'doPaymentPayme(', 'createInvoicePayme(', 'doPaymentClick(',
+    'createInvoiceClick(', 'getActiveOrder(', 'cancelOrder(',
+  ];
+  const extraNeedles = (process.env.RAILWAY_INSPECT_NEEDLES || '').split('|').map((item) => item.trim()).filter(Boolean);
+  const needles = [...new Set([...DEFAULT_NEEDLES, ...extraNeedles])];
   const windowSize = Number(process.env.RAILWAY_INSPECT_WINDOW) || 2500;
   const maxHits = Number(process.env.RAILWAY_INSPECT_MAX_HITS) || 4;
   for (const needle of needles) {

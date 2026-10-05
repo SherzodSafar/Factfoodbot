@@ -145,9 +145,10 @@ function absorbCookies(response) {
   }
 }
 
-function buildHeaders(extra = {}) {
+/** Sayt brauzerdan kutadigan umumiy sarlavhalar (foydalanuvchi hisobi so'rovlari ham ishlatadi) */
+export function browserHeaders(extra = {}) {
   const { baseUrl, lang } = config.railway;
-  const headers = {
+  return {
     'User-Agent': USER_AGENT,
     Accept: 'application/json, text/plain, */*',
     'Accept-Language': lang,
@@ -156,6 +157,10 @@ function buildHeaders(extra = {}) {
     'device-type': 'BROWSER',
     ...extra,
   };
+}
+
+function buildHeaders(extra = {}) {
+  const headers = browserHeaders(extra);
   if (session.cookies.size) headers.Cookie = cookieHeader();
   if (session.xsrf) headers['X-XSRF-TOKEN'] = session.xsrf;
   if (session.token) headers.Authorization = `Bearer ${session.token}`;
@@ -257,7 +262,7 @@ async function ensureLogin(force = false) {
   return true;
 }
 
-function startCooldown() {
+export function startCooldown() {
   const step = Math.min(limits.cooldownStep, COOLDOWN_STEPS_MS.length - 1);
   limits.cooldownUntil = Date.now() + COOLDOWN_STEPS_MS[step];
   limits.cooldownStep = step + 1;
@@ -378,7 +383,11 @@ async function postJson(path, payload) {
   throw fail(lastError, lastSample);
 }
 
-function request(path, payload, priority) {
+/**
+ * Saytga boradigan istalgan so'rovni umumiy navbatdan o'tkazish (cheklov tanaffusi hisobga olinadi).
+ * Foydalanuvchi hisobi so'rovlari (core/eticketAccount.js) ham shu yerdan o'tadi.
+ */
+export function runQueued(task, priority = 'high') {
   if (Date.now() < limits.cooldownUntil) {
     const minutes = Math.ceil((limits.cooldownUntil - Date.now()) / 60000);
     return Promise.reject(
@@ -387,7 +396,11 @@ function request(path, payload, priority) {
       }),
     );
   }
-  return enqueue(() => postJson(path, payload), priority);
+  return enqueue(task, priority);
+}
+
+function request(path, payload, priority) {
+  return runQueued(() => postJson(path, payload), priority);
 }
 
 /* ------------------------------------------------------------------ */

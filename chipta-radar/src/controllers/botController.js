@@ -24,9 +24,11 @@ import { checkWatchNow, withLiveState } from '../services/watcher.js';
 import { getSettings } from '../services/settings.js';
 import { parseQuery } from '../services/queryParser.js';
 import { todayISO } from '../utils/dates.js';
-import { escapeHtml } from '../utils/text.js';
+import { escapeHtml, formatMoney } from '../utils/text.js';
 import ui from '../services/botUi.js';
 import wizard from '../services/botWizard.js';
+import accountService from '../services/accountService.js';
+import { accountWebAppUrl } from '../core/bot.js';
 
 const STATUS = {
   ACTIVE: '🟢 Faol', PAUSED: '⏸ To\'xtatilgan', FOUND: '✅ Topildi',
@@ -76,7 +78,9 @@ const HELP_TEXT =
   'joy chiqishi bilan darrov xabar beraman.\n' +
   '🎯 <b>Aniq joy</b> — Plaskart/Kupe tanlasangiz, pastki/yuqori yoki to\'rttalik/bokovoyni ham tanlash mumkin.\n' +
   '🚆 <b>Poyezd narxlari</b> — mashhur yo\'nalishlar bo\'yicha bugungi poyezdlar va narxlar.\n' +
-  '📋 <b>Kuzatuvlarim</b> — faol kuzatuvlarni boshqarish.\n\n' +
+  '📋 <b>Kuzatuvlarim</b> — faol kuzatuvlarni boshqarish.\n' +
+  '🔐 <b>Akkaunt</b> — eticket hisobini ulash, yo\'lovchilarni shifrlab saqlash (parol saqlanmaydi).\n' +
+  '🧾 <b>Bronlarim</b> — buyurtmalar va bot ichida Payme/Click to\'lov so\'rovi.\n\n' +
   '<b>Tezkor qidiruv</b> — shunchaki yozing:\n' +
   '• <code>Toshkent Samarqand ertaga</code>\n' +
   '• <code>Andijon Toshkent 25.10</code>\n\n' +
@@ -435,6 +439,92 @@ async function onManage(ctx, action, id) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Akkaunt va ma'lumotlar                                              */
+/* ------------------------------------------------------------------ */
+
+async function accountScreen(ctx) {
+  const user = await ensureUser(ctx);
+  if (!user) return null;
+  const [status, passengers] = await Promise.all([
+    accountService.getAccountStatus(user.id),
+    accountService.listPassengers(user.id).catch(() => []),
+  ]);
+  const url = accountWebAppUrl();
+
+  const lines = ['🔐 <b>Akkaunt va ma\'lumotlar</b>', '<i>Joy chiqqanda tez bron qilish uchun</i>', ''];
+  if (!status.features.vaultReady) {
+    lines.push('⚠️ Server shifrlash kaliti hali sozlanmagan — bu bo\'lim vaqtincha ishlamaydi.');
+  } else if (!status.features.accountEnabled) {
+    lines.push('⚠️ Akkaunt ulash xizmati vaqtincha o\'chirilgan.');
+  } else if (status.connected) {
+    lines.push('✅ <b>Akkaunt ulangan</b>', `📱 ${escapeHtml(status.loginMasked || '')}`, `👤 Saqlangan yo'lovchilar: <b>${passengers.length}</b>`, '', '🔒 Parolingiz saqlanmaydi. To\'lovni har doim o\'zingiz tasdiqlaysiz.');
+  } else {
+    if (status.status === 'EXPIRED') lines.push('⚠️ Kirish muddati tugagan — qaytadan ulang.', '');
+    lines.push(
+      'Bu yerda eticket.railway.uz hisobingizni ulaysiz, yo\'lovchilarni saqlaysiz va bron uchun to\'lov so\'rovini yuborasiz.',
+      '',
+      '🔒 Parol <b>saqlanmaydi</b>, faqat kirish tokeni <b>shifrlangan</b> holda saqlanadi.',
+    );
+    if (!url) lines.push('', 'ℹ️ Ulash sahifasi faqat botning rasmiy (https) manzilida ochiladi.');
+  }
+  return { text: lines.join('\n'), keyboard: ui.accountKeyboard(status, url) };
+}
+
+async function showAccount(ctx) {
+  const screen = await accountScreen(ctx);
+  if (!screen) return undefined;
+  if (ctx.callbackQuery) {
+    try { await ctx.editMessageText(screen.text, HTML(screen.keyboard)); return undefined; } catch { /* yangi */ }
+  }
+  return ctx.replyWithHTML(screen.text, screen.keyboard);
+}
+
+async function showOrders(ctx) {
+  const user = await ensureUser(ctx);
+  if (!user) return undefined;
+  const url = accountWebAppUrl();
+  const status = await accountService.getAccountStatus(user.id);
+
+  const lines = ['🧾 <b>Mening bronlarim</b>', ''];
+  if (!status.connected) {
+    lines.push('Buyurtmalarni ko\'rish uchun avval eticket akkauntingizni ulang.');
+    const keyboard = ui.ordersKeyboard(status, url);
+    if (ctx.callbackQuery) { try { await ctx.editMessageText(lines.join('\n'), HTML(keyboard)); return undefined; } catch { /* yangi */ } }
+    return ctx.replyWithHTML(lines.join('\n'), keyboard);
+  }
+
+  try {
+    const orders = await accountService.listOrders(user.id);
+    if (!orders.length) {
+      lines.push('Faol buyurtma topilmadi.', '', 'Chipta topilganda kuzatuv xabaridan yoki saytdan bron qiling.');
+    } else {
+      for (const order of orders.slice(0, 10)) {
+        const paid = !order.payable;
+        const route = [order.from, order.to].filter(Boolean).join(' → ');
+        lines.push(
+          `${paid ? '✅' : '⏳'} <b>№ ${escapeHtml(order.orderId)}</b>${order.amount ? ` · ${formatMoney(order.amount)}` : ''}`,
+          `   ${escapeHtml(order.trainNumber || '')}${route ? ` · ${escapeHtml(route)}` : ''}${order.date ? ` · ${escapeHtml(order.date)}` : ''}${paid ? '' : ' · <i>to\'lov kutilmoqda</i>'}`,
+        );
+      }
+      lines.push('', '💳 To\'lash yoki boshqarish uchun quyidagi tugmani bosing.');
+    }
+  } catch (error) {
+    lines.push(`⚠️ Buyurtmalarni olib bo'lmadi: ${escapeHtml(error.message)}`);
+  }
+  const keyboard = ui.ordersKeyboard(status, url);
+  if (ctx.callbackQuery) { try { await ctx.editMessageText(lines.join('\n'), HTML(keyboard)); return undefined; } catch { /* yangi */ } }
+  return ctx.replyWithHTML(lines.join('\n'), keyboard);
+}
+
+async function disconnectAccount(ctx) {
+  const user = await ensureUser(ctx);
+  if (!user) return ctx.answerCbQuery();
+  await accountService.disconnectAccount(user.id, { wipePassengers: false });
+  await ctx.answerCbQuery('Akkaunt uzildi');
+  return showAccount(ctx);
+}
+
+/* ------------------------------------------------------------------ */
 /*  Poyezd narxlari (mashhur yo'nalishlar)                             */
 /* ------------------------------------------------------------------ */
 
@@ -488,12 +578,25 @@ export async function onCallback(ctx) {
       }
       if (section === 'watches') { await ctx.answerCbQuery(); return showWatchList(ctx); }
       if (section === 'prices') { await ctx.answerCbQuery(); return showPrices(ctx); }
+      if (section === 'account') { await ctx.answerCbQuery(); return showAccount(ctx); }
+      if (section === 'orders') { await ctx.answerCbQuery('Yuklanmoqda...'); return showOrders(ctx); }
       if (section === 'help') { await ctx.answerCbQuery(); return help(ctx); }
       if (section === 'ref') { await ctx.answerCbQuery(); return showReferral(ctx); }
       return ctx.answerCbQuery();
     }
 
     if (prefix === 'wz') return onWizard(ctx, rest);
+
+    if (prefix === 'acc') {
+      const action = rest[0];
+      if (action === 'disc' && rest[1] !== 'yes') {
+        await ctx.answerCbQuery();
+        try { await ctx.editMessageText('🔌 <b>Akkauntni uzasizmi?</b>\n\nKirish tokeni o\'chiriladi. Saqlangan yo\'lovchilar qoladi (ularni Web App\'dan o\'chirishingiz mumkin).', HTML(ui.disconnectConfirmKeyboard())); } catch { /* yangi */ }
+        return undefined;
+      }
+      if (action === 'disc' && rest[1] === 'yes') return disconnectAccount(ctx);
+      return ctx.answerCbQuery();
+    }
 
     if (prefix === 'g') {
       const [action, id] = rest;
@@ -574,4 +677,4 @@ export async function onText(ctx) {
   }
 }
 
-export default { start, help, myWatches: showWatchList, onCallback, onText };
+export default { start, help, myWatches: showWatchList, myAccount: showAccount, myOrders: showOrders, onCallback, onText };

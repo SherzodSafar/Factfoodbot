@@ -28,9 +28,12 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  watches       Watch[]
-  notifications Notification[]
-  searches      SearchLog[]
+  watches        Watch[]
+  notifications  Notification[]
+  searches       SearchLog[]
+  railwayAccount RailwayAccount?
+  passengers     Passenger[]
+  bookings       Booking[]
 
   @@map("users")
 }
@@ -109,6 +112,7 @@ model Watch {
   updatedAt      DateTime    @updatedAt @map("updated_at")
 
   notifications Notification[]
+  bookings      Booking[]
 
   @@index([status, date])
   @@index([userId])
@@ -152,6 +156,83 @@ model SearchLog {
   @@index([createdAt])
   @@index([fromCode, toCode])
   @@map("search_logs")
+}
+
+/// eticket.railway.uz hisobi — foydalanuvchi roziligi bilan ulanadi.
+/// Parol saqlanmaydi: faqat kirish tokeni, u ham shifrlangan (AES-256-GCM, kalit bazadan tashqarida).
+model RailwayAccount {
+  id             Int       @id @default(autoincrement())
+  userId         Int       @unique @map("user_id")
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Ko'rsatish uchun niqoblangan login: "+998 90 *** ** 67"
+  loginMasked    String    @map("login_masked")
+  /// Shifrlangan: { login, token, accountId, payPhone }
+  secret         String
+  /// ACTIVE | EXPIRED (token muddati tugagan — qayta ulash kerak)
+  status         String    @default("ACTIVE")
+  tokenExpiresAt DateTime? @map("token_expires_at")
+  lastError      String?   @map("last_error")
+  consentAt      DateTime  @map("consent_at")
+  lastUsedAt     DateTime? @map("last_used_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@map("railway_accounts")
+}
+
+/// Saqlangan yo'lovchilar (bron uchun). Shaxsiy ma'lumotlar shifrlangan,
+/// botda va Web App'da faqat niqoblangan ko'rinish chiqadi.
+model Passenger {
+  id         Int      @id @default(autoincrement())
+  userId     Int      @map("user_id")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Foydalanuvchi bergan nom (ixtiyoriy): "O'zim", "Onam"
+  label      String   @default("")
+  /// "ANVA**** I."
+  nameMasked String   @map("name_masked")
+  /// "AA*****67"
+  docMasked  String   @map("doc_masked")
+  /// Shifrlangan: { firstName, lastName, docNumber, birthDate, gender, citizenship }
+  secret     String
+  consentAt  DateTime @map("consent_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@map("passengers")
+}
+
+/// Bot orqali qilingan bronlar (to'lovni foydalanuvchi o'zi qiladi)
+model Booking {
+  id             Int       @id @default(autoincrement())
+  userId         Int       @map("user_id")
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  watchId        Int?      @map("watch_id")
+  watch          Watch?    @relation(fields: [watchId], references: [id], onDelete: SetNull)
+  /// eticket buyurtma raqami
+  orderId        String?   @map("order_id")
+  trainNumber    String    @map("train_number")
+  fromCode       String    @map("from_code")
+  toCode         String    @map("to_code")
+  /// "YYYY-MM-DD"
+  date           String
+  carNumber      String?   @map("car_number")
+  carType        String?   @map("car_type")
+  seats          String[]  @default([])
+  passengers     Int       @default(1)
+  amount         Int?
+  /// RESERVED | PAID | CANCELLED | EXPIRED | FAILED
+  status         String    @default("RESERVED")
+  expiresAt      DateTime? @map("expires_at")
+  payProvider    String?   @map("pay_provider")
+  payRequestedAt DateTime? @map("pay_requested_at")
+  lastError      String?   @map("last_error")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("bookings")
 }
 
 /// Admin Paneldan o'zgartiriladigan sozlamalar

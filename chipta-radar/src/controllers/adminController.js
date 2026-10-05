@@ -19,6 +19,11 @@ import { getSettings, updateSettings } from '../services/settings.js';
 import { startBroadcast, getBroadcastStatus } from '../services/broadcast.js';
 import { refreshStations, stationName, findStation } from '../services/stations.js';
 import { summarizeCar } from '../services/seats.js';
+import { vaultStatus } from '../services/vault.js';
+import { featureStatus } from '../services/accountService.js';
+import RailwayAccountModel from '../models/RailwayAccount.js';
+import PassengerModel from '../models/Passenger.js';
+import BookingModel from '../models/Booking.js';
 import { todayISO, addDays, isISODate, TZ_OFFSET_MIN } from '../utils/dates.js';
 import { escapeHtml } from '../utils/text.js';
 
@@ -69,6 +74,8 @@ function systemStatus() {
     watcher: getWatcherStatus(),
     keepAlive: getKeepAliveStatus(),
     broadcast: getBroadcastStatus(),
+    vault: vaultStatus(),
+    features: featureStatus(),
     uptimeSec: Math.round(process.uptime()),
     today: todayISO(),
   };
@@ -86,6 +93,7 @@ export async function stats(req, res, next) {
       usersTotal, usersToday, usersActive, byStatus,
       notifyTotal, notifyToday, searchesTotal, searchesToday, popular,
       usersDaily, searchesDaily, notificationsDaily,
+      accountsConnected, passengersTotal, bookingsTotal,
     ] = await Promise.all([
       UserModel.count(),
       UserModel.count({ createdAt: { gte: since } }),
@@ -99,6 +107,9 @@ export async function stats(req, res, next) {
       dailySeries('users'),
       dailySeries('search_logs'),
       dailySeries('notifications'),
+      RailwayAccountModel.count({ status: 'ACTIVE' }),
+      PassengerModel.count(),
+      BookingModel.count(),
     ]);
 
     const watches = Object.fromEntries(WATCH_STATUSES.map((status) => [status, 0]));
@@ -111,6 +122,7 @@ export async function stats(req, res, next) {
         watches,
         notifications: { total: notifyTotal, today: notifyToday },
         searches: { total: searchesTotal, today: searchesToday },
+        accounts: { connected: accountsConnected, passengers: passengersTotal, bookings: bookingsTotal },
         popularRoutes: popular.map((route) => ({
           ...route,
           fromName: stationName(route.fromCode),

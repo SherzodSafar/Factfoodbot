@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>Akkaunt va ma'lumotlar — Chipta Radar</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --bg: #eef1f4; --card: #ffffff; --text: #1a1a1a; --muted: #8a8f98; --line: #e3e6ea;
+      --primary: #3390ec; --primary-soft: #5aa7f0; --accent: #28c0e8; --ok: #2ecc71; --danger: #e4572e;
+      --radius: 16px; --field: #f6f8fa;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      margin: 0; background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 16px; line-height: 1.5; padding: 16px 16px 48px;
+    }
+    h1 { font-size: 24px; margin: 4px 0 2px; }
+    .sub { color: var(--muted); margin: 0 0 14px; }
+    .status { display: flex; align-items: center; gap: 8px; color: var(--muted); margin-bottom: 16px; font-size: 15px; }
+    .dot { width: 12px; height: 12px; border-radius: 50%; background: #c7ccd3; flex: none; }
+    .dot.on { background: var(--ok); }
+    .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+    .tab {
+      flex: 1; border: none; background: #dfe3e8; color: #30343a; font-weight: 600; font-size: 16px;
+      padding: 13px 8px; border-radius: 12px; cursor: pointer;
+    }
+    .tab.active { background: var(--primary); color: #fff; }
+    .card { background: var(--card); border-radius: var(--radius); padding: 18px; margin-bottom: 16px; }
+    .card--soft { background: #f3f4f6; }
+    .card--info { background: #e8f3ff; }
+    .card h2 { font-size: 18px; margin: 0 0 4px; display: flex; align-items: center; gap: 8px; }
+    .card .hint { color: var(--muted); font-size: 14px; margin: 0 0 14px; }
+    label.field { display: block; margin-bottom: 14px; }
+    label.field > span { display: block; color: var(--muted); font-size: 14px; margin-bottom: 6px; }
+    input, select {
+      width: 100%; border: 1px solid var(--line); background: var(--field); color: var(--text);
+      border-radius: 12px; padding: 14px; font-size: 16px; font-family: inherit;
+    }
+    input:focus, select:focus { outline: none; border-color: var(--primary); background: #fff; }
+    .consent { display: flex; gap: 12px; align-items: flex-start; margin: 4px 0 16px; font-size: 15px; color: #3a3f45; }
+    .consent input { width: 22px; height: 22px; flex: none; margin-top: 1px; accent-color: var(--primary); }
+    .btn {
+      width: 100%; border: none; border-radius: 12px; padding: 15px; font-size: 17px; font-weight: 600;
+      color: #fff; background: var(--primary-soft); cursor: pointer;
+    }
+    .btn:active { opacity: .85; }
+    .btn:disabled { opacity: .55; }
+    .btn--row { display: flex; gap: 12px; }
+    .btn--payme { background: var(--primary-soft); }
+    .btn--click { background: var(--accent); }
+    .btn--ghost { background: #eef1f4; color: var(--primary); }
+    .btn--danger { background: #f6e3dd; color: var(--danger); }
+    .note { color: var(--muted); font-size: 13.5px; margin-top: 14px; }
+    .note b { color: #4a4f55; }
+    .link { color: var(--primary); text-decoration: none; }
+    .steps { margin: 8px 0 0; padding-left: 18px; }
+    .steps li { margin: 4px 0; }
+    .list-item {
+      display: flex; justify-content: space-between; align-items: center; gap: 12px;
+      padding: 12px 0; border-bottom: 1px solid var(--line);
+    }
+    .list-item:last-child { border-bottom: none; }
+    .list-item .meta { font-size: 13px; color: var(--muted); }
+    .badge { font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: #eef1f4; color: #596170; }
+    .badge.child { background: #fff3e0; color: #c77700; }
+    .badge.ok { background: #e4f8ec; color: #1e9e54; }
+    .badge.wait { background: #fff3e0; color: #c77700; }
+    .icon-btn { border: none; background: none; color: var(--danger); font-size: 20px; cursor: pointer; padding: 4px; }
+    .empty { color: var(--muted); text-align: center; padding: 10px 0; }
+    .toast {
+      position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%) translateY(120%);
+      background: #26292e; color: #fff; padding: 12px 18px; border-radius: 12px; font-size: 15px;
+      transition: transform .28s ease; max-width: 90%; z-index: 50; box-shadow: 0 8px 24px rgba(0,0,0,.25);
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); }
+    .toast.err { background: #b4341c; }
+    .hidden { display: none !important; }
+    .muted-box { background: #f3f4f6; border-radius: 12px; padding: 12px 14px; color: var(--muted); font-size: 14px; }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #17191c; --card: #202327; --text: #e9ebee; --muted: #8d939c; --line: #2d3137;
+        --field: #15171a;
+      }
+      :root:not([data-theme="light"]) .tab { background: #2a2e34; color: #c8ccd2; }
+      :root:not([data-theme="light"]) .card--soft { background: #1a1c20; }
+      :root:not([data-theme="light"]) .card--info { background: #13293d; }
+      :root:not([data-theme="light"]) .btn--ghost { background: #2a2e34; }
+      :root:not([data-theme="light"]) .muted-box { background: #1a1c20; }
+    }
+  </style>
+</head>
+<body>
+  <h1>🔐 Akkaunt va ma'lumotlar</h1>
+  <p class="sub">Joy chiqqanda tez bron qilish uchun</p>
+  <div class="status"><span class="dot" id="statusDot"></span><span id="statusText">Yuklanmoqda…</span></div>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="account">Akkaunt</button>
+    <button class="tab" data-tab="passenger">Yo'lovchi</button>
+    <button class="tab" data-tab="orders">Bronlarim</button>
+  </div>
+
+  <!-- ============ AKKAUNT ============ -->
+  <section id="tab-account">
+    <div class="card" id="connectedCard" style="display:none">
+      <h2>✅ Akkaunt ulangan</h2>
+      <p class="hint" id="connectedLogin"></p>
+      <button class="btn btn--danger" id="disconnectBtn">Akkauntni uzish</button>
+      <p class="note">Uzsangiz — kirish tokeni butunlay o'chiriladi.</p>
+    </div>
+
+    <div class="card" id="connectForm">
+      <label class="field">
+        <span>Telefon yoki email (eticket.railway.uz)</span>
+        <input id="login" type="text" inputmode="email" autocomplete="username" placeholder="+998 90 123 45 67" />
+      </label>
+      <label class="field">
+        <span>Parol</span>
+        <input id="password" type="password" autocomplete="current-password" placeholder="••••••••" />
+      </label>
+      <label class="consent">
+        <input type="checkbox" id="accountConsent" />
+        <span>Botga o'z nomimdan eticket.railway.uz da <b>joy bron qilish</b>ga ruxsat beraman. Parolim saqlanmasligini va faqat kirish tokeni shifrlangan holda saqlanishini tushundim.</span>
+      </label>
+      <button class="btn" id="connectBtn">Akkauntni ulash</button>
+      <p class="note">🔒 Parolingiz <b>saqlanmaydi</b> — u faqat kirish paytida ishlatiladi. Saqlanadigan yagona narsa — kirish tokeni, u <b>AES-256-GCM</b> bilan shifrlanadi. To'lovni har doim <b>o'zingiz</b> qilasiz.</p>
+    </div>
+
+    <div class="card card--info">
+      <h2>🔵 Google orqali kirganmisiz?</h2>
+      <p class="hint" style="margin:0">U holda akkauntingizda parol bo'lmasligi mumkin. Bir marta parol o'rnating:</p>
+      <ol class="steps">
+        <li><a class="link" href="https://eticket.railway.uz" target="_blank" rel="noopener">eticket.railway.uz</a> → «Kirish»</li>
+        <li>«Parolni unutdingizmi?» → email/telefoningizni kiriting</li>
+        <li>Kelgan kod bilan yangi parol o'rnating</li>
+        <li>Shu yerga o'sha email/telefon + yangi parolni kiriting ✅</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ============ YO'LOVCHI ============ -->
+  <section id="tab-passenger" class="hidden">
+    <div class="card card--soft">
+      <h2>👤 Saqlangan yo'lovchilar</h2>
+      <div id="passengerList"><p class="empty">Hali yo'lovchi qo'shilmagan.</p></div>
+    </div>
+
+    <div class="card">
+      <h2>➕ Yangi yo'lovchi qo'shish</h2>
+      <p class="hint">Bir nechta yo'lovchi qo'shishingiz mumkin — oila a'zolari, do'stlar. Katta yoki bola ekani <b>tug'ilgan sanadan</b> avtomatik aniqlanadi (16 yoshgacha — bola).</p>
+      <label class="field"><span>Nomi (ixtiyoriy)</span><input id="p_label" type="text" placeholder="O'zim" /></label>
+      <label class="field"><span>Ism</span><input id="p_first" type="text" placeholder="ANVARJON" autocomplete="off" /></label>
+      <label class="field"><span>Familiya</span><input id="p_last" type="text" placeholder="ISMOILOV" autocomplete="off" /></label>
+      <label class="field"><span>Pasport / ID seriya va raqami</span><input id="p_doc" type="text" placeholder="AA1234567" autocomplete="off" /></label>
+      <label class="field"><span>Tug'ilgan sana</span><input id="p_birth" type="date" /></label>
+      <label class="field"><span>Jinsi</span>
+        <select id="p_gender"><option value="M">Erkak</option><option value="F">Ayol</option></select>
+      </label>
+      <label class="consent">
+        <input type="checkbox" id="passengerConsent" />
+        <span>Bu ma'lumotlarni bron qilish maqsadida <b>shifrlangan holda saqlash</b>ga roziman. Istalgan payt o'chirishim mumkinligini bilaman.</span>
+      </label>
+      <button class="btn" id="addPassengerBtn">Shifrlab saqlash</button>
+      <p class="note">🔒 Ma'lumotlar <b>AES-256-GCM</b> bilan shifrlanadi. Kalit alohida saqlanadi — baza o'g'irlansa ham ma'lumot o'qilmaydi. Botda faqat niqoblangan ko'rinishda ko'rsatiladi.</p>
+    </div>
+  </section>
+
+  <!-- ============ BRONLARIM ============ -->
+  <section id="tab-orders" class="hidden">
+    <div class="card card--soft">
+      <h2>🧾 Mening bronlarim</h2>
+      <p class="hint">Bot bron qilgan va o'zingiz olgan buyurtmalar. To'lov qilinmasa bron ~10 daqiqada bekor bo'ladi.</p>
+      <div id="ordersList"><p class="empty" id="ordersEmpty">Akkaunt ulanmagan.</p></div>
+    </div>
+
+    <div class="card" id="payCard">
+      <h2>💳 Bot ichida to'lash</h2>
+      <p class="hint">Payme yoki Click ilovangizga to'lov so'rovi yuboriladi — <b>o'sha ilovada tasdiqlaysiz</b>. Karta ma'lumotlaringiz botga kelmaydi va bot o'zi pul yechmaydi.</p>
+      <label class="field"><span>Buyurtma raqami</span>
+        <select id="payOrder"><option value="">—</option></select>
+      </label>
+      <label class="field"><span>Payme/Click'ga bog'langan telefon</span><input id="payPhone" type="tel" inputmode="tel" placeholder="90 123 45 67" /></label>
+      <label class="consent">
+        <input type="checkbox" id="payConsent" />
+        <span>Shu buyurtma uchun <b>to'lov so'rovi yuborilishiga</b> roziman. To'lovni ilovamda o'zim tasdiqlayman.</span>
+      </label>
+      <div class="btn--row">
+        <button class="btn btn--payme" id="paymeBtn">Payme</button>
+        <button class="btn btn--click" id="clickBtn">Click</button>
+      </div>
+      <p style="text-align:center;margin:14px 0 0"><a class="link" href="https://eticket.railway.uz/uz/home" target="_blank" rel="noopener">yoki saytda to'lash →</a></p>
+    </div>
+  </section>
+
+  <p class="note" style="text-align:center">Ma'lumotlaringiz faqat siz so'ragan bron uchun ishlatiladi va uchinchi shaxsga berilmaydi. Akkauntni uzsangiz — token va yo'lovchi ma'lumotlari butunlay o'chiriladi.</p>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="/app/account.js"></script>
+</body>
+</html>

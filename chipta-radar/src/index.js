@@ -89,9 +89,17 @@ app.post(WEBHOOK_PATH, (req, res, next) => {
   return webhookHandler(req, res, next);
 });
 
+/* ------------- "Akkaunt va ma'lumotlar" Web App sahifasi ------------ */
+
+// Bot "Akkaunt" tugmasi shu sahifani ochadi (Telegram WebApp). Backendning o'zi beradi.
+const { webappDir, miniappDist } = config.frontend;
+if (fs.existsSync(webappDir)) {
+  app.use('/app', express.static(webappDir, { extensions: ['html'] }));
+  app.get('/app', (req, res) => res.sendFile(path.join(webappDir, 'account.html')));
+}
+
 /* --------------------- Tayyor Mini App (ixtiyoriy) ------------------ */
 
-const { miniappDist } = config.frontend;
 if (fs.existsSync(miniappDist)) app.use(express.static(miniappDist));
 
 app.get('*', (req, res) => {

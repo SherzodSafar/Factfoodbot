@@ -12,14 +12,9 @@ import { describeWatch, dateLine, trainLine, typeLine, suggestionLine } from './
 import { sendMessage } from '../core/bot.js';
 import { escapeHtml } from '../utils/text.js';
 import { todayISO, addDays, isISODate, isTimeHM } from '../utils/dates.js';
+import { ValidationError } from '../utils/errors.js';
 
-export class ValidationError extends Error {
-  constructor(message) {
-    super(message);
-    this.name = 'ValidationError';
-    this.status = 400;
-  }
-}
+export { ValidationError };
 
 const MAX_DATES = 7;
 

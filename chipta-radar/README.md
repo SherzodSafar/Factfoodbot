@@ -31,12 +31,24 @@ paydo bo'lishi bilan darhol xabar beradi.
 - "Hojatxona yonidagi joylar kerak emas" (1- va 9-bo'limlar)
 - Xabarda aniq joylar: *„07-vagon: 9, 11 (3-bo'lim)"*
 
+### 4️⃣ Akkaunt va tez bron (ixtiyoriy)
+- 🔐 **Akkaunt** — eticket.railway.uz hisobini ulash. **Parol saqlanmaydi** —
+  faqat kirish tokeni **AES-256-GCM** bilan shifrlangan holda saqlanadi.
+- 👤 **Yo'lovchilar** — oila a'zolari/do'stlarni bir marta kiritib qo'yish
+  (shifrlangan). Katta/bola **tug'ilgan sanadan** avtomatik aniqlanadi (16 yoshgacha — bola).
+- 🧾 **Bronlarim** — buyurtmalarni ko'rish va **bot ichida to'lov so'rovi** (Payme/Click):
+  ilovaga so'rov boradi, foydalanuvchi o'sha yerda tasdiqlaydi. **Karta ma'lumoti
+  botga kelmaydi, bot o'zi pul yechmaydi.**
+- Bu bo'lim Telegram **Web App** sahifasi sifatida ochiladi (backendning o'zi beradi:
+  `.../app/account`). Admin Paneldan yoqib/o'chirib qo'ysa bo'ladi.
+
 ### Qo'shimcha
 - Botga oddiy matn: `Toshkent Samarqand ertaga`, `Ташкент Бухара 25.10` — tezkor javob
 - Xabar ostidagi tugmalar: *Sotib olish*, *Joylarni ko'rish*, *Chipta oldim*, *To'xtatish*
 - Takroriy xabarlardan himoya, tungi ovozsiz rejim, qidiruv tarixi
 - Admin Panel: statistika, kuzatuvlar, foydalanuvchilar (bloklash, shaxsiy xabar),
-  xabarlar tarixi, stansiyalar, sayt holati, sinov qidiruvi, sozlamalar, e'lon
+  xabarlar tarixi, stansiyalar, sayt holati, sinov qidiruvi, sozlamalar, e'lon,
+  akkaunt/bron sozlamalari va shifrlash kaliti holati
 
 ---
 
@@ -74,7 +86,9 @@ faol bo'lmaganda "uxlaydi" va oylik bepul hisoblash soatlari tejaladi.
 | `BOT_TOKEN` | Telegram bot tokeni (@BotFather) |
 | `DATABASE_URL` | Neon bazasi manzili. Jadvallar alohida `chipta_radar` sxemasida — bitta bazani boshqa loyiha bilan bo'lishsa ham, uning jadvallariga tegilmaydi |
 | `DB_SCHEMA` | *Ixtiyoriy.* Sxema nomi (standart `chipta_radar`) |
-| `WEBAPP_URL` | Mini App manzili (bot "Menu" tugmasi) |
+| `WEBAPP_URL` | Eski Mini App manzili (ishlatilmaydi — bot to'liq inline) |
+| `PUBLIC_URL` | Botning ochiq https manzili (Render `RENDER_EXTERNAL_URL` ni avtomatik beradi). "Akkaunt" Web App sahifasi shu manzilning `/app/account` yo'lida ochiladi |
+| `DATA_ENCRYPTION_KEY` | *Tavsiya etiladi.* Akkaunt tokeni va yo'lovchilarni shifrlash kaliti (32 bayt hex/base64). Berilmasa `ADMIN_SECRET` dan hosil qilinadi. Kalit bazadan tashqarida — baza o'g'irlansa ham ma'lumot o'qilmaydi |
 | `ADMIN_PASSWORD` | Admin panel paroli |
 | `ADMIN_SECRET`, `WEBHOOK_SECRET` | Maxfiy kalitlar (o'zgartirmang) |
 | `RAILWAY_LOGIN`, `RAILWAY_PASSWORD` | *Ixtiyoriy.* Faqat sayt API uchun hisobga kirishni talab qilsa |
@@ -143,22 +157,41 @@ chipta-radar/
 │   ├── config/default.js         # sozlamalar
 │   ├── core/bot.js               # Telegram bot
 │   ├── core/railway.js           # eticket.railway.uz mijozi (navbat, kesh, sessiya)
+│   ├── core/eticketAccount.js    # foydalanuvchi hisobi: login, buyurtma, to'lov, bron
 │   ├── database/connection.js    # Prisma
-│   ├── models/                   # User, Watch, Station, Notification, SearchLog
+│   ├── models/                   # User, Watch, Station, Notification, SearchLog,
+│   │                             #   RailwayAccount, Passenger, Booking
 │   ├── services/
 │   │   ├── trains.js             # sayt javoblarini normallashtirish
 │   │   ├── seats.js              # vagon sxemasi va joy tanlash mantig'i
 │   │   ├── matcher.js            # kuzatuvni poyezdlar bilan solishtirish
 │   │   ├── watcher.js            # davriy tekshiruv va xabarlar
 │   │   ├── queryParser.js        # "Toshkent Samarqand ertaga" ni tushunish
+│   │   ├── vault.js              # AES-256-GCM shifrlash (token, yo'lovchilar)
+│   │   ├── personal.js           # yo'lovchi tekshiruvi, niqoblash, yosh toifasi
+│   │   ├── accountService.js     # akkaunt/yo'lovchi/buyurtma/to'lov mantig'i
 │   │   └── ...
 │   ├── controllers/              # botController, clientController, adminController
-│   ├── routes/                   # bot, client (Mini App), admin
+│   ├── routes/                   # bot, client (Web App + API), admin
 │   ├── middlewares/              # Telegram imzosi, admin token, cheklovlar
 │   └── index.js
+├── public/                       # "Akkaunt va ma'lumotlar" Web App (account.html/.js)
 ├── prisma/                       # schema.prisma, seed.js (stansiyalar)
-├── miniapp/                      # React Mini App
+├── miniapp/                      # React Mini App (ishlatilmaydi — bot inline)
 ├── admin/                        # React Admin Panel
-├── scripts/                      # setup, railway-check, bot-info, deploy-check
+├── scripts/                      # setup, railway-check, bot-info, deploy-check, railway-inspect
 └── test/                         # testlar va soxta eticket serveri
 ```
+
+## 🔒 Maxfiylik va xavfsizlik
+
+- **Parol saqlanmaydi.** eticket hisobiga kirishda parol faqat bir marta ishlatiladi.
+  Saqlanadigan yagona narsa — kirish tokeni, u **AES-256-GCM** bilan shifrlangan.
+- **Yo'lovchi ma'lumotlari** (ism, hujjat, tug'ilgan sana) ham shifrlangan holda saqlanadi.
+  Botda va Web App'da faqat **niqoblangan** ko'rinish chiqadi (`ANVA**** I.`, `AA*****67`).
+- Shifrlash kaliti bazadan **tashqarida** (`DATA_ENCRYPTION_KEY`) — baza o'g'irlansa ham
+  ma'lumotlar o'qilmaydi. Har bir yozuv egasiga bog'langan (AAD), ko'chirilgan matn ochilmaydi.
+- **To'lovni bot qilmaydi.** Payme/Click ilovasiga so'rov yuboriladi, foydalanuvchi
+  o'sha ilovada tasdiqlaydi. Karta ma'lumotlari botga kelmaydi.
+- Akkaunt/to'lov/bron imkoniyatlarini Admin Paneldan yoqib/o'chirib qo'yish mumkin.
+  Shifrlash kaliti sozlanmagan bo'lsa, bu bo'limlar avtomatik o'chiq turadi.

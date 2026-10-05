@@ -18,6 +18,8 @@ export async function registerBotRoutes() {
   bot.help(botController.help);
   bot.command('menu', botController.start);
   bot.command('watches', botController.myWatches);
+  bot.command('account', botController.myAccount);
+  bot.command('orders', botController.myOrders);
 
   bot.on('callback_query', botController.onCallback);
   bot.on(message('text'), botController.onText);

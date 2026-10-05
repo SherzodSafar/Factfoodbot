@@ -105,6 +105,36 @@ export default function Settings({ onError, onNotice }) {
       <div className="panel">
         <div className="panel__head">
           <div>
+            <h2>🔐 Akkaunt va bron</h2>
+            <p>Foydalanuvchilar eticket hisobini ulashi, yo'lovchilarni saqlashi va bot ichida to'lov so'rovi yuborishi.</p>
+          </div>
+        </div>
+        <div className="panel__body">
+          <label className="check">
+            <input type="checkbox" checked={!!form.accountEnabled} onChange={set('accountEnabled')} /> Akkaunt ulash va buyurtmalarni ko'rish yoqilgan
+          </label>
+          <label className="check">
+            <input type="checkbox" checked={!!form.paymentEnabled} onChange={set('paymentEnabled')} /> Bot ichida Payme/Click to'lov so'rovi yoqilgan
+          </label>
+          <label className="check">
+            <input type="checkbox" checked={!!form.bookingEnabled} onChange={set('bookingEnabled')} /> Botdan to'g'ridan-to'g'ri joy band qilish (bron) yoqilgan
+          </label>
+          <div className="field-row">
+            <label className="field">
+              <span>Bitta foydalanuvchiga yo'lovchilar soni</span>
+              <input type="number" min={1} max={50} value={form.maxPassengersPerUser} onChange={set('maxPassengersPerUser')} />
+            </label>
+          </div>
+          <div className="alert alert--info" style={{ marginTop: 6 }}>
+            🔒 Shaxsiy ma'lumotlar (token, yo'lovchilar) AES-256-GCM bilan shifrlanadi. Kalit uchun Render'da
+            <b> DATA_ENCRYPTION_KEY</b> o'zgaruvchisini kiriting (berilmasa ADMIN_SECRET'dan hosil qilinadi).
+          </div>
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="panel__head">
+          <div>
             <h2>📢 Barcha foydalanuvchilarga e'lon</h2>
             <p>Botni to'xtatmagan barcha foydalanuvchilarga yuboriladi.</p>
           </div>

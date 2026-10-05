@@ -39,4 +39,26 @@ router.post('/watches/:id/check', searchLimit, clientController.checkWatch);
 router.get('/profile', clientController.profile);
 router.patch('/profile', clientController.updateProfile);
 
+// Akkaunt (eticket hisobini ulash) — login urinishlarini cheklaymiz
+const accountLimit = rateLimit({
+  limit: 8,
+  windowMs: 10 * 60_000,
+  keyFn: (req) => `account:${req.user.id}`,
+  message: 'Juda ko\'p urinish. 10 daqiqadan so\'ng qayta urinib ko\'ring.',
+});
+
+router.get('/account', clientController.accountStatus);
+router.post('/account/connect', accountLimit, clientController.connectAccount);
+router.post('/account/disconnect', clientController.disconnectAccount);
+
+// Yo'lovchilar
+router.get('/passengers', clientController.listPassengers);
+router.post('/passengers', clientController.addPassenger);
+router.delete('/passengers/:id', clientController.deletePassenger);
+
+// Buyurtmalar va to'lov
+router.get('/orders', clientController.listOrders);
+router.post('/orders/pay', accountLimit, clientController.requestPayment);
+router.get('/bookings', clientController.listBookings);
+
 export default router;

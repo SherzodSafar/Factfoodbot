@@ -59,9 +59,25 @@ export function webAppReady() {
   return config.bot.webAppUrl.startsWith('https://');
 }
 
+/**
+ * "Akkaunt va ma'lumotlar" Web App sahifasi (backendning o'zi beradi: /app/account).
+ * Telegram web_app tugmasi faqat https manzilni qabul qiladi.
+ */
+export function accountWebAppUrl() {
+  const base = config.bot.publicUrl;
+  return base.startsWith('https://') ? `${base}/app/account` : '';
+}
+
+/** Web App (account sahifasi) tugmasini ko'rsatsa bo'ladimi */
+export function accountWebAppReady() {
+  return accountWebAppUrl() !== '';
+}
+
 export const BOT_COMMANDS = [
   { command: 'start', description: 'Asosiy menyu' },
   { command: 'watches', description: 'Mening kuzatuvlarim' },
+  { command: 'account', description: 'Akkaunt va ma\'lumotlar' },
+  { command: 'orders', description: 'Bronlarim va to\'lov' },
   { command: 'help', description: 'Yordam' },
 ];
 
@@ -101,4 +117,4 @@ export async function syncBotProfile() {
   }
 }
 
-export default { getBot, sendMessage, syncBotProfile, webAppUrl, webAppReady };
+export default { getBot, sendMessage, syncBotProfile, webAppUrl, webAppReady, accountWebAppUrl, accountWebAppReady };

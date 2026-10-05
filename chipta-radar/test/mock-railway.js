@@ -75,8 +75,39 @@ export function startMockRailway({ port = 0 } = {}) {
         return send(200, trainDetailResponse(state.places));
       }
 
-      if (req.url === '/api/v1/auth/login') {
-        return send(200, { token: 'header.eyJleHAiOjQxMDI0NDQ4MDB9.sig' });
+      if (req.url === '/api/v1/auth/login' || req.url === '/api/v3/auth/login') {
+        if (state.requireCaptcha && !req.headers['captcha-response']) {
+          return send(403, { message: 'captcha required' });
+        }
+        if (payload.username === 'bad' || payload.password === 'bad') {
+          return send(401, { message: 'invalid credentials' });
+        }
+        // id=777, exp=4102444800 (2100-yil) — base64url JWT (imzosiz, test uchun)
+        const body = Buffer.from(JSON.stringify({ id: 777, sub: payload.username, exp: 4102444800 })).toString('base64url');
+        return send(200, { token: `header.${body}.sig` });
+      }
+
+      if (req.url === '/api/v1/users/get') {
+        if (!req.headers.authorization) return send(401, { message: 'Unauthorized' });
+        return send(200, { data: { firstname: 'Anvar', lastname: 'Ismoilov', phone: '998901234567' } });
+      }
+
+      if (req.url === '/api/v1/query/orders/active/tickets/count') {
+        return send(200, { data: state.orderCount ?? 2 });
+      }
+
+      if (req.url === '/api/v1/query/railway/orders/active/tickets/list') {
+        const orders = state.orders ?? [
+          { orderId: 'ORD-1', status: 'RESERVED', amount: 270000, trainNumber: '764Ф', depStationName: 'Toshkent', arvStationName: 'Samarqand', depDate: '2030-01-10' },
+          { orderId: 'ORD-2', status: 'PAID', amount: 130000, trainNumber: '054Ф' },
+        ];
+        return send(200, { data: { orders } });
+      }
+
+      if (req.url === '/api/v1/payme/create-invoice' || req.url === '/api/v1/clickMerchant/create-invoice') {
+        if (!req.headers.authorization) return send(401, { message: 'Unauthorized' });
+        if (!payload.orderId) return send(400, { message: 'orderId required' });
+        return send(200, { data: { invoiceId: `INV-${payload.orderId}`, status: 'created' } });
       }
 
       return send(404, { message: 'not found' });

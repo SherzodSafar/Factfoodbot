@@ -15,6 +15,7 @@ import { summarizeCar, buildSeatMap, matchCars, normalizePrefs, seatFits } from 
 import { getSettings } from '../services/settings.js';
 import { createWatches, ValidationError } from '../services/watchService.js';
 import { checkWatchNow, withLiveState } from '../services/watcher.js';
+import accountService from '../services/accountService.js';
 import { todayISO, addDays, isISODate } from '../utils/dates.js';
 
 /* ------------------------------------------------------------------ */
@@ -360,8 +361,104 @@ export async function updateProfile(req, res, next) {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/*  Akkaunt, yo'lovchilar, buyurtmalar va to'lov                        */
+/* ------------------------------------------------------------------ */
+
+/** Xizmat xatosini javobga aylantirish (ValidationError → 400, qolgan → keyingisi) */
+function accountError(res, error, next) {
+  if (error instanceof ValidationError) {
+    return res.status(error.status || 400).json({ ok: false, error: error.message, code: error.code || null });
+  }
+  if (error?.name === 'RailwayError') {
+    const status = error.code === 'COOLDOWN' || error.code === 'RATE_LIMITED' ? 429 : 502;
+    return res.status(status).json({ ok: false, error: error.message, code: error.code });
+  }
+  return next(error);
+}
+
+export async function accountStatus(req, res, next) {
+  try {
+    res.json({ ok: true, account: await accountService.getAccountStatus(req.user.id) });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function connectAccount(req, res, next) {
+  try {
+    const result = await accountService.connectAccount(req.user.id, req.body || {});
+    res.json({ ok: true, ...result, account: await accountService.getAccountStatus(req.user.id) });
+  } catch (error) {
+    accountError(res, error, next);
+  }
+}
+
+export async function disconnectAccount(req, res, next) {
+  try {
+    await accountService.disconnectAccount(req.user.id, { wipePassengers: Boolean(req.body?.wipePassengers) });
+    res.json({ ok: true, account: await accountService.getAccountStatus(req.user.id) });
+  } catch (error) {
+    accountError(res, error, next);
+  }
+}
+
+export async function listPassengers(req, res, next) {
+  try {
+    res.json({ ok: true, passengers: await accountService.listPassengers(req.user.id) });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function addPassenger(req, res, next) {
+  try {
+    const passenger = await accountService.addPassenger(req.user.id, req.body || {});
+    res.status(201).json({ ok: true, passenger, passengers: await accountService.listPassengers(req.user.id) });
+  } catch (error) {
+    accountError(res, error, next);
+  }
+}
+
+export async function deletePassenger(req, res, next) {
+  try {
+    await accountService.removePassenger(req.user.id, req.params.id);
+    res.json({ ok: true, passengers: await accountService.listPassengers(req.user.id) });
+  } catch (error) {
+    accountError(res, error, next);
+  }
+}
+
+export async function listOrders(req, res, next) {
+  try {
+    res.json({ ok: true, orders: await accountService.listOrders(req.user.id) });
+  } catch (error) {
+    accountError(res, error, next);
+  }
+}
+
+export async function requestPayment(req, res, next) {
+  try {
+    const result = await accountService.requestPayment(req.user.id, req.body || {});
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    accountError(res, error, next);
+  }
+}
+
+export async function listBookings(req, res, next) {
+  try {
+    res.json({ ok: true, bookings: await accountService.listBookings(req.user.id) });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export default {
   bootstrap, stations, search, train,
   listWatches, getWatch, createWatch, updateWatch, deleteWatch, checkWatch,
   profile, updateProfile,
+  accountStatus, connectAccount, disconnectAccount,
+  listPassengers, addPassenger, deletePassenger,
+  listOrders, requestPayment, listBookings,
 };

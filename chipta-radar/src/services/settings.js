@@ -13,6 +13,11 @@ export const DEFAULTS = {
   maxDaysAhead: config.watcher.maxDaysAhead,
   railwayMinIntervalMs: config.railway.minIntervalMs,
   watcherEnabled: config.watcher.enabled,
+  // Akkaunt va bron imkoniyatlari (Admin Paneldan boshqariladi)
+  accountEnabled: true, // eticket hisobini ulash va buyurtmalarni ko'rish
+  paymentEnabled: true, // bot ichida Payme/Click to'lov so'rovi
+  bookingEnabled: false, // botdan to'g'ridan-to'g'ri joy band qilish (sayt API hujjatsiz — ehtiyotkorlik)
+  maxPassengersPerUser: 10,
 };
 
 const LIMITS = {
@@ -21,12 +26,15 @@ const LIMITS = {
   notifyCooldownMin: [1, 240],
   maxDaysAhead: [1, 120],
   railwayMinIntervalMs: [300, 10_000],
+  maxPassengersPerUser: [1, 50],
 };
+
+const BOOLEANS = ['watcherEnabled', 'accountEnabled', 'paymentEnabled', 'bookingEnabled'];
 
 let current = { ...DEFAULTS };
 
 function sanitize(key, value) {
-  if (key === 'watcherEnabled') return Boolean(value);
+  if (BOOLEANS.includes(key)) return Boolean(value);
   const [min, max] = LIMITS[key] || [];
   const number = Math.round(Number(value));
   if (!Number.isFinite(number)) return DEFAULTS[key];

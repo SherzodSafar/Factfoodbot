@@ -57,6 +57,54 @@ test('topilgan chipta xabari: rasmiy sayt havolasi + inline amallar', () => {
   assert.ok(d.includes('g:got:3') && d.includes('g:pause:3'));
 });
 
+test('asosiy menyuda Akkaunt va Bronlarim bor', () => {
+  const d = datas(ui.mainMenu());
+  assert.ok(d.includes('m:account'), 'akkaunt');
+  assert.ok(d.includes('m:orders'), 'bronlarim');
+});
+
+/** web_app tugmalaridagi url larni yig'ish */
+function webApps(keyboard) {
+  return keyboard.reply_markup.inline_keyboard.flat().map((btn) => btn.web_app?.url).filter(Boolean);
+}
+
+test('akkaunt klaviaturasi: ulangan holatda Web App, uzish va bronlarim', () => {
+  const url = 'https://chipta-radar-api.onrender.com/app/account';
+  const connected = ui.accountKeyboard({ connected: true }, url);
+  assert.ok(webApps(connected).includes(url), 'Web App tugmasi');
+  const d = datas(connected);
+  assert.ok(d.includes('acc:disc'), 'uzish');
+  assert.ok(d.includes('m:orders'), 'bronlarim');
+
+  // Ulanmagan: faqat Web App (ulash) + menyu, uzish yo'q
+  const guest = ui.accountKeyboard({ connected: false }, url);
+  assert.ok(!datas(guest).includes('acc:disc'));
+
+  // Web App manzili yo'q (https emas) — faqat callback tugmalar
+  const noUrl = ui.accountKeyboard({ connected: false }, '');
+  assert.equal(webApps(noUrl).length, 0);
+});
+
+test('bronlarim klaviaturasi: ulangan/ulanmagan', () => {
+  const url = 'https://x.onrender.com/app/account';
+  const connected = ui.ordersKeyboard({ connected: true }, url);
+  assert.ok(webApps(connected).includes(url));
+  assert.ok(datas(connected).includes('m:orders'), 'yangilash');
+  const guest = ui.ordersKeyboard({ connected: false }, url);
+  assert.ok(webApps(guest).includes(url), 'ulash tugmasi');
+});
+
+test('akkauntni uzishni tasdiqlash tugmalari', () => {
+  const d = datas(ui.disconnectConfirmKeyboard());
+  assert.ok(d.includes('acc:disc:yes'), 'tasdiq');
+  assert.ok(d.includes('m:account'), 'orqaga');
+});
+
+test('topilgan chipta: akkaunt ulangan bo\'lsa bron/to\'lov Web App tugmasi', () => {
+  const kb = ui.foundKeyboard({ id: 9 }, 'https://eticket.railway.uz/uz/home', { accountUrl: 'https://x.onrender.com/app/account' });
+  assert.ok(webApps(kb).some((u) => u.includes('/app/account')), 'bron/to\'lov tugmasi');
+});
+
 test('shortDate — "DD-oy, kun" ko\'rinishida', () => {
   assert.match(ui.shortDate('2026-10-05'), /^5-okt, \S+$/);
 });

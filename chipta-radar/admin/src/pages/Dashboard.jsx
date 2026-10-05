@@ -90,7 +90,23 @@ export default function Dashboard({ data, onRefresh, onError, goTo }) {
           <b>{stats.searches.total}</b>
           <small>bugun {stats.searches.today}</small>
         </div>
+        {stats.accounts && (
+          <div className="stat">
+            <span>Ulangan akkauntlar</span>
+            <b>{stats.accounts.connected}</b>
+            <small>yo'lovchi {stats.accounts.passengers} · bron {stats.accounts.bookings}</small>
+          </div>
+        )}
       </div>
+      )}
+
+      {system.features && (
+        <div className="alert alert--info" style={{ marginBottom: 16 }}>
+          🔐 Akkaunt: <b>{system.features.accountEnabled ? 'yoqilgan' : 'o\'chiq'}</b> ·
+          To'lov: <b>{system.features.paymentEnabled ? 'yoqilgan' : 'o\'chiq'}</b> ·
+          Bron: <b>{system.features.bookingEnabled ? 'yoqilgan' : 'o\'chiq'}</b> ·
+          Shifrlash kaliti: <b>{system.vault?.ready ? `tayyor (${system.vault.source})` : '⚠️ sozlanmagan'}</b>
+        </div>
       )}
 
       <div className="grid-2">
