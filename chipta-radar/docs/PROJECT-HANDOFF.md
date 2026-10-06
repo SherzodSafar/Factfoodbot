@@ -77,6 +77,7 @@ All outbound calls to the railway sites go through one shared queue (`core/railw
 | `DATA_ENCRYPTION_KEY` | 32-byte key (hex/base64) for the vault. If set, used directly; else derived from `ADMIN_SECRET` via HKDF. **If this (or ADMIN_SECRET) changes, previously encrypted tokens/passengers can no longer be decrypted.** |
 | `RAILWAY_BASE_URL` | Public search site. Default `https://eticket.railway.uz`. |
 | `ETICKET_ACCOUNT_BASE_URL` | **Account + booking platform. Default `https://eticket.uzrailpass.uz`.** (See §6.) |
+| `ETICKET_DEFAULT_REGION_ID` | `passengerInfo.regionId` sent in reserve when the saved passenger's `regionId` is blank (friend/list often returns `"  "`; the site rejects blank). Default `03`. |
 | `RAILWAY_MIN_INTERVAL_MS`, `RAILWAY_TIMEOUT_MS`, `RAILWAY_CACHE_TTL_MS`, `RAILWAY_BUY_URL`, `RAILWAY_LANG` | Search/queue tuning. |
 | `WATCHER_ENABLED`, `WATCH_INTERVAL_SEC`, `MAX_WATCHES_PER_USER`, `NOTIFY_COOLDOWN_MIN`, `MAX_DAYS_AHEAD` | Watcher behaviour (also editable from Admin Panel). |
 | `KEEP_ALIVE` | Self-ping so the free instance doesn't sleep while watches are active. |
@@ -114,6 +115,7 @@ Field format gotchas (sent verbatim):
 - `gender`: `MALE` / `FEMALE`. `birthday`: `YYYY-MM-DD` (but `friend/list` returns `birthDay` as `DD.MM.YYYY` — convert!).
 - Cyrillic values sent as-is: `carType` e.g. `"Сидячий"`/`"Плацкартный"`, `serviceClass` `"1В"`, `documentType` `"ПУ"`, `trainNumber` `"710Ф"`.
 - `reserveSeatRequirements.seatsRange`: `"5-5"` (first-last seat; single seat = `"N-N"`).
+- `regionId` must NOT be blank (live error: `[BLANK-1] ...passengerInfo.regionId: must not be blank`). `friend/list` often returns `"  "` → code falls back to `ETICKET_DEFAULT_REGION_ID` (`03`).
 - `webCustomer` = the **account owner** (id = account UUID, username = email, ip = host) — NOT the passenger.
 
 ---

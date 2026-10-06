@@ -84,6 +84,29 @@ test('reserve so\'rovi kontrakt ko\'rinishida tuziladi', async () => {
   assert.match(sent.subItems[0].reserveSeatRequirements.seatsRange, /^\d+-\d+$/);
 });
 
+test('reserve: friend/list bo\'sh regionId ("  ") qaytarsa — standart regionId yuboriladi', async () => {
+  const session = eticket.createSession();
+  await eticket.login({ login: '998901234567', password: 'secret' }, session);
+  mock.state.friends = [
+    { friendId: 'fr-2', firstname: 'Madina', lastname: 'Gulmmatova', midname: 'Hamro qizi', sex: 'F', birthDay: '03.10.1999', docType: 'ПУ', doc: 'AB7654321', citizenship: 'UZB', regionId: '  ', yourSelf: false },
+  ];
+  try {
+    const friends = await eticket.getFriends(session, '777');
+    assert.equal(friends[0].regionId, '');
+    const res = await eticket.reserve(session, {
+      train: { number: '054Ф' },
+      car: { number: '07', carType: 'Плацкартный', serviceClass: '3П' },
+      seats: [9],
+      passengers: friends,
+      webCustomer: { id: '777', username: 'saparboev@gmail.com' },
+    });
+    assert.ok(res.orderId);
+    assert.equal(mock.state.lastReserve.subItems[0].tickets[0].passengerInfo.regionId, '03');
+  } finally {
+    mock.state.friends = undefined;
+  }
+});
+
 test('reserve xato javobida — RESERVE_FAILED', async () => {
   const session = eticket.createSession();
   await eticket.login({ login: '998901234567', password: 'secret' }, session);

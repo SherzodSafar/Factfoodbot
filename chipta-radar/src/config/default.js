@@ -87,6 +87,9 @@ const config = {
    */
   account: {
     baseUrl: (process.env.ETICKET_ACCOUNT_BASE_URL || 'https://eticket.uzrailpass.uz').replace(/\/+$/, ''),
+    // reserve'da passengerInfo.regionId bo'sh bo'lmasligi shart. friend/list ko'pincha "  "
+    // qaytaradi — shunda shu qiymat yuboriladi ("03" — sayt o'zi yuborgan, qabul qilingan qiymat).
+    defaultRegionId: (process.env.ETICKET_DEFAULT_REGION_ID || '03').trim(),
   },
 
   /** Kuzatuv (monitoring) xizmati — standart qiymatlar, Admin Paneldan o'zgartiriladi */

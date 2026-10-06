@@ -51,6 +51,7 @@ try {
 }
 
 const TIMEOUT_MS = config.railway.timeoutMs;
+const DEFAULT_REGION_ID = config.account.defaultRegionId || '03';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -431,7 +432,7 @@ export async function getFriends(session, accountId) {
     docType: clean(f.docType) || 'ПУ',
     docNumber: clean(f.doc ?? f.documentId),
     citizenship: clean(f.citizenship) || 'UZB',
-    regionId: f.regionId !== undefined ? String(f.regionId) : '',
+    regionId: clean(f.regionId),
     self: Boolean(f.yourSelf),
   })).filter((f) => f.firstName && f.lastName && f.docNumber);
 }
@@ -543,7 +544,8 @@ export async function reserve(session, { train, car, seats, passengers, webCusto
       gender: GENDER_MAP[p.gender] || p.gender || 'MALE',
       citizenship: p.citizenship || 'UZB',
       birthday: birthToIso(p.birthDate),
-      regionId: p.regionId != null ? String(p.regionId) : '',
+      // Sayt bo'sh regionId'ni rad etadi ("must not be blank") — bo'sh bo'lsa standart qiymat
+      regionId: clean(p.regionId) || DEFAULT_REGION_ID,
       discountType: 'REGULAR',
       referenceDocument: null,
       prefix: null,

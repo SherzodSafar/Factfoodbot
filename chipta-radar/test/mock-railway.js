@@ -123,6 +123,9 @@ export function startMockRailway({ port = 0 } = {}) {
         if (!req.headers.authorization) return send(401, { message: 'Unauthorized' });
         state.lastReserve = payload;
         if (state.reserveFail) return send(200, { messageLevel: 'ERROR', code: 400, message: 'reserve failed', response: null });
+        // Haqiqiy sayt kabi: bo'sh regionId rad etiladi
+        const blank = (payload.subItems || []).flatMap((s) => s.tickets || []).findIndex((t) => !String(t.passengerInfo?.regionId ?? '').trim());
+        if (blank >= 0) return send(200, { messageLevel: 'ERROR', code: 400, message: `[BLANK-1] subItems[0].tickets[${blank}].passengerInfo.regionId: must not be blank`, response: null });
         return send(200, { messageLevel: 'OK', code: 200, message: null, response: state.orderId || 'UO-AUTO-1' });
       }
       if (req.url.startsWith('/api/v3/universal-orders/query/get/payment-end-time/')) {
