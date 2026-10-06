@@ -258,8 +258,12 @@ export async function applyResult(watch, result, { notify = true, markNotified =
 /*  Avto-bron (joy chiqsa — bot o'zi bron qilib, to'lov so'rovini yuboradi) */
 /* ------------------------------------------------------------------ */
 
+const PROVIDER_NAME = { payme: 'Payme', click: 'Click' };
+
 function autoBookOkMessage(watch, o) {
-  return [
+  const pay = o.payment || {};
+  const providerName = PROVIDER_NAME[pay.provider] || null;
+  const lines = [
     '🤖✅ <b>Joy avtomatik band qilindi!</b>',
     '',
     `📍 <b>${escapeHtml(watch.fromName)} → ${escapeHtml(watch.toName)}</b>`,
@@ -267,9 +271,20 @@ function autoBookOkMessage(watch, o) {
     `🚆 ${escapeHtml(String(o.carNumber))}-vagon · joy: <b>${o.seats.join(', ')}</b>`,
     `🧾 Buyurtma: <b>${escapeHtml(o.orderId)}</b>`,
     '',
-    '💳 <b>To\'lovni o\'zingiz qilasiz</b> — eticketda to\'lang, aks holda bron ~12 daqiqada bekor bo\'ladi.',
-    '⏳ Shoshiling — joy siz uchun vaqtincha ushlab turibdi.',
-  ].filter(Boolean).join('\n');
+  ];
+  if (pay.ok && providerName) {
+    lines.push(`💳 <b>To'lov so'rovi ${providerName}'ga yuborildi</b> — ${escapeHtml(pay.phoneMasked || '')} raqamiga.`);
+    lines.push(`📲 ${providerName} ilovasini oching va to'lovni tasdiqlang. Bron ~12 daqiqa ushlanadi.`);
+  } else {
+    lines.push('💳 <b>To\'lovni o\'zingiz qiling</b> — pastdagi tugma orqali to\'lang, aks holda bron ~12 daqiqada bekor bo\'ladi.');
+    if (pay.requested && providerName) {
+      lines.push(`ℹ️ ${providerName} orqali avtomatik so'rov yuborilmadi — qo'lda to'lang.`);
+    } else if (pay.reason === 'no-method') {
+      lines.push('ℹ️ To\'lov tizimi saqlanmagan — "Akkaunt" bo\'limida Payme/Click va telefon raqamingizni saqlab qo\'ying.');
+    }
+    lines.push('⏳ Shoshiling — joy siz uchun vaqtincha ushlab turibdi.');
+  }
+  return lines.filter(Boolean).join('\n');
 }
 
 function autoBookKeyboard() {
@@ -314,11 +329,14 @@ async function tryAutoBook(watch, result) {
   if (outcome.ok) {
     try {
       const updated = await WatchModel.update(watch.id, {
-        status: 'FOUND', autoBookStatus: 'PAID_REQUESTED', autoBookOrderId: outcome.orderId || null, autoBookAt: now,
+        status: 'FOUND',
+        autoBookStatus: outcome.payment?.ok ? 'PAID_REQUESTED' : 'RESERVED',
+        autoBookOrderId: outcome.orderId || null,
+        autoBookAt: now,
       });
       patchCached(updated);
     } catch { /* o'chirilgan bo'lishi mumkin */ }
-    console.log(`[watcher] Avto-bron #${watch.id}: ${outcome.orderId} (${outcome.seats?.join(',')})`);
+    console.log(`[watcher] Avto-bron #${watch.id}: ${outcome.orderId} (${outcome.seats?.join(',')}) pay=${outcome.payment?.ok ? outcome.payment.provider : 'manual'}`);
     if (watch.user) {
       await sendMessage(watch.user.telegramId, autoBookOkMessage(watch, outcome), autoBookKeyboard(), {
         quietNight: watch.user.quietNight,

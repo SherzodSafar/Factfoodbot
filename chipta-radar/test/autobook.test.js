@@ -123,8 +123,25 @@ test('autoBookOnFound: joy band qilinadi (reserve), to\'lovsiz', async () => {
   assert.ok(outcome.carNumber);
   assert.equal(db.bookings.length, 1);
   assert.equal(db.bookings[0].status, 'RESERVED');
+  assert.equal(outcome.payment.requested, false, 'to\'lov usuli yo\'q — so\'rov yuborilmaydi');
+  assert.equal(outcome.payment.reason, 'no-method');
   // reserve payloadida yo'lovchi va joy bor
   assert.ok(mock.state.lastReserve.subItems[0].tickets.length === 1);
+});
+
+test('autoBookOnFound: to\'lov usuli saqlangan — Payme so\'rovi yuboriladi', async () => {
+  await accountService.connectAccount(1, { login: '998901234567', password: 'secret', consent: true });
+  await accountService.setPaymentMethod(1, { provider: 'payme', phone: '998901234567' });
+  const watch = { id: 22, userId: 1, quantity: 1, fromCode: '2900000', toCode: '2900700', date: '2030-01-10', fromName: 'A', toName: 'B', carTypes: ['platskart'], section: 'any', berth: 'any', together: 'any' };
+  db.watches.push(watch);
+
+  const outcome = await accountService.autoBookOnFound(1, watch, { number: '054Ф', id: null });
+  assert.equal(outcome.ok, true, outcome.reason);
+  assert.equal(outcome.payment.requested, true);
+  assert.equal(outcome.payment.ok, true);
+  assert.equal(outcome.payment.provider, 'payme');
+  assert.equal(outcome.payment.invoiceId, 'INV-UO-AUTO-1');
+  assert.equal(db.bookings[0].status, 'PAY_REQUESTED');
 });
 
 test('autoBookOnFound: eticketda yo\'lovchi yo\'q — reason passengers', async () => {

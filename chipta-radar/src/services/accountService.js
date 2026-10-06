@@ -391,6 +391,27 @@ function pickFriends(friends, quantity) {
   return [...friends].sort((a, b) => (b.self ? 1 : 0) - (a.self ? 1 : 0)).slice(0, quantity);
 }
 
+/**
+ * Avto-bron oxirida to'lov so'rovini yuborish: foydalanuvchi tanlagan tizimga
+ * (Payme/Click) saqlangan telefon raqamiga invoice jo'natamiz. Bu bosqich
+ * muvaffaqiyatsiz bo'lsa ham BRON SAQLANADI (foydalanuvchi o'zi to'laydi),
+ * shuning uchun hech qachon throw qilmaydi — natijani ob'ekt sifatida qaytaradi.
+ * @returns {Promise<{requested:boolean, ok:boolean, provider:string|null, phoneMasked:string|null, invoiceId:string|null, reason?:string}>}
+ */
+async function requestAutoPayment(session, secret, orderId) {
+  const provider = secret.payProvider || null;
+  const phone = secret.payPhone || null;
+  const phoneMasked = phone ? maskLogin(phone) : null;
+  if (!provider || !phone) return { requested: false, ok: false, provider, phoneMasked, invoiceId: null, reason: 'no-method' };
+  if (!getSettings().paymentEnabled) return { requested: false, ok: false, provider, phoneMasked, invoiceId: null, reason: 'disabled' };
+  try {
+    const result = await eticket.createPaymentInvoice(session, { orderId, provider, phone });
+    return { requested: true, ok: Boolean(result.ok), provider, phoneMasked, invoiceId: result.invoiceId || null };
+  } catch (error) {
+    return { requested: true, ok: false, provider, phoneMasked, invoiceId: null, reason: error?.code || 'error' };
+  }
+}
+
 /** Kuzatuvga avto-bronni yoqish/o'chirish */
 export async function setAutoBook(userId, watchId, { enabled } = {}) {
   const watch = await WatchModel.findOwned(watchId, userId);
@@ -461,15 +482,20 @@ export async function autoBookOnFound(userId, watch, matchedTrain) {
 
     const payEndsAt = await eticket.getPaymentEndTime(session, reserved.orderId).catch(() => null);
 
+    // 5) TO'LOV SO'ROVI — foydalanuvchi tanlagan tizimga (Payme/Click) saqlangan
+    //    raqamga invoice jo'natamiz. Bu bosqich chiqmasa ham bron saqlanadi.
+    const payment = await requestAutoPayment(session, secret, reserved.orderId);
+
     await BookingModel.create({
       userId, watchId: watch.id, orderId: reserved.orderId,
       trainNumber: train.number, fromCode: watch.fromCode, toCode: watch.toCode, date: watch.date,
       carNumber: String(pick.number), carType: pick.carType, seats: pick.seats.map(String),
-      passengers: chosen.length, amount: null, status: 'RESERVED',
+      passengers: chosen.length, amount: null,
+      status: payment.ok ? 'PAY_REQUESTED' : 'RESERVED',
       expiresAt: payEndsAt ? new Date(payEndsAt) : null,
     }).catch(() => {});
 
-    return { ok: true, orderId: reserved.orderId, seats: pick.seats, carNumber: pick.number, payEndsAt };
+    return { ok: true, orderId: reserved.orderId, seats: pick.seats, carNumber: pick.number, payEndsAt, payment };
   });
 }
 
