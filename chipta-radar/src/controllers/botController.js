@@ -747,7 +747,7 @@ async function showAutoBook(ctx, watchId) {
     if (provName && pm.phoneMasked) {
       lines.push(`💳 To'lov: <b>${provName}</b> · ${escapeHtml(pm.phoneMasked)}`);
     } else {
-      lines.push('💳 To\'lov tizimi saqlanmagan — "Akkaunt → To\'lov usuli" dan Payme/Click va raqam saqlang. (Saqlanmasa bot joyni band qiladi, to\'lovni o\'zingiz qilasiz.)');
+      lines.push('💳 To\'lov uchun telefon raqami saqlanmagan — "Akkaunt → To\'lov usuli" dan Click (yoki Payme) raqamingizni saqlang. (Saqlanmasa bot joyni band qiladi, to\'lovni o\'zingiz qilasiz.)');
     }
     lines.push('');
     if (watch.autoBook) {

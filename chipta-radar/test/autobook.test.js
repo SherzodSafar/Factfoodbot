@@ -134,7 +134,7 @@ test('setAutoBook: eticketda yo\'lovchi yo\'q bo\'lsa — xato', async () => {
   await assert.rejects(accountService.setAutoBook(1, 11, { enabled: true }), /yo'lovchi/i);
 });
 
-test('autoBookOnFound: joy band qilinadi (reserve), to\'lovsiz', async () => {
+test('autoBookOnFound: to\'lov tizimi tanlanmagan — standart Click\'ga so\'rov yuboriladi', async () => {
   await accountService.connectAccount(1, { login: '998901234567', password: 'secret', consent: true });
   const watch = { id: 20, userId: 1, quantity: 1, fromCode: '2900000', toCode: '2900700', date: '2030-01-10', fromName: 'A', toName: 'B', carTypes: ['platskart'], section: 'any', berth: 'any', together: 'any' };
   db.watches.push(watch);
@@ -145,9 +145,13 @@ test('autoBookOnFound: joy band qilinadi (reserve), to\'lovsiz', async () => {
   assert.ok(outcome.seats.length === 1);
   assert.ok(outcome.carNumber);
   assert.equal(db.bookings.length, 1);
-  assert.equal(db.bookings[0].status, 'RESERVED');
-  assert.equal(outcome.payment.requested, false, 'to\'lov usuli yo\'q — so\'rov yuborilmaydi');
-  assert.equal(outcome.payment.reason, 'no-method');
+  assert.equal(db.bookings[0].status, 'PAY_REQUESTED');
+  assert.equal(outcome.payment.requested, true, 'tanlanmagan bo\'lsa ham Click\'ga so\'rov ketadi');
+  assert.equal(outcome.payment.ok, true);
+  assert.equal(outcome.payment.provider, 'click');
+  assert.equal(outcome.payment.invoiceId, 'INV-UO-AUTO-1');
+  assert.equal(mock.state.lastInvoice.url, '/api/v1/clickMerchant/create-invoice');
+  assert.equal(mock.state.lastInvoice.phone, '998901234567');
   // reserve payloadida yo'lovchi va joy bor
   assert.ok(mock.state.lastReserve.subItems[0].tickets.length === 1);
 });

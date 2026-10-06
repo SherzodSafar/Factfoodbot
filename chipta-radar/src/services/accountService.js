@@ -323,6 +323,9 @@ export async function listBookings(userId) {
 /*  Default to'lov usuli (avto-bron va tezkor to'lov uchun)             */
 /* ------------------------------------------------------------------ */
 
+// Payme/Click tanlanmagan bo'lsa — standart tizim (Click), telefon esa login raqami
+const DEFAULT_PAY_PROVIDER = config.account.defaultPayProvider || 'click';
+
 /** Akkauntdagi saqlangan to'lov usuli (provider + telefon) */
 export async function getPaymentMethod(userId, knownSecret = null) {
   let secret = knownSecret;
@@ -336,7 +339,7 @@ export async function getPaymentMethod(userId, knownSecret = null) {
     }
   }
   return {
-    provider: secret.payProvider || null,
+    provider: secret.payProvider || DEFAULT_PAY_PROVIDER,
     phone: secret.payPhone || null,
     phoneMasked: secret.payPhone ? maskLogin(secret.payPhone) : null,
   };
@@ -399,7 +402,7 @@ function pickFriends(friends, quantity) {
  * @returns {Promise<{requested:boolean, ok:boolean, provider:string|null, phoneMasked:string|null, invoiceId:string|null, reason?:string}>}
  */
 async function requestAutoPayment(session, secret, orderId) {
-  const provider = secret.payProvider || null;
+  const provider = secret.payProvider || DEFAULT_PAY_PROVIDER;
   const phone = secret.payPhone || null;
   const phoneMasked = phone ? maskLogin(phone) : null;
   if (!provider || !phone) return { requested: false, ok: false, provider, phoneMasked, invoiceId: null, reason: 'no-method' };

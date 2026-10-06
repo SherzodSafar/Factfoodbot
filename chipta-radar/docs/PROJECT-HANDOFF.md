@@ -77,6 +77,7 @@ All outbound calls to the railway sites go through one shared queue (`core/railw
 | `DATA_ENCRYPTION_KEY` | 32-byte key (hex/base64) for the vault. If set, used directly; else derived from `ADMIN_SECRET` via HKDF. **If this (or ADMIN_SECRET) changes, previously encrypted tokens/passengers can no longer be decrypted.** |
 | `RAILWAY_BASE_URL` | Public search site. Default `https://eticket.railway.uz`. |
 | `ETICKET_ACCOUNT_BASE_URL` | **Account + booking platform. Default `https://eticket.uzrailpass.uz`.** (See §6.) |
+| `DEFAULT_PAY_PROVIDER` | Payment system (`click` or `payme`) the auto-book payment request goes to when the user never picked one. Default `click`. The phone defaults to the account login number. |
 | `ETICKET_DEFAULT_REGION_ID` | `passengerInfo.regionId` sent in reserve when the saved passenger's `regionId` is blank (friend/list often returns `"  "`; the site rejects blank). Default `03`. |
 | `RAILWAY_MIN_INTERVAL_MS`, `RAILWAY_TIMEOUT_MS`, `RAILWAY_CACHE_TTL_MS`, `RAILWAY_BUY_URL`, `RAILWAY_LANG` | Search/queue tuning. |
 | `WATCHER_ENABLED`, `WATCH_INTERVAL_SEC`, `MAX_WATCHES_PER_USER`, `NOTIFY_COOLDOWN_MIN`, `MAX_DAYS_AHEAD` | Watcher behaviour (also editable from Admin Panel). |
