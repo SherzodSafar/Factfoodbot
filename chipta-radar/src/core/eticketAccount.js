@@ -24,21 +24,31 @@ const AUTH = {
   login: '/api/v1/auth/login',
   loginV3: '/api/v3/auth/login',
   profile: '/api/v1/users/get',
+  friends: '/api/v1/users/friend/list',
   activeCount: '/api/v1/query/orders/active/tickets/count',
   activeList: '/api/v1/query/railway/orders/active/tickets/list',
   ordersList: '/api/v3/query/orders/list',
   orderInfo: '/api/v1/universal-orders/get/',
+  // Qidiruv va joy xaritasi (bron uchun — bron platformasida)
+  trainsList: '/api/v3/handbook/trains/list',
+  trainPlaces: '/api/v1/handbook/trains',
+  // Bron: bitta chaqiruv order + yo'lovchi + joyni band qiladi (docs/uzrailpass-booking-api.md)
   reserve: '/api/v3/universal-orders/reserve',
-  hold: '/api/v3/universal-orders/hold',
-  addPassenger: '/api/v3/universal-orders/add-passenger-info',
+  paymentEndTime: '/api/v3/universal-orders/query/get/payment-end-time/',
   cancel: '/api/v3/universal-orders/cancel',
   paymentTypes: '/api/v3/payment-type/list',
   payme: '/api/v1/payme/create-invoice',
   click: '/api/v1/clickMerchant/create-invoice',
 };
 
-// Saytdagi reCAPTCHA v3 kaliti (ochiq JS'dan). Login/ro'yxatda "captcha-response" talab qilinadi.
-const CAPTCHA_SITE_KEY = process.env.RAILWAY_RECAPTCHA_KEY || '6LeZk8YUAAAAAEYmaS1cCEazk907s_Yu8A4PZkho';
+// Bron/akkaunt platformasi (uzrailpass.uz). Ochiq poyezd qidiruvi (railway.uz) alohida.
+const BASE_URL = config.account.baseUrl;
+let BASE_HOST = 'eticket.uzrailpass.uz';
+try {
+  BASE_HOST = new URL(BASE_URL).host;
+} catch {
+  /* noto'g'ri URL — standart host */
+}
 
 const TIMEOUT_MS = config.railway.timeoutMs;
 
@@ -101,7 +111,10 @@ function absorbCookies(session, response) {
 }
 
 function headersFor(session, extra = {}) {
+  // browserHeaders railway.uz uchun Origin/Referer qo'yadi — bron platformasiga moslaymiz
   const headers = browserHeaders(extra);
+  headers.Origin = BASE_URL;
+  headers.Referer = `${BASE_URL}/${config.railway.lang}/home`;
   if (session.cookies.size) headers.Cookie = cookieHeader(session);
   if (session.xsrf) headers['X-XSRF-TOKEN'] = session.xsrf;
   if (session.token) headers.Authorization = `Bearer ${session.token}`;
@@ -114,7 +127,7 @@ async function rawFetch(path, session, { method = 'GET', body, headers, captcha 
   const extra = { ...(headers || {}) };
   if (captcha) extra['captcha-response'] = captcha;
   try {
-    const response = await fetch(`${config.railway.baseUrl}${path}`, {
+    const response = await fetch(`${BASE_URL}${path}`, {
       method,
       body,
       headers: headersFor(session, extra),
@@ -257,8 +270,16 @@ export async function login({ login: username, password, captcha = '' }, session
 
   session.token = String(token);
   session.tokenExp = jwtExpiry(token) || Date.now() + 25 * 60_000;
-  const accountId = jwtField(token, 'id', 'userId', 'sub');
-  return { token: session.token, tokenExp: session.tokenExp, accountId: accountId ? String(accountId) : null, session };
+  // webCustomer uchun: UUID va username (reserve so'rovida kerak)
+  const accountId = jwtField(token, 'id', 'userId', 'uuid', 'user_id');
+  const accountUsername = jwtField(token, 'username', 'email', 'preferred_username', 'sub') || username;
+  return {
+    token: session.token,
+    tokenExp: session.tokenExp,
+    accountId: accountId ? String(accountId) : null,
+    username: accountUsername ? String(accountUsername) : null,
+    session,
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -366,56 +387,221 @@ export async function createPaymentInvoice(session, { orderId, provider, phone }
 }
 
 /* ------------------------------------------------------------------ */
-/*  Bron (ixtiyoriy, admin yoqsa)                                      */
+/*  Saqlangan yo'lovchilar (eticket "friends")                          */
+/* ------------------------------------------------------------------ */
+
+/** "09.10.2026 08:37" → { date:"2026-10-09", time:"08:37:00" } */
+function splitSiteDateTime(value) {
+  const text = clean(value);
+  const m = text.match(/^(\d{2})\.(\d{2})\.(\d{4})[ T]?(\d{2}):(\d{2})/);
+  if (m) return { date: `${m[3]}-${m[2]}-${m[1]}`, time: `${m[4]}:${m[5]}:00` };
+  const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})[ T]?(\d{2}):(\d{2})/);
+  if (iso) return { date: `${iso[1]}-${iso[2]}-${iso[3]}`, time: `${iso[4]}:${iso[5]}:00` };
+  return { date: null, time: null };
+}
+
+/** "03.10.1999" → "1999-10-03" */
+function birthToIso(value) {
+  const m = clean(value).match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  const iso = clean(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return iso ? `${iso[1]}-${iso[2]}-${iso[3]}` : clean(value);
+}
+
+const GENDER_MAP = { M: 'MALE', F: 'FEMALE', MALE: 'MALE', FEMALE: 'FEMALE', male: 'MALE', female: 'FEMALE' };
+
+/**
+ * eticketda saqlangan yo'lovchilar (reserve uchun — barcha kerakli maydonlar tayyor:
+ * familiya/ism/sharif, pasport, tug'ilgan sana, jins, fuqarolik, regionId).
+ * @returns {Promise<Array>} friend obyektlari
+ */
+export async function getFriends(session, accountId) {
+  const { data } = await authedRequest(session, AUTH.friends, {
+    method: 'POST',
+    payload: { userId: accountId || jwtField(session.token, 'id', 'userId', 'uuid') || '' },
+  });
+  const list = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
+  return list.map((f) => ({
+    friendId: clean(f.friendId),
+    firstName: clean(f.firstname ?? f.firstName),
+    lastName: clean(f.lastname ?? f.lastName),
+    middleName: clean(f.midname ?? f.middleName),
+    gender: GENDER_MAP[clean(f.sex ?? f.gender)] || 'MALE',
+    birthDate: birthToIso(f.birthDay ?? f.birthday),
+    docType: clean(f.docType) || 'ПУ',
+    docNumber: clean(f.doc ?? f.documentId),
+    citizenship: clean(f.citizenship) || 'UZB',
+    regionId: f.regionId !== undefined ? String(f.regionId) : '',
+    self: Boolean(f.yourSelf),
+  })).filter((f) => f.firstName && f.lastName && f.docNumber);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Qidiruv va joy xaritasi (bron platformasida)                        */
 /* ------------------------------------------------------------------ */
 
 /**
- * Joy band qilish (hold → reserve → yo'lovchi). Sayt API hujjatsiz bo'lgani uchun
- * bu "eng yaxshi harakat": javob ko'rinishi o'zgarsa xatolik qaytariladi, bot
- * foydalanuvchini saytga yo'naltiradi.
- * @param order {trainNumber, from, to, date, trainId, carNumber, seats, carType}
- * @param passengers [{firstName,lastName,docNumber,birthDate,gender,citizenship}]
+ * Bron platformasida poyezd qidirish (reserve uchun kerakli maydonlar bilan:
+ * providerType, brand, jo'nash/yetib borish kodi/nomi/sana/vaqti).
  */
-export async function reserveSeats(session, { order, passengers }) {
+export async function searchTrainsForBooking(session, { from, to, date }) {
+  const { data } = await authedRequest(session, AUTH.trainsList, {
+    method: 'POST',
+    payload: { directions: { forward: { date, depStationCode: from, arvStationCode: to } }, routeType: 'INTERCITY' },
+  });
+  const trains = data?.data?.directions?.forward?.trains ?? data?.directions?.forward?.trains ?? [];
+  return (Array.isArray(trains) ? trains : []).map((t) => {
+    const dep = splitSiteDateTime(t.departureDate ?? t.departure);
+    const arr = splitSiteDateTime(t.arrivalDate ?? t.arrival);
+    const sub = t.subRoute ?? {};
+    return {
+      number: clean(t.number ?? t.trainNumber),
+      brand: clean(t.brand),
+      providerType: clean(t.providerType) || 'EXPRESS',
+      departure: { code: clean(sub.depStationCode) || String(from), name: clean(sub.depStationName), date: dep.date || date, time: dep.time },
+      arrival: { code: clean(sub.arvStationCode) || String(to), name: clean(sub.arvStationName), date: arr.date || date, time: arr.time },
+      cars: Array.isArray(t.cars) ? t.cars : [],
+    };
+  });
+}
+
+/**
+ * Joy xaritasi: har bir vagon — raqami, (kirill) turi, xizmat klassi va bo'sh joylar.
+ * reserve trainInfo.carNumber / carType / serviceClass shu yerdan olinadi.
+ */
+export async function getSeatPlaces(session, { from, to, date, trainNumber, trainId = null }) {
+  const { data } = await authedRequest(session, AUTH.trainPlaces, {
+    method: 'POST',
+    payload: { depDate: date, depStationCode: from, arvStationCode: to, trainNumber, trainId },
+  });
+  const train = data?.data?.train ?? data?.train ?? data?.data ?? {};
+  const groups = train?.carGroup ?? train?.carGroups ?? train?.cars ?? [];
+  const cars = [];
+  for (const group of Array.isArray(groups) ? groups : []) {
+    const carType = clean(group?.type ?? group?.typeShow);
+    const serviceClass = clean(group?.services?.type ?? group?.classService ?? group?.serviceClass);
+    const list = Array.isArray(group?.cars) ? group.cars : [group];
+    for (const car of list) {
+      const places = parsePlaceNumbers(car?.places ?? car?.seats ?? car?.freePlaces ?? car?.placeList);
+      const number = clean(car?.number ?? car?.carNumber ?? car?.num);
+      if (!number && !places.length) continue;
+      cars.push({ number: number || '?', carType, serviceClass: serviceClass || clean(car?.classService), places });
+    }
+  }
+  return cars;
+}
+
+/** Joy raqamlarini o'qish ([9,11] | ["09","11"] | "9,11" | [{number:9}]) */
+function parsePlaceNumbers(value) {
+  const out = new Set();
+  const walk = (item) => {
+    if (item === null || item === undefined) return;
+    if (typeof item === 'number') { if (Number.isInteger(item) && item > 0) out.add(item); }
+    else if (typeof item === 'string') item.split(/[,;\s]+/).filter(Boolean).forEach((tok) => { const n = Number.parseInt(tok, 10); if (n > 0) out.add(n); });
+    else if (Array.isArray(item)) item.forEach(walk);
+    else if (typeof item === 'object') walk(item.number ?? item.seatNumber ?? item.place ?? item.placeNumber ?? item.seat);
+  };
+  walk(value);
+  return [...out].filter((n) => n > 0 && n < 1000).sort((a, b) => a - b);
+}
+
+/* ------------------------------------------------------------------ */
+/*  BRON — bitta so'rov (order + yo'lovchi + joy)                       */
+/*  Kontrakt: docs/uzrailpass-booking-api.md                           */
+/* ------------------------------------------------------------------ */
+
+/** "Lastname=Firstname=Patronymic" (sharif bo'lmasa — ikki qismli) */
+function buildFullName(p) {
+  const parts = [p.lastName, p.firstName];
+  if (p.middleName) parts.push(p.middleName);
+  return parts.filter(Boolean).join('=');
+}
+
+/**
+ * Joy band qilish — bitta POST /api/v3/universal-orders/reserve.
+ * @param train {number, brand, providerType, departure:{code,name,date,time}, arrival:{...}}
+ * @param car   {number, carType, serviceClass}
+ * @param seats [n,...] tanlangan joy raqamlari
+ * @param passengers [{firstName,lastName,middleName,gender,birthDate,docType,docNumber,citizenship,regionId}]
+ * @param webCustomer {id, username}
+ * @returns {Promise<{orderId:string, raw:any}>}
+ */
+export async function reserve(session, { train, car, seats, passengers, webCustomer }) {
   if (!tokenValid(session)) throw new RailwayError('Avval akkauntni ulang', { code: 'AUTH_REQUIRED' });
-  if (!order?.seats?.length) throw new RailwayError('Joylar tanlanmagan', { code: 'INPUT' });
+  if (!train?.number || !car?.number) throw new RailwayError('Poyezd/vagon ma\'lumoti to\'liq emas', { code: 'INPUT' });
+  if (!seats?.length) throw new RailwayError('Joylar tanlanmagan', { code: 'INPUT' });
   if (!passengers?.length) throw new RailwayError('Yo\'lovchi tanlanmagan', { code: 'INPUT' });
 
-  const holdPayload = {
-    trainNumber: order.trainNumber,
-    depStationCode: order.from,
-    arvStationCode: order.to,
-    depDate: order.date,
-    trainId: order.trainId ?? null,
-    carNumber: order.carNumber,
-    places: order.seats,
+  const sorted = [...seats].sort((a, b) => a - b);
+  const seatsRange = `${sorted[0]}-${sorted[sorted.length - 1]}`;
+
+  const tickets = passengers.map((p) => ({
+    passengerInfo: {
+      fullName: buildFullName(p),
+      documentId: p.docNumber,
+      documentType: p.docType || 'ПУ',
+      gender: GENDER_MAP[p.gender] || p.gender || 'MALE',
+      citizenship: p.citizenship || 'UZB',
+      birthday: birthToIso(p.birthDate),
+      regionId: p.regionId != null ? String(p.regionId) : '',
+      discountType: 'REGULAR',
+      referenceDocument: null,
+      prefix: null,
+      tariffCode: null,
+      child: null,
+    },
+    pricingMode: 'FULL',
+    hasPatronymics: Boolean(p.middleName),
+  }));
+
+  const payload = {
+    channel: 'WEB',
+    orderKind: 'RETAIL',
+    paymentMode: 'CARD',
+    groupType: 'INDIVIDUALS',
+    orderType: 'INDIVIDUAL',
+    providerType: train.providerType || 'EXPRESS',
+    documentMode: 'NAMED',
+    subItems: [
+      {
+        trainInfo: {
+          trainNumber: train.number,
+          carNumber: car.number,
+          carType: car.carType,
+          serviceClass: car.serviceClass,
+          directionSequence: 1,
+          brand: train.brand,
+        },
+        departure: train.departure,
+        arrival: train.arrival,
+        hasInsurance: false,
+        hasCateringOrder: null,
+        hasGreenTicket: false,
+        reserveSeatRequirements: { seatsRange },
+        tickets,
+      },
+    ],
+    webCustomer: { id: webCustomer?.id || '', username: webCustomer?.username || '', ip: BASE_HOST },
   };
 
-  const { data: holdData } = await authedRequest(session, AUTH.hold, { method: 'POST', payload: holdPayload });
-  const orderId = clean(holdData?.data?.orderId ?? holdData?.orderId ?? holdData?.data?.id);
-  if (!orderId) throw new RailwayError('Joyni band qilib bo\'lmadi (sayt javobi kutilgandek emas)', { code: 'RESERVE_FAILED' });
-
-  for (const [index, passenger] of passengers.entries()) {
-    await authedRequest(session, AUTH.addPassenger, {
-      method: 'POST',
-      payload: {
-        orderId,
-        placeNumber: order.seats[index],
-        carNumber: order.carNumber,
-        firstname: passenger.firstName,
-        lastname: passenger.lastName,
-        doc: passenger.docNumber,
-        birthDay: passenger.birthDate,
-        sex: passenger.gender,
-        citizenship: passenger.citizenship || 'UZB',
-      },
-    });
+  const { data } = await authedRequest(session, AUTH.reserve, { method: 'POST', payload });
+  const level = clean(data?.messageLevel).toUpperCase();
+  const orderId = clean(data?.response ?? data?.data?.response ?? data?.orderNumber ?? data?.data?.orderNumber);
+  if (!orderId || (level && level !== 'OK') || (data?.code && Number(data.code) >= 400)) {
+    const message = clean(data?.message) || 'Joyni band qilib bo\'lmadi';
+    throw new RailwayError(message, { code: 'RESERVE_FAILED' });
   }
+  return { orderId, raw: data };
+}
 
-  const { data: reserveData } = await authedRequest(session, AUTH.reserve, { method: 'POST', payload: { orderId } });
-  const amount = Number(reserveData?.data?.amount ?? reserveData?.amount ?? 0) || null;
-  const expiresAt = clean(reserveData?.data?.expireAt ?? reserveData?.data?.holdEndTime ?? reserveData?.expireAt) || null;
-  return { orderId, amount, expiresAt };
+/** Bron muddati (to'lov qachongacha) */
+export async function getPaymentEndTime(session, orderId) {
+  try {
+    const { data } = await authedRequest(session, `${AUTH.paymentEndTime}${encodeURIComponent(orderId)}`, { method: 'GET' });
+    return clean(data?.data ?? data?.response ?? data) || null;
+  } catch {
+    return null;
+  }
 }
 
 /** Bron bekor qilish (to'lanmagan bo'lsa) */
@@ -426,5 +612,6 @@ export async function cancelOrder(session, orderId) {
 
 export default {
   createSession, login, tokenValid, getProfile, getOrders, getActiveOrderCount,
-  createPaymentInvoice, reserveSeats, cancelOrder, PAY_PROVIDERS, CAPTCHA_SITE_KEY,
+  createPaymentInvoice, getFriends, searchTrainsForBooking, getSeatPlaces, reserve,
+  getPaymentEndTime, cancelOrder, PAY_PROVIDERS, BASE_URL, BASE_HOST,
 };

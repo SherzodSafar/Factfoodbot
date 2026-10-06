@@ -30,7 +30,7 @@ import { evaluateWatch } from './matcher.js';
 import { foundMessage } from './format.js';
 import { getSettings } from './settings.js';
 import accountService from './accountService.js';
-import { formatMoney, escapeHtml } from '../utils/text.js';
+import { escapeHtml } from '../utils/text.js';
 import { dateLine } from './format.js';
 import { todayISO } from '../utils/dates.js';
 import { Markup } from 'telegraf';
@@ -260,32 +260,30 @@ export async function applyResult(watch, result, { notify = true, markNotified =
 
 function autoBookOkMessage(watch, o) {
   return [
-    '🤖✅ <b>Avto-bron amalga oshdi!</b>',
+    '🤖✅ <b>Joy avtomatik band qilindi!</b>',
     '',
     `📍 <b>${escapeHtml(watch.fromName)} → ${escapeHtml(watch.toName)}</b>`,
     `📅 ${dateLine(watch.date)}`,
     `🚆 ${escapeHtml(String(o.carNumber))}-vagon · joy: <b>${o.seats.join(', ')}</b>`,
-    o.amount ? `💰 ${formatMoney(o.amount)}` : '',
     `🧾 Buyurtma: <b>${escapeHtml(o.orderId)}</b>`,
     '',
-    o.paymentRequested
-      ? `💳 <b>${o.provider === 'payme' ? 'Payme' : 'Click'}</b> ilovangizga to'lov so'rovi yuborildi${o.phoneMasked ? ` (${escapeHtml(o.phoneMasked)})` : ''}. Ilovada tasdiqlang.`
-      : `💳 To'lov so'rovini yuborib bo'lmadi — buyurtmani <a href="${config.railway.buyUrl}">saytda</a> to'lang.`,
-    '⏳ Bron ~10 daqiqada to\'lanmasa bekor bo\'ladi — tezroq tasdiqlang.',
+    '💳 <b>To\'lovni o\'zingiz qilasiz</b> — eticketda to\'lang, aks holda bron ~12 daqiqada bekor bo\'ladi.',
+    '⏳ Shoshiling — joy siz uchun vaqtincha ushlab turibdi.',
   ].filter(Boolean).join('\n');
 }
 
 function autoBookKeyboard() {
   return Markup.inlineKeyboard([
-    [Markup.button.url('🎫 eticket.railway.uz', config.railway.buyUrl)],
+    [Markup.button.url('💳 eticketda to\'lash', 'https://eticket.uzrailpass.uz/uz/cabinet')],
     [Markup.button.callback('🧾 Bronlarim', 'm:orders')],
   ]);
 }
 
 const AUTOBOOK_FAIL = {
-  method: 'To\'lov usuli sozlanmagan.',
-  passengers: 'Yetarli saqlangan yo\'lovchi yo\'q.',
+  passengers: 'eticketda saqlangan yo\'lovchi yetarli emas.',
   'no-train': 'Poyezd aniqlanmadi.',
+  'no-train-site': 'Poyezd bron platformasida topilmadi.',
+  'no-seats': 'Mos joy band qilishga ulgurmadik.',
   error: 'Saytda bron qilib bo\'lmadi.',
 };
 

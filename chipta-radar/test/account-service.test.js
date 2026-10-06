@@ -17,6 +17,7 @@ const db = { account: null, passengers: [], seq: 1 };
 before(async () => {
   mock = await startMockRailway();
   process.env.RAILWAY_BASE_URL = mock.url;
+  process.env.ETICKET_ACCOUNT_BASE_URL = mock.url;
   process.env.RAILWAY_MIN_INTERVAL_MS = '50';
   process.env.ADMIN_SECRET = 'test-secret-for-vault-abcdefghijklmnop';
 
@@ -155,11 +156,3 @@ test('uzish: token va yo\'lovchilar o\'chadi (so\'ralganda)', async () => {
   assert.equal(status.connected, false);
 });
 
-test('bron: mavjud bo\'lmagan yo\'lovchi bilan — xato', async () => {
-  await accountService.connectAccount(1, { login: '998901234567', password: 'secret', consent: true });
-  // bookingEnabled standart yoqilgan — endi yo'lovchi tekshiruvidan o'tmaydi
-  await assert.rejects(
-    accountService.bookSeats(1, { order: { seats: [1], trainNumber: '1', from: 'a', to: 'b', date: '2030-01-01' }, passengerIds: [999] }),
-    /topilmadi/,
-  );
-});

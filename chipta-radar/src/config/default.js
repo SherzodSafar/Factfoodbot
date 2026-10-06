@@ -80,6 +80,15 @@ const config = {
     buyUrl: process.env.RAILWAY_BUY_URL || 'https://eticket.railway.uz/uz/home',
   },
 
+  /**
+   * Foydalanuvchi hisobi va BRON uchun platforma (core/eticketAccount.js).
+   * Bron/akkaunt API aynan shu domenda (uzrailpass.uz) — ochiq o'qish (poyezd qidirish)
+   * esa railway.uz da qoladi. Ikkisi alohida, shuning uchun kuzatuv xizmatiga ta'sir qilmaydi.
+   */
+  account: {
+    baseUrl: (process.env.ETICKET_ACCOUNT_BASE_URL || 'https://eticket.uzrailpass.uz').replace(/\/+$/, ''),
+  },
+
   /** Kuzatuv (monitoring) xizmati — standart qiymatlar, Admin Paneldan o'zgartiriladi */
   watcher: {
     enabled: toBool(process.env.WATCHER_ENABLED, true),

@@ -110,18 +110,23 @@ export function startMockRailway({ port = 0 } = {}) {
         return send(200, { data: { invoiceId: `INV-${payload.orderId}`, status: 'created' } });
       }
 
-      // Bron oqimi (hold → yo'lovchi → reserve)
-      if (req.url === '/api/v3/universal-orders/hold') {
-        if (!req.headers.authorization) return send(401, { message: 'Unauthorized' });
-        state.lastHold = payload;
-        return send(200, { data: { orderId: state.orderId || 'ORD-AUTO' } });
+      // Saqlangan yo'lovchilar (eticket friends)
+      if (req.url === '/api/v1/users/friend/list') {
+        const friends = state.friends ?? [
+          { friendId: 'fr-1', firstname: 'Anvar', lastname: 'Ismoilov', midname: 'Akbar o\'g\'li', sex: 'M', birthDay: '03.10.1990', docType: 'ПУ', doc: 'AA1234567', citizenship: 'UZB', regionId: '03', yourSelf: true },
+        ];
+        return send(200, friends);
       }
-      if (req.url === '/api/v3/universal-orders/add-passenger-info') {
-        state.passengerInfos = (state.passengerInfos || []).concat([payload]);
-        return send(200, { data: { ok: true } });
-      }
+
+      // Bron — bitta so'rov (kontrakt: docs/uzrailpass-booking-api.md)
       if (req.url === '/api/v3/universal-orders/reserve') {
-        return send(200, { data: { orderId: payload.orderId, amount: state.reserveAmount ?? 270000, expireAt: '2030-01-10T09:00:00' } });
+        if (!req.headers.authorization) return send(401, { message: 'Unauthorized' });
+        state.lastReserve = payload;
+        if (state.reserveFail) return send(200, { messageLevel: 'ERROR', code: 400, message: 'reserve failed', response: null });
+        return send(200, { messageLevel: 'OK', code: 200, message: null, response: state.orderId || 'UO-AUTO-1' });
+      }
+      if (req.url.startsWith('/api/v3/universal-orders/query/get/payment-end-time/')) {
+        return send(200, { data: '2030-01-10T09:00:00' });
       }
 
       return send(404, { message: 'not found' });

@@ -17,10 +17,10 @@ import BookingModel from '../models/Booking.js';
 import WatchModel from '../models/Watch.js';
 import vault from './vault.js';
 import * as eticket from '../core/eticketAccount.js';
-import { getTrainDetail } from '../core/railway.js';
 import { getSettings } from './settings.js';
 import { ValidationError } from '../utils/errors.js';
-import { findSeatGroups } from './seats.js';
+import { seatFits } from './seats.js';
+import { normalizeCarType } from './carTypes.js';
 import { prefsOfWatch } from './matcher.js';
 import {
   validatePassengerInput, maskName, maskDoc, maskLogin, normalizeLogin, normalizePhone, publicPassenger,
@@ -154,7 +154,14 @@ export async function connectAccount(userId, { login, password, consent, captcha
     }
   }
   const payPhone = priorPay.payPhone || normalizePhone(login) || '';
-  const secret = { login: normalizedLogin, token: result.token, accountId: result.accountId, payPhone, payProvider: priorPay.payProvider };
+  const secret = {
+    login: normalizedLogin,
+    token: result.token,
+    accountId: result.accountId,
+    username: result.username || normalizedLogin, // reserve webCustomer.username
+    payPhone,
+    payProvider: priorPay.payProvider,
+  };
   const encrypted = vault.encrypt(secret, accountCtx(userId));
 
   const record = await RailwayAccountModel.upsert(userId, {
@@ -296,46 +303,6 @@ export async function requestPayment(userId, { orderId, provider, phone, consent
   });
 }
 
-/* ------------------------------------------------------------------ */
-/*  Bron (ixtiyoriy)                                                    */
-/* ------------------------------------------------------------------ */
-
-/**
- * Joy band qilish (admin yoqsa). order — tanlangan poyezd/vagon/joylar,
- * passengerIds — saqlangan yo'lovchilar.
- */
-export async function bookSeats(userId, { order, passengerIds, watchId = null }) {
-  ensureAccountEnabled();
-  if (!getSettings().bookingEnabled) throw new ValidationError('Botdan to\'g\'ridan-to\'g\'ri bron vaqtincha o\'chirilgan. Saytda bron qiling.');
-  if (!Array.isArray(passengerIds) || !passengerIds.length) throw new ValidationError('Kamida bitta yo\'lovchini tanlang.');
-  if (!order?.seats?.length) throw new ValidationError('Joy tanlanmagan.');
-  if (passengerIds.length !== order.seats.length) throw new ValidationError('Yo\'lovchilar soni joylar soniga teng bo\'lishi kerak.');
-
-  const passengers = [];
-  for (const id of passengerIds) passengers.push(await getPassengerSecret(userId, id));
-
-  return withAccount(userId, async ({ session }) => {
-    const reserved = await eticket.reserveSeats(session, { order, passengers });
-    const booking = await BookingModel.create({
-      userId,
-      watchId,
-      orderId: reserved.orderId,
-      trainNumber: order.trainNumber,
-      fromCode: order.from,
-      toCode: order.to,
-      date: order.date,
-      carNumber: order.carNumber ? String(order.carNumber) : null,
-      carType: order.carType || null,
-      seats: order.seats.map(String),
-      passengers: passengers.length,
-      amount: reserved.amount,
-      status: 'RESERVED',
-      expiresAt: reserved.expiresAt ? new Date(reserved.expiresAt) : null,
-    });
-    return { booking, reserved };
-  });
-}
-
 export async function listBookings(userId) {
   const rows = await BookingModel.findByUser(userId);
   return rows.map((row) => ({
@@ -401,66 +368,51 @@ export async function setPaymentMethod(userId, { provider, phone }) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Avto-bron (joy chiqsa — bot o'zi bron qilib, to'lov so'rovini yuboradi) */
+/*  Avto-bron — joy chiqsa bot o'zi JOYNI BAND QILADI (reserve),         */
+/*  so'ng foydalanuvchi to'laydi (bron ~12 daqiqa ushlanadi).            */
+/*  Kontrakt: docs/uzrailpass-booking-api.md                            */
 /* ------------------------------------------------------------------ */
 
-/** Bitta vagonda talablarga mos `quantity` ta joy topish */
-function pickCarSeats(cars, prefs) {
+/** Joy xaritasidagi vagonlardan talablarga mos `quantity` ta joyni tanlash */
+function pickCarSeats(cars, watch, prefs) {
   for (const car of cars) {
-    const { groups } = findSeatGroups(car, { ...prefs, together: 'car' }, 1);
-    if (groups.length && groups[0].seats.length >= prefs.quantity) {
-      return { carNumber: car.number, carType: car.type, seats: groups[0].seats.slice(0, prefs.quantity) };
+    const internalType = normalizeCarType(car.carType) || 'other';
+    if (watch.carTypes?.length && !watch.carTypes.includes(internalType)) continue;
+    const fitting = (car.places || []).filter((n) => seatFits(internalType, n, prefs)).sort((a, b) => a - b);
+    if (fitting.length >= prefs.quantity) {
+      return { number: car.number, carType: car.carType, serviceClass: car.serviceClass, seats: fitting.slice(0, prefs.quantity) };
     }
   }
   return null;
 }
 
-/** Avto-bron uchun yo'lovchilar (tanlanganlar, yetmasa saqlanganlardan to'ldiriladi) */
-async function resolveAutoBookPassengers(userId, watch) {
-  const ids = Array.isArray(watch.autoBookPassengers) ? watch.autoBookPassengers : [];
-  const out = [];
-  for (const id of ids) {
-    try {
-      out.push(await getPassengerSecret(userId, id));
-    } catch {
-      /* o'chirilgan bo'lishi mumkin */
-    }
-  }
-  if (out.length < watch.quantity) {
-    const rows = await PassengerModel.findByUser(userId);
-    for (const row of rows) {
-      if (out.length >= watch.quantity) break;
-      if (ids.includes(row.id)) continue;
-      try {
-        out.push(vault.decrypt(row.secret, passengerCtx(userId)));
-      } catch {
-        /* kalit mos emas */
-      }
-    }
-  }
-  return out.slice(0, watch.quantity);
+/** eticket saqlangan yo'lovchilaridan `quantity` tasini tanlash (o'zi birinchi) */
+function pickFriends(friends, quantity) {
+  return [...friends].sort((a, b) => (b.self ? 1 : 0) - (a.self ? 1 : 0)).slice(0, quantity);
 }
 
-/** Kuzatuvga avto-bronni yoqish/o'chirish va yo'lovchilarni belgilash */
-export async function setAutoBook(userId, watchId, { enabled, passengerIds } = {}) {
+/** Kuzatuvga avto-bronni yoqish/o'chirish */
+export async function setAutoBook(userId, watchId, { enabled } = {}) {
   const watch = await WatchModel.findOwned(watchId, userId);
   if (!watch) throw new ValidationError('Kuzatuv topilmadi.');
 
   if (enabled) {
     ensureAccountEnabled();
     if (!getSettings().bookingEnabled) throw new ValidationError('Avto-bron hozircha o\'chirilgan. Administrator yoqishi kerak.');
-    const status = await getAccountStatus(userId);
-    if (!status.connected) throw new ValidationError('Avval eticket akkauntingizni ulang.');
-    const method = await getPaymentMethod(userId);
-    if (!method.provider || !method.phone) throw new ValidationError('Avval to\'lov usulini (Payme/Click) va telefonni sozlang.');
-    const passengersCount = await PassengerModel.countByUser(userId);
-    if (passengersCount < watch.quantity) {
-      throw new ValidationError(`Avto-bron uchun kamida ${watch.quantity} ta saqlangan yo'lovchi kerak.`);
+    const live = await getLiveSession(userId);
+    if (!live) throw new ValidationError('Avval eticket akkauntingizni ulang.');
+    let friends = [];
+    try {
+      friends = await eticket.getFriends(live.session, live.secret.accountId);
+    } catch {
+      throw new ValidationError('eticketdan yo\'lovchilarni olib bo\'lmadi. Qaytadan ulang.');
+    }
+    if (friends.length < watch.quantity) {
+      throw new ValidationError(`Avto-bron uchun eticketda kamida ${watch.quantity} ta saqlangan yo'lovchi kerak (hozir ${friends.length}). Ularni eticket.uzrailpass.uz da qo'shing.`);
     }
   }
 
   const data = { autoBook: Boolean(enabled) };
-  if (Array.isArray(passengerIds)) data.autoBookPassengers = passengerIds.map(Number).filter(Boolean);
   if (enabled) {
     data.autoBookStatus = 'PENDING';
     data.lastKeys = []; // hozir mavjud joylar ham "yangi" sifatida ko'rilib, avto-bron ishlashi uchun
@@ -469,71 +421,55 @@ export async function setAutoBook(userId, watchId, { enabled, passengerIds } = {
 }
 
 /**
- * Joy topilganda avtomatik bron qilib, to'lov so'rovini yuborish.
- * Reserve amalga oshmasa — pul harakati bo'lmaydi (to'lov so'rovi faqat muvaffaqiyatli
- * reserve'dan keyin yuboriladi). Foydalanuvchi to'lovni o'z ilovasida tasdiqlaydi.
+ * Joy topilganda avtomatik joyni band qilish (reserve). Pul yechilmaydi —
+ * faqat joy ~12 daqiqaga band bo'ladi; foydalanuvchi o'zi to'laydi.
  * @param matchedTrain brief train ({number, id})
- * @returns {Promise<{ok:boolean, reason?:string, orderId?:string, amount?:number, provider?:string, phoneMasked?:string, seats?:number[], carNumber?:string, paymentRequested?:boolean}>}
+ * @returns {Promise<{ok:boolean, reason?:string, orderId?:string, seats?:number[], carNumber?:string, payEndsAt?:string|null}>}
  */
 export async function autoBookOnFound(userId, watch, matchedTrain) {
   if (!getSettings().bookingEnabled) return { ok: false, reason: 'disabled' };
   if (!matchedTrain?.number) return { ok: false, reason: 'no-train' };
 
-  const method = await getPaymentMethod(userId);
-  if (!method.provider || !method.phone) return { ok: false, reason: 'method' };
+  return withAccount(userId, async ({ session, secret }) => {
+    const route = { from: watch.fromCode, to: watch.toCode, date: watch.date };
+    const wantNumber = String(matchedTrain.number).replace(/\s+/g, '');
 
-  const passengers = await resolveAutoBookPassengers(userId, watch);
-  if (passengers.length < (watch.quantity || 1)) return { ok: false, reason: 'passengers' };
+    // 1) Bron platformasida qidiruv (reserve uchun poyezd ma'lumoti)
+    const trains = await eticket.searchTrainsForBooking(session, route);
+    const train = trains.find((t) => String(t.number).replace(/\s+/g, '') === wantNumber);
+    if (!train) return { ok: false, reason: 'no-train-site' };
 
-  return withAccount(userId, async ({ session }) => {
-    const query = { from: watch.fromCode, to: watch.toCode, date: watch.date };
-    const { cars } = await getTrainDetail(
-      { ...query, trainNumber: matchedTrain.number, trainId: matchedTrain.id ?? null },
-      { priority: 'high', maxAgeMs: 5000 },
-    );
+    // 2) Joy xaritasi → mos vagon va joylar
+    const cars = await eticket.getSeatPlaces(session, { ...route, trainNumber: train.number, trainId: null });
     const prefs = prefsOfWatch(watch);
-    const allowed = (cars || []).filter(
-      (car) => (!watch.carTypes?.length || watch.carTypes.includes(car.type))
-        && car.places?.length
-        && (!watch.maxPrice || !car.price || car.price <= watch.maxPrice),
-    );
-    const pick = pickCarSeats(allowed, prefs);
+    const pick = pickCarSeats(cars, watch, prefs);
     if (!pick) return { ok: false, reason: 'no-seats' };
 
-    const order = {
-      trainNumber: matchedTrain.number, from: watch.fromCode, to: watch.toCode, date: watch.date,
-      trainId: matchedTrain.id ?? null, carNumber: pick.carNumber, carType: pick.carType, seats: pick.seats,
-    };
+    // 3) Yo'lovchilar (eticket saqlangan)
+    const friends = await eticket.getFriends(session, secret.accountId);
+    const chosen = pickFriends(friends, watch.quantity || 1);
+    if (chosen.length < (watch.quantity || 1)) return { ok: false, reason: 'passengers' };
 
-    const reserved = await eticket.reserveSeats(session, { order, passengers });
-
-    const booking = await BookingModel.create({
-      userId, watchId: watch.id, orderId: reserved.orderId,
-      trainNumber: order.trainNumber, fromCode: order.from, toCode: order.to, date: order.date,
-      carNumber: String(order.carNumber), carType: order.carType, seats: order.seats.map(String),
-      passengers: passengers.length, amount: reserved.amount, status: 'RESERVED',
-      expiresAt: reserved.expiresAt ? new Date(reserved.expiresAt) : null, payProvider: method.provider,
+    // 4) BRON — bitta so'rov
+    const reserved = await eticket.reserve(session, {
+      train,
+      car: { number: pick.number, carType: pick.carType, serviceClass: pick.serviceClass },
+      seats: pick.seats,
+      passengers: chosen,
+      webCustomer: { id: secret.accountId, username: secret.username },
     });
 
-    let paymentRequested = false;
-    try {
-      const pay = await eticket.createPaymentInvoice(session, { orderId: reserved.orderId, provider: method.provider, phone: method.phone });
-      paymentRequested = pay.ok;
-      await BookingModel.update(booking.id, {
-        status: pay.ok ? 'PAID_REQUESTED' : 'RESERVED',
-        payProvider: method.provider,
-        payRequestedAt: new Date(),
-      });
-    } catch (error) {
-      // Reserve bo'ldi, lekin to'lov so'rovini yuborib bo'lmadi — foydalanuvchi o'zi to'laydi
-      await BookingModel.update(booking.id, { lastError: error.message?.slice(0, 300) || 'payment request failed' }).catch(() => {});
-    }
+    const payEndsAt = await eticket.getPaymentEndTime(session, reserved.orderId).catch(() => null);
 
-    return {
-      ok: true, orderId: reserved.orderId, amount: reserved.amount, provider: method.provider,
-      phoneMasked: method.phoneMasked, seats: pick.seats, carNumber: pick.carNumber,
-      paymentRequested, expiresAt: reserved.expiresAt,
-    };
+    await BookingModel.create({
+      userId, watchId: watch.id, orderId: reserved.orderId,
+      trainNumber: train.number, fromCode: watch.fromCode, toCode: watch.toCode, date: watch.date,
+      carNumber: String(pick.number), carType: pick.carType, seats: pick.seats.map(String),
+      passengers: chosen.length, amount: null, status: 'RESERVED',
+      expiresAt: payEndsAt ? new Date(payEndsAt) : null,
+    }).catch(() => {});
+
+    return { ok: true, orderId: reserved.orderId, seats: pick.seats, carNumber: pick.number, payEndsAt };
   });
 }
 
@@ -545,6 +481,6 @@ export function forgetSession(userId) {
 export default {
   featureStatus, getAccountStatus, connectAccount, disconnectAccount,
   listPassengers, addPassenger, removePassenger, getPassengerSecret,
-  listOrders, getActiveOrderCount, requestPayment, bookSeats, listBookings, forgetSession,
+  listOrders, getActiveOrderCount, requestPayment, listBookings, forgetSession,
   getPaymentMethod, setPaymentMethod, setAutoBook, autoBookOnFound,
 };

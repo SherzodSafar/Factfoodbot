@@ -731,25 +731,20 @@ async function showAutoBook(ctx, watchId) {
   if (!user) return ctx.answerCbQuery();
   const watch = await WatchModel.findOwned(watchId, user.id);
   if (!watch) return ctx.answerCbQuery('Kuzatuv topilmadi', { show_alert: true });
-  const [status, method, passengers] = await Promise.all([
-    accountService.getAccountStatus(user.id),
-    accountService.getPaymentMethod(user.id),
-    accountService.listPassengers(user.id).catch(() => []),
-  ]);
+  const status = await accountService.getAccountStatus(user.id);
 
   const lines = ['🤖 <b>Avtomatik bron</b>', '', `📍 ${escapeHtml(watch.fromName)} → ${escapeHtml(watch.toName)} · ${dateLine(watch.date)}`, ''];
-  lines.push('Joy chiqishi bilan bot o\'zi bron qilib, to\'lov so\'rovini yuboradi.', '');
-  const needs = [];
-  if (!status.connected) needs.push('• eticket akkauntini ulang');
-  if (!method.provider || !method.phone) needs.push('• to\'lov usuli (Payme/Click) va telefonni sozlang');
-  if (passengers.length < watch.quantity) needs.push(`• kamida ${watch.quantity} ta yo'lovchi saqlang (hozir ${passengers.length})`);
-
-  if (watch.autoBook) {
-    lines.push('✅ <b>Avto-bron yoqilgan.</b>', `To'lov: <b>${method.provider === 'payme' ? 'Payme' : method.provider === 'click' ? 'Click' : '—'}</b>${method.phoneMasked ? ` · ${escapeHtml(method.phoneMasked)}` : ''}`);
-  } else if (needs.length) {
-    lines.push('Yoqishdan oldin:', ...needs);
+  lines.push(
+    'Joy chiqishi bilan bot <b>o\'zi joyni band qiladi</b> (eticketda saqlangan yo\'lovchingiz bilan). ',
+    'So\'ng sizga xabar beraman — <b>to\'lovni o\'zingiz qilasiz</b>, joy ~12 daqiqa ushlanadi.',
+    '',
+  );
+  if (!status.connected) {
+    lines.push('⚠️ Avval eticket akkauntingizni ulang (🔐 Akkaunt).');
+  } else if (watch.autoBook) {
+    lines.push('✅ <b>Avto-bron yoqilgan.</b>', `Holat: ${escapeHtml(watch.autoBookStatus || 'kutilmoqda')}`);
   } else {
-    lines.push('Hammasi tayyor — yoqishingiz mumkin.');
+    lines.push('Yoqish uchun: eticketda kamida ', `<b>${watch.quantity}</b> ta yo'lovchi saqlangan bo'lishi kerak. "Yoqish" ni bosganda tekshiraman.`);
   }
   await ctx.answerCbQuery();
   try { await ctx.editMessageText(lines.join('\n'), HTML(ui.autoBookKeyboard(watch))); } catch { await ctx.replyWithHTML(lines.join('\n'), ui.autoBookKeyboard(watch)); }

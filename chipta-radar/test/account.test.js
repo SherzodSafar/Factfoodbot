@@ -8,6 +8,7 @@ let account;
 before(async () => {
   mock = await startMockRailway();
   process.env.RAILWAY_BASE_URL = mock.url;
+  process.env.ETICKET_ACCOUNT_BASE_URL = mock.url;
   process.env.RAILWAY_MIN_INTERVAL_MS = '50';
   account = await import('../src/core/eticketAccount.js');
 });
@@ -85,7 +86,9 @@ test('to\'lov so\'rovi (Payme/Click) invoice qaytaradi', async () => {
 
 test('token yaroqsiz bo\'lsa — reserve rad etadi', async () => {
   await assert.rejects(
-    account.reserveSeats(account.createSession(), { order: { seats: [1] }, passengers: [{}] }),
+    account.reserve(account.createSession(), {
+      train: { number: '1' }, car: { number: '07' }, seats: [1], passengers: [{ firstName: 'A', lastName: 'B' }], webCustomer: {},
+    }),
     (error) => error.code === 'AUTH_REQUIRED',
   );
 });
