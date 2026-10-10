@@ -280,7 +280,7 @@ function autoBookOkMessage(watch, o) {
     if (pay.requested && providerName) {
       lines.push(`ℹ️ ${providerName} orqali avtomatik so'rov yuborilmadi — qo'lda to'lang.`);
     } else if (pay.reason === 'no-method') {
-      lines.push('ℹ️ To\'lov tizimi saqlanmagan — "Akkaunt" bo\'limida Payme/Click va telefon raqamingizni saqlab qo\'ying.');
+      lines.push('ℹ️ To\'lov uchun telefon raqami saqlanmagan — "Akkaunt → To\'lov usuli" da Click raqamingizni saqlab qo\'ying.');
     }
     lines.push('⏳ Shoshiling — joy siz uchun vaqtincha ushlab turibdi.');
   }

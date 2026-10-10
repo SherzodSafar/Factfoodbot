@@ -90,6 +90,8 @@ const config = {
     // reserve'da passengerInfo.regionId bo'sh bo'lmasligi shart. friend/list ko'pincha "  "
     // qaytaradi — shunda shu qiymat yuboriladi ("03" — sayt o'zi yuborgan, qabul qilingan qiymat).
     defaultRegionId: (process.env.ETICKET_DEFAULT_REGION_ID || '03').trim(),
+    // Foydalanuvchi Payme/Click tanlamagan bo'lsa avto-bron to'lov so'rovi shu tizimga yuboriladi
+    defaultPayProvider: ['payme', 'click'].includes(process.env.DEFAULT_PAY_PROVIDER) ? process.env.DEFAULT_PAY_PROVIDER : 'click',
   },
 
   /** Kuzatuv (monitoring) xizmati — standart qiymatlar, Admin Paneldan o'zgartiriladi */

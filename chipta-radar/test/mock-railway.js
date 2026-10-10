@@ -107,6 +107,7 @@ export function startMockRailway({ port = 0 } = {}) {
       if (req.url === '/api/v1/payme/create-invoice' || req.url === '/api/v1/clickMerchant/create-invoice') {
         if (!req.headers.authorization) return send(401, { message: 'Unauthorized' });
         if (!payload.orderId) return send(400, { message: 'orderId required' });
+        state.lastInvoice = { url: req.url, ...payload };
         return send(200, { data: { invoiceId: `INV-${payload.orderId}`, status: 'created' } });
       }
 
