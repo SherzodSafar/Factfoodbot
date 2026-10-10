@@ -494,41 +494,38 @@ async function showAccount(ctx) {
 async function showOrders(ctx) {
   const user = await ensureUser(ctx);
   if (!user) return undefined;
-  const url = accountWebAppUrl();
   const status = await accountService.getAccountStatus(user.id);
+  const cabinetUrl = `${config.account.baseUrl}/uz/cabinet`;
 
   const lines = ['🧾 <b>Mening bronlarim</b>', ''];
-  if (!status.connected) {
-    lines.push('Buyurtmalarni ko\'rish uchun avval eticket akkauntingizni ulang.');
-    const keyboard = ui.ordersKeyboard(status, url);
-    if (ctx.callbackQuery) { try { await ctx.editMessageText(lines.join('\n'), HTML(keyboard)); return undefined; } catch { /* yangi */ } }
-    return ctx.replyWithHTML(lines.join('\n'), keyboard);
-  }
+  const rows = [];
 
-  const payButtons = [];
-  try {
-    const orders = await accountService.listOrders(user.id);
-    if (!orders.length) {
-      lines.push('Faol buyurtma topilmadi.', '', 'Chipta topilganda kuzatuv xabaridan yoki saytdan bron qiling.');
-    } else {
-      for (const order of orders.slice(0, 10)) {
-        const paid = !order.payable;
-        const route = [order.from, order.to].filter(Boolean).join(' → ');
-        lines.push(
-          `${paid ? '✅' : '⏳'} <b>№ ${escapeHtml(order.orderId)}</b>${order.amount ? ` · ${formatMoney(order.amount)}` : ''}`,
-          `   ${escapeHtml(order.trainNumber || '')}${route ? ` · ${escapeHtml(route)}` : ''}${order.date ? ` · ${escapeHtml(order.date)}` : ''}${paid ? '' : ' · <i>to\'lov kutilmoqda</i>'}`,
-        );
-        if (order.payable) payButtons.push([Markup.button.callback(`💳 № ${order.orderId} to'lash`, `pay:o:${order.orderId}`)]);
-      }
-      if (payButtons.length) lines.push('', '💳 To\'lov so\'rovi uchun buyurtmani tanlang:');
+  // Bot o'zi band qilgan bronlar (DB) — ishonchli manba. eticket buyurtmalar
+  // API uzrailpass'da boshqacha (405), shuning uchun shu yerda DB ko'rsatiladi.
+  let bookings = [];
+  try { bookings = await accountService.listBookings(user.id); } catch { bookings = []; }
+
+  if (!bookings.length) {
+    lines.push(status.connected
+      ? 'Hali bron yo\'q.\n\nKuzatuvda 🤖 <b>Avto-bron</b>ni yoqing — joy chiqishi bilan bot o\'zi band qiladi.'
+      : 'Avval eticket akkauntingizni ulang (🔐 Akkaunt).');
+  } else {
+    for (const b of bookings.slice(0, 10)) {
+      const paid = b.status === 'PAID';
+      const route = [stationName(b.fromCode), stationName(b.toCode)].filter(Boolean).join(' → ');
+      lines.push(
+        `${paid ? '✅' : '⏳'} <b>№ ${escapeHtml(b.orderId || '—')}</b>`,
+        `   ${escapeHtml(b.trainNumber || '')}${route ? ` · ${escapeHtml(route)}` : ''}${b.date ? ` · ${dateLine(b.date)}` : ''}`,
+        `   ${b.carNumber ? `${escapeHtml(String(b.carNumber))}-vagon · ` : ''}joy: <b>${(b.seats || []).join(', ')}</b>${paid ? '' : ' · <i>to\'lov kutilmoqda</i>'}`,
+      );
     }
-  } catch (error) {
-    lines.push(`⚠️ Buyurtmalarni olib bo'lmadi: ${escapeHtml(error.message)}`);
+    if (bookings.some((b) => b.status !== 'PAID')) {
+      lines.push('', '💳 To\'lovni <b>uzrailpass</b> saytida (karta orqali) yakunlang — band joy ~12 daqiqa ushlanadi.');
+    }
+    rows.push([Markup.button.url('💳 Sotib olish — uzrailpass', cabinetUrl)]);
   }
-  const base = ui.ordersKeyboard(status, url);
-  const keyboard = payButtons.length
-    ? Markup.inlineKeyboard([...payButtons, ...base.reply_markup.inline_keyboard])
-    : base;
+  rows.push(ui.backToMenuRow());
+  const keyboard = Markup.inlineKeyboard(rows);
   if (ctx.callbackQuery) { try { await ctx.editMessageText(lines.join('\n'), HTML(keyboard)); return undefined; } catch { /* yangi */ } }
   return ctx.replyWithHTML(lines.join('\n'), keyboard);
 }
