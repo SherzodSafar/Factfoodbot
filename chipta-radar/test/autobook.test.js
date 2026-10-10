@@ -9,7 +9,7 @@ import { startMockRailway } from './mock-railway.js';
 let mock;
 let accountService;
 let eticket;
-const db = { account: null, watches: [], bookings: [], seq: 1 };
+const db = { account: null, watches: [], bookings: [], passengers: [], seq: 1 };
 
 before(async () => {
   mock = await startMockRailway();
@@ -21,6 +21,8 @@ before(async () => {
   const RailwayAccountModel = (await import('../src/models/RailwayAccount.js')).default;
   const WatchModel = (await import('../src/models/Watch.js')).default;
   const BookingModel = (await import('../src/models/Booking.js')).default;
+  const PassengerModel = (await import('../src/models/Passenger.js')).default;
+  PassengerModel.findByUser = async () => db.passengers;
 
   RailwayAccountModel.findByUser = async () => db.account;
   RailwayAccountModel.upsert = async (userId, data) => { db.account = { userId, ...db.account, ...data }; return db.account; };
@@ -38,7 +40,7 @@ before(async () => {
 });
 
 beforeEach(() => {
-  db.account = null; db.watches = []; db.bookings = []; db.seq = 1;
+  db.account = null; db.watches = []; db.bookings = []; db.passengers = []; db.seq = 1;
   accountService.forgetSession(1);
   mock.state.orderId = 'UO-AUTO-1';
   mock.state.friends = undefined;

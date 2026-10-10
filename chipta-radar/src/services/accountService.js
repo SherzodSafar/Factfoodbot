@@ -23,7 +23,7 @@ import { seatFits } from './seats.js';
 import { normalizeCarType } from './carTypes.js';
 import { prefsOfWatch } from './matcher.js';
 import {
-  validatePassengerInput, maskName, maskDoc, maskLogin, normalizeLogin, normalizePhone, publicPassenger,
+  validatePassengerInput, maskName, maskDoc, maskLogin, normalizeLogin, normalizePhone, normalizeDoc, publicPassenger,
 } from './personal.js';
 import { todayISO } from '../utils/dates.js';
 
@@ -217,6 +217,7 @@ export async function addPassenger(userId, input) {
   const secret = {
     firstName: data.firstName, lastName: data.lastName, docNumber: data.docNumber,
     birthDate: data.birthDate, gender: data.gender, citizenship: data.citizenship,
+    region: data.region || '', // viloyat kodi — bronda regionId uchun
   };
   const row = await PassengerModel.create({
     userId,
@@ -392,6 +393,28 @@ function pickFriends(friends, quantity) {
 }
 
 /**
+ * Botda saqlangan yo'lovchilardan hujjat raqami → viloyat kodi xaritasi.
+ * Bron paytida eticket yo'lovchisining viloyati bo'sh bo'lsa, shu yerdan olinadi.
+ * Xatolik bo'lsa bo'sh xarita (bron baribir standart kod bilan davom etadi).
+ */
+async function regionByDoc(userId) {
+  try {
+    const rows = await PassengerModel.findByUser(userId);
+    const map = {};
+    for (const row of rows) {
+      try {
+        const s = vault.decrypt(row.secret, passengerCtx(userId));
+        const doc = normalizeDoc(s.docNumber);
+        if (doc && s.region) map[doc] = s.region;
+      } catch { /* kalit mos emas — o'tkazamiz */ }
+    }
+    return map;
+  } catch {
+    return {};
+  }
+}
+
+/**
  * Avto-bron oxirida to'lov so'rovini yuborish: foydalanuvchi tanlagan tizimga
  * (Payme/Click) saqlangan telefon raqamiga invoice jo'natamiz. Bu bosqich
  * muvaffaqiyatsiz bo'lsa ham BRON SAQLANADI (foydalanuvchi o'zi to'laydi),
@@ -471,12 +494,21 @@ export async function autoBookOnFound(userId, watch, matchedTrain) {
     const chosen = pickFriends(friends, watch.quantity || 1);
     if (chosen.length < (watch.quantity || 1)) return { ok: false, reason: 'passengers' };
 
+    // 3b) Viloyat: eticket yo'lovchisida bo'sh bo'lsa — botda saqlangan
+    //     yo'lovchining viloyatini (hujjat raqami bo'yicha) qo'yamiz.
+    const regionMap = await regionByDoc(userId);
+    const passengers = chosen.map((f) => {
+      const own = String(f.regionId || '').trim();
+      const mapped = regionMap[normalizeDoc(f.docNumber)] || '';
+      return !own && mapped ? { ...f, regionId: mapped } : f;
+    });
+
     // 4) BRON — bitta so'rov
     const reserved = await eticket.reserve(session, {
       train,
       car: { number: pick.number, carType: pick.carType, serviceClass: pick.serviceClass },
       seats: pick.seats,
-      passengers: chosen,
+      passengers,
       webCustomer: { id: secret.accountId, username: secret.username },
     });
 

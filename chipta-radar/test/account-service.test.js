@@ -106,6 +106,18 @@ test('yo\'lovchi: shifrlab saqlanadi, niqob va yosh toifasi qaytadi', async () =
   assert.equal(secret.firstName, 'ANVARJON');
 });
 
+test('yo\'lovchi: viloyat saqlanadi va ko\'rinishda qaytadi', async () => {
+  const p = await accountService.addPassenger(1, {
+    firstName: 'Anvar', lastName: 'Ismoilov', docNumber: 'AA1234567',
+    birthDate: '1990-05-01', gender: 'M', region: '33', consent: true,
+  });
+  assert.equal(p.region, '33');
+  assert.equal(p.regionName, 'Xorazm');
+  // Ochilgan ma'lumotda ham viloyat bor (bronda ishlatiladi)
+  const secret = await accountService.getPassengerSecret(1, p.id);
+  assert.equal(secret.region, '33');
+});
+
 test('yo\'lovchi: bola yoshi tug\'ilgan sanadan aniqlanadi', async () => {
   const child = await accountService.addPassenger(1, {
     firstName: 'Ali', lastName: 'Valiyev', docNumber: 'AB7654321',

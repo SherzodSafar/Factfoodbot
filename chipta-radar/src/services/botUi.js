@@ -6,6 +6,7 @@
  */
 import { Markup } from 'telegraf';
 import { listStations } from './stations.js';
+import { REGIONS } from './personal.js';
 import { todayISO, addDays, isISODate, diffDays, MONTHS_UZ, WEEKDAYS_UZ } from '../utils/dates.js';
 
 /* --------------------------- Asosiy menyu --------------------------- */
@@ -256,6 +257,18 @@ export function genderKeyboard() {
   ]);
 }
 
+/** Yangi yo'lovchi: viloyat tanlash (reserve'da regionId uchun) */
+export function regionKeyboard() {
+  const entries = Object.entries(REGIONS); // [["27","Toshkent sh."], ...]
+  const rows = [];
+  for (let i = 0; i < entries.length; i += 2) {
+    rows.push(entries.slice(i, i + 2).map(([code, name]) => Markup.button.callback(name, `pass:r:${code}`)));
+  }
+  rows.push([Markup.button.callback('Bilmayman / keyin', 'pass:r:')]);
+  rows.push([Markup.button.callback('❌ Bekor', 'flow:cancel')]);
+  return Markup.inlineKeyboard(rows);
+}
+
 /** Yangi yo'lovchi: shifrlab saqlashga rozilik */
 export function passengerConsentKeyboard() {
   return Markup.inlineKeyboard([
@@ -318,6 +331,6 @@ export default {
   carKeyboard, sectionKeyboard, berthKeyboard, togetherKeyboard, qtyKeyboard,
   confirmKeyboard, manageKeyboard, foundKeyboard, CAR_CHOICES,
   accountKeyboard, disconnectConfirmKeyboard, ordersKeyboard,
-  cancelFlowKeyboard, connectConsentKeyboard, passengersKeyboard, genderKeyboard,
+  cancelFlowKeyboard, connectConsentKeyboard, passengersKeyboard, genderKeyboard, regionKeyboard,
   passengerConsentKeyboard, payMethodKeyboard, orderPayKeyboard, autoBookKeyboard,
 };

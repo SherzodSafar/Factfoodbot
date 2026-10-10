@@ -10,6 +10,37 @@ export const CHILD_AGE = 16;
 
 export const GENDERS = { M: 'Erkak', F: 'Ayol' };
 
+/** O'zbekiston viloyatlari (eticket reserve `regionId` kodi → nomi) */
+export const REGIONS = {
+  27: 'Toshkent sh.',
+  26: 'Toshkent vil.',
+  3: 'Andijon',
+  6: 'Buxoro',
+  8: 'Jizzax',
+  10: 'Qashqadaryo',
+  12: 'Navoiy',
+  14: 'Namangan',
+  18: 'Samarqand',
+  22: 'Surxondaryo',
+  24: 'Sirdaryo',
+  30: "Farg'ona",
+  33: 'Xorazm',
+  35: "Qoraqalpog'iston",
+};
+
+/** "3" yoki "03" → "03" (ikki xonali kod); noto'g'ri bo'lsa '' */
+export function normalizeRegion(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  const code = String(Number(raw)); // "03" → "3"
+  return REGIONS[code] ? code.padStart(2, '0') : '';
+}
+
+/** Viloyat kodining nomi ("03" → "Andijon") */
+export function regionName(code) {
+  return REGIONS[String(Number(code))] || '';
+}
+
 const NAME_RE = /^[\p{L}][\p{L}'ʻʼ‘’`\- ]{0,39}$/u;
 
 /** "  anvarjon " → "ANVARJON" (lotin va kirill, tutuq belgisi va chiziqcha mumkin) */
@@ -75,8 +106,9 @@ export function validatePassengerInput(input = {}, { today = todayISO() } = {}) 
   if (!GENDERS[gender]) throw new ValidationError('Jinsini tanlang');
 
   const citizenship = /^[A-Z]{3}$/.test(String(input.citizenship ?? '')) ? input.citizenship : 'UZB';
+  const region = normalizeRegion(input.region); // ixtiyoriy — bo'sh bo'lishi mumkin
 
-  return { label, firstName, lastName, docNumber, birthDate, gender, citizenship };
+  return { label, firstName, lastName, docNumber, birthDate, gender, citizenship, region };
 }
 
 /* ------------------------------------------------------------------ */
@@ -152,12 +184,14 @@ export function publicPassenger(row, secret = null, onDate = todayISO()) {
     category,
     categoryLabel: category ? CATEGORY_LABELS[category] : null,
     gender: secret?.gender || null,
+    region: secret?.region || null,
+    regionName: secret?.region ? regionName(secret.region) : null,
     locked: !secret,
     createdAt: row.createdAt,
   };
 }
 
 export default {
-  CHILD_AGE, GENDERS, CATEGORY_LABELS, normalizeName, normalizeDoc, ageOn, passengerCategory,
-  validatePassengerInput, maskName, maskDoc, maskLogin, normalizePhone, formatPhone, normalizeLogin, publicPassenger,
+  CHILD_AGE, GENDERS, REGIONS, CATEGORY_LABELS, normalizeName, normalizeDoc, normalizeRegion, regionName,
+  ageOn, passengerCategory, validatePassengerInput, maskName, maskDoc, maskLogin, normalizePhone, formatPhone, normalizeLogin, publicPassenger,
 };

@@ -159,6 +159,7 @@
       docNumber: $('p_doc').value.trim(),
       birthDate: $('p_birth').value,
       gender: $('p_gender').value,
+      region: $('p_region') ? $('p_region').value : '',
       consent: $('passengerConsent').checked,
     };
     if (!body.firstName || !body.lastName) return toast('Ism va familiyani kiriting', true);

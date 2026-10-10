@@ -18,6 +18,7 @@ import { getBot } from '../core/bot.js';
 import { stationName, searchStations } from '../services/stations.js';
 import { POPULAR_ROUTES } from '../services/stationData.js';
 import { carTypeLabel } from '../services/carTypes.js';
+import { regionName, normalizeRegion } from '../services/personal.js';
 import { searchReply, describeWatch, dateLine, trainLine, typeLine, suggestionLine } from '../services/format.js';
 import { createWatches, ValidationError } from '../services/watchService.js';
 import { checkWatchNow, withLiveState } from '../services/watcher.js';
@@ -630,10 +631,10 @@ async function showPassengers(ctx) {
 }
 
 const PASS_PROMPTS = {
-  first: '👤 <b>Yangi yo\'lovchi</b>\n\n1/5 — Ismni yuboring (hujjatdagidek):',
-  last: '2/5 — Familiyani yuboring:',
-  doc: '3/5 — Pasport yoki ID seriya va raqamini yuboring:\n<i>Masalan:</i> <code>AA1234567</code>',
-  birth: '4/5 — Tug\'ilgan sanani yuboring:\n<i>Format:</i> <code>YYYY-MM-DD</code> (masalan <code>1990-05-01</code>)',
+  first: '👤 <b>Yangi yo\'lovchi</b>\n\n1/6 — Ismni yuboring (hujjatdagidek):',
+  last: '2/6 — Familiyani yuboring:',
+  doc: '3/6 — Pasport yoki ID seriya va raqamini yuboring:\n<i>Masalan:</i> <code>AA1234567</code>',
+  birth: '4/6 — Tug\'ilgan sanani yuboring:\n<i>Format:</i> <code>YYYY-MM-DD</code> (masalan <code>1990-05-01</code>)',
 };
 
 async function startPassengerAdd(ctx) {
@@ -656,6 +657,7 @@ function passengerSummary(data) {
     `Hujjat: <b>${escapeHtml(data.docNumber)}</b>`,
     `Tug'ilgan sana: <b>${escapeHtml(data.birthDate)}</b>`,
     `Jinsi: <b>${data.gender === 'F' ? 'Ayol' : 'Erkak'}</b>`,
+    `Viloyat: <b>${data.region ? escapeHtml(regionName(data.region)) : 'ko\'rsatilmagan'}</b>`,
     '',
     '🔒 Shifrlab saqlanadi. Tasdiqlang:',
   ].join('\n');
@@ -664,7 +666,16 @@ function passengerSummary(data) {
 async function setPassengerGender(ctx, gender) {
   const active = flow.getFlow(ctx.from.id);
   if (!active || active.type !== 'pass') return ctx.answerCbQuery();
-  flow.patchFlow(ctx.from.id, { step: 'confirm', data: { gender } });
+  flow.patchFlow(ctx.from.id, { step: 'region', data: { gender } });
+  await ctx.answerCbQuery();
+  const text = '6/6 — Yo\'lovchining <b>viloyati</b>ni tanlang (pasport bo\'yicha). Bron qilishda kerak bo\'ladi:';
+  try { await ctx.editMessageText(text, HTML(ui.regionKeyboard())); } catch { await ctx.replyWithHTML(text, ui.regionKeyboard()); }
+}
+
+async function setPassengerRegion(ctx, code) {
+  const active = flow.getFlow(ctx.from.id);
+  if (!active || active.type !== 'pass') return ctx.answerCbQuery();
+  flow.patchFlow(ctx.from.id, { step: 'confirm', data: { region: normalizeRegion(code) } });
   await ctx.answerCbQuery();
   const updated = flow.getFlow(ctx.from.id);
   try { await ctx.editMessageText(passengerSummary(updated.data), HTML(ui.passengerConsentKeyboard())); } catch { await ctx.replyWithHTML(passengerSummary(updated.data), ui.passengerConsentKeyboard()); }
@@ -834,7 +845,7 @@ async function handleFlowText(ctx, active, text) {
       }
       // birth to'ldirildi → jins tanlash
       flow.patchFlow(id, { step: 'gender' });
-      return ctx.replyWithHTML('5/5 — Jinsini tanlang:', ui.genderKeyboard());
+      return ctx.replyWithHTML('5/6 — Jinsini tanlang:', ui.genderKeyboard());
     }
     return undefined;
   }
@@ -926,6 +937,7 @@ export async function onCallback(ctx) {
       if (action === 'list') return showPassengers(ctx);
       if (action === 'add') return startPassengerAdd(ctx);
       if (action === 'g') return setPassengerGender(ctx, rest[1]);
+      if (action === 'r') return setPassengerRegion(ctx, rest[1] || '');
       if (action === 'save') return savePassenger(ctx);
       if (action === 'del') return deletePassengerBot(ctx, rest[1]);
       return ctx.answerCbQuery();

@@ -38,13 +38,19 @@ test('kalit formatlari: hex, base64 va erkin matn — 32 bayt', () => {
 
 test('yo\'lovchi tekshiruvi: normallashtirish va xatolar', () => {
   const ok = personal.validatePassengerInput(
-    { label: " O'zim ", firstName: ' anvarjon ', lastName: 'ismoilov', docNumber: 'aa 1234567', birthDate: '1990-05-01', gender: 'm' },
+    { label: " O'zim ", firstName: ' anvarjon ', lastName: 'ismoilov', docNumber: 'aa 1234567', birthDate: '1990-05-01', gender: 'm', region: '3' },
     { today: '2026-10-05' },
   );
   assert.deepEqual(ok, {
     label: "O'zim", firstName: 'ANVARJON', lastName: 'ISMOILOV', docNumber: 'AA1234567',
-    birthDate: '1990-05-01', gender: 'M', citizenship: 'UZB',
+    birthDate: '1990-05-01', gender: 'M', citizenship: 'UZB', region: '03',
   });
+
+  // Viloyat: "3" → "03"; noto'g'ri kod → ''
+  assert.equal(personal.normalizeRegion('3'), '03');
+  assert.equal(personal.normalizeRegion('27'), '27');
+  assert.equal(personal.normalizeRegion('99'), '');
+  assert.equal(personal.regionName('03'), 'Andijon');
 
   const base = { firstName: 'Ali', lastName: 'Valiyev', docNumber: 'AB7654321', birthDate: '2015-01-01', gender: 'F' };
   assert.throws(() => personal.validatePassengerInput({ ...base, firstName: '' }), ValidationError);
