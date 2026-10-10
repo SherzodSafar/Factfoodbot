@@ -33,6 +33,10 @@ export async function refreshStations() {
 }
 
 /** Faol stansiyalar (Mini App uchun) */
+// Ro'yxat boshida: Toshkent (Markaziy), Toshkent (Janubiy), Toshkent — qolganlari avvalgi tartibda
+const PINNED = ['2900001', '2900002', '2900000'];
+const pinRank = (code) => { const i = PINNED.indexOf(code); return i === -1 ? PINNED.length : i; };
+
 export function listStations() {
   return index.map((item) => ({
     code: item.station.code,
@@ -41,7 +45,7 @@ export function listStations() {
     region: item.station.region,
     isPopular: item.station.isPopular,
     aliases: item.station.aliases || [],
-  }));
+  })).sort((a, b) => pinRank(a.code) - pinRank(b.code)); // barqaror saralash
 }
 
 export function findStation(code) {

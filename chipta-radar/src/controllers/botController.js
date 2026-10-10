@@ -75,19 +75,23 @@ async function showMenu(ctx) {
 }
 
 const HELP_TEXT =
-  '<b>ℹ️ Qanday foydalaniladi</b>\n\n' +
-  '➕ <b>Kuzatuv qo\'shish</b> — yo\'nalish, sana va vagon turini tanlaysiz. Chipta yo\'q bo\'lsa, ' +
-  'joy chiqishi bilan darrov xabar beraman.\n' +
-  '🎯 <b>Aniq joy</b> — Plaskart/Kupe tanlasangiz, pastki/yuqori yoki to\'rttalik/bokovoyni ham tanlash mumkin.\n' +
-  '🚆 <b>Poyezd narxlari</b> — mashhur yo\'nalishlar bo\'yicha bugungi poyezdlar va narxlar.\n' +
-  '📋 <b>Kuzatuvlarim</b> — faol kuzatuvlarni boshqarish.\n' +
-  '🔐 <b>Akkaunt</b> — eticket hisobini ulash, yo\'lovchilarni shifrlab saqlash (parol saqlanmaydi).\n' +
-  '🧾 <b>Bronlarim</b> — buyurtmalar va bot ichida Payme/Click to\'lov so\'rovi.\n\n' +
-  '<b>Tezkor qidiruv</b> — shunchaki yozing:\n' +
+  '<b>ℹ️ Yordam — bot qanday ishlaydi</b>\n\n' +
+  '🔔 <b>Bot nima qiladi?</b>\n' +
+  'Kerakli poyezdga chipta qolmagan bo\'lsa — kuzatuvga qo\'yasiz. Bo\'sh joy chiqishi bilan ' +
+  'bot darhol xabar beradi.\n\n' +
+  '➕ <b>Kuzatuv qo\'shish</b> — 3 qadam:\n' +
+  '1️⃣ Qayerdan → qayerga\n' +
+  '2️⃣ Sana\n' +
+  '3️⃣ Vagon turi — <b>bir nechtasini</b> belgilash mumkin, har birining yonida shu yo\'nalishdagi narx ko\'rinadi.\n' +
+  '🎯 Faqat Plaskart yoki Kupe tanlasangiz — pastki/yuqori, to\'rttalik/bokovoy joyni ham aniq kuzatish mumkin.\n\n' +
+  '📋 <b>Kuzatuvlarim</b> — to\'xtatish, davom ettirish, darhol tekshirish yoki o\'chirish.\n' +
+  '🚆 <b>Poyezd narxlari</b> — mashhur yo\'nalishlar (borish va qaytish) bo\'yicha bugungi poyezdlar, vaqt va narxlar.\n\n' +
+  '⚡️ <b>Tezkor qidiruv</b> — shunchaki yozing:\n' +
   '• <code>Toshkent Samarqand ertaga</code>\n' +
   '• <code>Andijon Toshkent 25.10</code>\n\n' +
-  'ℹ️ Bot chipta sotmaydi — joy topilganda xabar beradi, xaridni rasmiy ' +
-  `<a href="${config.railway.buyUrl}">eticket.railway.uz</a> saytida o'zingiz qilasiz.`;
+  '🎫 <b>Chipta qanday olinadi?</b>\n' +
+  'Bot chipta sotmaydi. Joy chiqqanda xabardagi <b>«Shu yo\'nalishni ochib sotib olish»</b> tugmasini bosing — ' +
+  'rasmiy saytda yo\'lovchi ma\'lumotini kiritib to\'laysiz. Tez harakat qiling: bo\'sh joylar tez tugaydi!';
 
 export async function help(ctx) {
   const keyboard = Markup.inlineKeyboard([ui.backToMenuRow()]);
@@ -125,7 +129,8 @@ async function showReferral(ctx) {
 function summary(session) {
   const lines = [`📍 <b>${escapeHtml(stationName(session.fromCode))} → ${escapeHtml(stationName(session.toCode))}</b>`];
   if (session.date) lines.push(`📅 ${dateLine(session.date)}`);
-  if (session.carType) lines.push(`🚆 ${session.carType === 'any' ? 'Istalgan vagon turi' : carTypeLabel(session.carType)}`);
+  if (session.carType === 'any') lines.push('🚆 Istalgan vagon turi');
+  else if (session.carTypes?.length) lines.push(`🚆 ${session.carTypes.map(carTypeLabel).join(', ')}`);
   const seat = [];
   if (session.section && session.section !== 'any') seat.push(session.section === 'compartment' ? 'to\'rttalik' : 'bokovoy');
   if (session.berth && session.berth !== 'any') seat.push(session.berth === 'lower' ? 'pastki' : 'yuqori');
@@ -144,7 +149,11 @@ function renderStep(session) {
     case 'date':
       return { text: `${summary(session)}\n\n📅 <b>Qaysi kunga?</b>`, kb: ui.dateGrid(session.dateOffset || 0, max) };
     case 'car':
-      return { text: `${summary(session)}\n\n🚆 <b>Qanday joy kerak?</b>\n<i>(O'rindiqli — Afrosiyob/Sharq; Plaskart, Kupe, Lyuks/SV — uzoq yo'nalishlarda)</i>`, kb: ui.carKeyboard() };
+      return {
+        text: `${summary(session)}\n\n🚆 <b>Qanday vagon kerak?</b>\nBir nechtasini belgilab, «Davom etish»ni bosing.`
+          + `${Object.keys(session.carPrices || {}).length ? '\n<i>Narx — shu sanadagi eng arzon chipta.</i>' : ''}`,
+        kb: ui.carKeyboard(session.carTypes || [], session.carPrices || {}),
+      };
     case 'section':
       return { text: `${summary(session)}\n\n🛋 <b>Qaysi qism?</b>`, kb: ui.sectionKeyboard() };
     case 'berth':
@@ -243,13 +252,32 @@ async function onWizard(ctx, rest) {
     return showStep(ctx, session);
   }
   if (action === 'd') {
-    session = wizard.patchSession(ctx.from.id, { date: value, step: 'car' });
-    await ctx.answerCbQuery();
+    await ctx.answerCbQuery('Narxlar yuklanmoqda...').catch(() => {});
+    const carPrices = await carPricesFor(session?.fromCode, session?.toCode, value);
+    session = wizard.patchSession(ctx.from.id, { date: value, step: 'car', carPrices });
     return showStep(ctx, session);
   }
   if (action === 'c') {
-    const next = value === 'platskart' ? 'section' : value === 'kupe' ? 'berth' : 'qty';
-    session = wizard.patchSession(ctx.from.id, { carType: value, section: 'any', berth: 'any', step: next });
+    if (value === 'any') {
+      session = wizard.patchSession(ctx.from.id, { carType: 'any', carTypes: [], section: 'any', berth: 'any', step: 'qty' });
+      await ctx.answerCbQuery();
+      return showStep(ctx, session);
+    }
+    // Belgilash / olib tashlash — bir nechta tur tanlash mumkin
+    const selected = new Set(session?.carTypes || []);
+    if (selected.has(value)) selected.delete(value);
+    else selected.add(value);
+    session = wizard.patchSession(ctx.from.id, { carTypes: [...selected], step: 'car' });
+    await ctx.answerCbQuery(selected.has(value) ? '☑️ Belgilandi' : 'Olib tashlandi');
+    return showStep(ctx, session);
+  }
+  if (action === 'cok') {
+    const types = session?.carTypes || [];
+    const single = types.length === 1 ? types[0] : null;
+    // Bitta Plaskart/Kupe bo'lsa — aniq joy bosqichlari; bir nechta bo'lsa — to'g'ri soniga
+    const next = single === 'platskart' ? 'section' : single === 'kupe' ? 'berth' : 'qty';
+    const carType = types.length ? (single || 'multi') : 'any';
+    session = wizard.patchSession(ctx.from.id, { carType, section: 'any', berth: 'any', step: next });
     await ctx.answerCbQuery();
     return showStep(ctx, session);
   }
@@ -290,7 +318,7 @@ async function finishWizard(ctx, user, session) {
     toCode: session.toCode,
     dates: [session.date],
     quantity: session.quantity || 1,
-    carTypes: session.carType && session.carType !== 'any' ? [session.carType] : [],
+    carTypes: session.carType === 'any' ? [] : (session.carTypes || []),
     section: session.section || 'any',
     berth: session.berth || 'any',
     together: session.together || 'any',
@@ -854,12 +882,50 @@ async function handleFlowText(ctx, active, text) {
 /*  Poyezd narxlari (mashhur yo'nalishlar)                             */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Vagon turi bo'yicha eng arzon narx (shu yo'nalish va sana uchun): { tur: so'm }.
+ * Sayt sekin javob bersa yoki xato bo'lsa — narxsiz davom etamiz.
+ */
+async function carPricesFor(from, to, date) {
+  if (!from || !to || !date) return {};
+  let timer;
+  try {
+    const { trains } = await Promise.race([
+      searchTrains({ from, to, date }, { priority: 'high', maxAgeMs: 10 * 60_000 }),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('timeout')), 8000); }),
+    ]);
+    const prices = {};
+    for (const train of trains || []) {
+      for (const car of train.cars || []) {
+        if (car.minPrice && (!prices[car.type] || car.minPrice < prices[car.type])) prices[car.type] = car.minPrice;
+      }
+    }
+    return prices;
+  } catch {
+    return {};
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Mashhur yo'nalishlar juftlik bo'lib: [A, B] → tugmalar "A → B" | "B → A" */
+function priceRoutePairs() {
+  const seen = new Set();
+  return POPULAR_ROUTES.filter(([a, b]) => {
+    const key = [a, b].sort().join('-');
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 async function showPrices(ctx) {
-  const rows = POPULAR_ROUTES.slice(0, 10).map(([from, to]) => [
-    Markup.button.callback(`${stationName(from)} → ${stationName(to)}`, `pr:${from}:${to}`),
+  const rows = priceRoutePairs().map(([a, b]) => [
+    Markup.button.callback(`${stationName(a)} → ${stationName(b)}`, `pr:${a}:${b}`),
+    Markup.button.callback(`${stationName(b)} → ${stationName(a)}`, `pr:${b}:${a}`),
   ]);
   rows.push(ui.backToMenuRow());
-  const text = '🚆 <b>Poyezd narx va jadvali</b>\n\nYo\'nalishni tanlang — bugungi poyezdlar, vaqtlar va narxlarni ko\'rsataman.';
+  const text = '🚆 <b>Poyezd narx va jadvali</b>\n\nYo\'nalishni tanlang (chapda — borish, o\'ngda — qaytish). Bugungi poyezdlar, vaqtlar va narxlarni ko\'rsataman.';
   if (ctx.callbackQuery) { try { await ctx.editMessageText(text, HTML(Markup.inlineKeyboard(rows))); return; } catch { /* yangi */ } }
   return ctx.replyWithHTML(text, Markup.inlineKeyboard(rows));
 }

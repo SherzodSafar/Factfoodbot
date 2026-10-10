@@ -7,6 +7,7 @@
 import { Markup } from 'telegraf';
 import { listStations } from './stations.js';
 import { REGIONS } from './personal.js';
+import { formatMoney } from '../utils/text.js';
 import { todayISO, addDays, isISODate, diffDays, MONTHS_UZ, WEEKDAYS_UZ } from '../utils/dates.js';
 
 /* --------------------------- Asosiy menyu --------------------------- */
@@ -116,11 +117,18 @@ export const CAR_CHOICES = [
   { type: 'general', label: '🚃 Umumiy' },
 ];
 
-export function carKeyboard() {
-  const rows = [];
-  for (let i = 0; i < CAR_CHOICES.length; i += 2) {
-    rows.push(CAR_CHOICES.slice(i, i + 2).map((choice) => Markup.button.callback(choice.label, `wz:c:${choice.type}`)));
+/**
+ * Vagon turlari — bir nechtasini belgilash mumkin (`wz:c:<tur>` — belgilash/olib tashlash,
+ * `wz:cok` — davom). Yonida shu yo'nalishdagi eng arzon narx (prices: {tur: so'm}).
+ */
+export function carKeyboard(selected = [], prices = {}) {
+  const rows = [[Markup.button.callback('✅ Farqi yo\'q (istalgan vagon)', 'wz:c:any')]];
+  for (const choice of CAR_CHOICES.filter((item) => item.type !== 'any')) {
+    const mark = selected.includes(choice.type) ? '☑️ ' : '';
+    const price = prices[choice.type] ? ` · ${formatMoney(prices[choice.type])}dan` : '';
+    rows.push([Markup.button.callback(`${mark}${choice.label}${price}`, `wz:c:${choice.type}`)]);
   }
+  if (selected.length) rows.push([Markup.button.callback(`➡️ Davom etish (${selected.length} ta tanlandi)`, 'wz:cok')]);
   rows.push([Markup.button.callback('⬅️ Orqaga', 'wz:back'), Markup.button.callback('❌ Bekor', 'm:home')]);
   return Markup.inlineKeyboard(rows);
 }

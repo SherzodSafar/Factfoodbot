@@ -78,8 +78,6 @@ export function accountWebAppReady() {
 export const BOT_COMMANDS = [
   { command: 'start', description: 'Asosiy menyu' },
   { command: 'watches', description: 'Mening kuzatuvlarim' },
-  { command: 'account', description: 'Akkaunt va ma\'lumotlar' },
-  { command: 'orders', description: 'Bronlarim va to\'lov' },
   { command: 'help', description: 'Yordam' },
 ];
 
