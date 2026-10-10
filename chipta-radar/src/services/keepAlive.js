@@ -1,8 +1,6 @@
 /**
  * Bepul Render serveri 15 daqiqa jimlikdan keyin "uxlaydi" — shunda kuzatuv ham to'xtaydi.
- * Faol kuzatuvlar bor ekan, server har ~9 daqiqada o'z manziliga so'rov yuborib turadi.
- * Kuzatuv yo'q bo'lsa server bemalol uxlaydi (bepul soatlar tejaladi) —
- * foydalanuvchi botga yozishi bilan u yana uyg'onadi.
+ * Server DOIM har ~9 daqiqada o'z manziliga so'rov yuboradi — hech qachon uxlamaydi.
  */
 import config from '../config/default.js';
 import { getActiveWatchCount } from './watcher.js';
@@ -15,7 +13,7 @@ async function ping() {
   try {
     // Kuzatuv xizmati xotirasidan — bazani uyg'otmaslik uchun
     state.activeWatches = getActiveWatchCount();
-    if (!state.activeWatches) return;
+    // Doim ping — server hech qachon uxlamasin (kuzatuv bo'lmasa ham)
     const response = await fetch(`${config.bot.publicUrl}/api/health?source=keepalive`, {
       signal: AbortSignal.timeout(30_000),
     });
@@ -32,7 +30,7 @@ export function startKeepAlive() {
   state.enabled = true;
   const timer = setInterval(ping, INTERVAL_MS);
   timer.unref?.();
-  console.log('✅ Uyg\'oq saqlash yoqildi (faol kuzatuvlar bo\'lganda)');
+  console.log('✅ Uyg\'oq saqlash yoqildi (doim — har 9 daqiqada)');
 }
 
 export function getKeepAliveStatus() {

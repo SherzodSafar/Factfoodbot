@@ -1,8 +1,10 @@
 /**
  * Telegram bot instansiyasi (Telegraf) va xabar yuborish yordamchilari.
  */
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { Telegraf } from 'telegraf';
-import config from '../config/default.js';
+import config, { ROOT_DIR } from '../config/default.js';
 import UserModel from '../models/User.js';
 
 let bot = null;
@@ -86,6 +88,20 @@ export const BOT_COMMANDS = [
  *  - "Menu" tugmasi — oddiy buyruqlar ro'yxati (Mini App emas, hammasi inline)
  *  - buyruqlar ro'yxati va qisqa tavsif
  */
+/** Botda profil rasmi bo'lmasa — assets/bot-avatar.jpg bir marta qo'yiladi */
+async function ensureBotAvatar(instance) {
+  const me = instance.botInfo || (await instance.telegram.getMe());
+  const photos = await instance.telegram.getUserProfilePhotos(me.id, 0, 1);
+  if (photos.total_count > 0) return; // rasm allaqachon bor — qayta yuklanmaydi
+  const image = await fs.readFile(path.join(ROOT_DIR, 'assets', 'bot-avatar.jpg'));
+  const form = new FormData();
+  form.append('photo', JSON.stringify({ type: 'static', photo: 'attach://avatar' }));
+  form.append('avatar', new Blob([image], { type: 'image/jpeg' }), 'avatar.jpg');
+  const response = await fetch(`https://api.telegram.org/bot${config.bot.token}/setMyProfilePhoto`, { method: 'POST', body: form });
+  const data = await response.json().catch(() => ({}));
+  console.log(data.ok ? '✅ Bot avatari qo\'yildi' : `⚠️ Bot avatari qo'yilmadi: ${data.description || response.status}`);
+}
+
 export async function syncBotProfile() {
   const instance = getBot();
   if (!instance) return false;
@@ -110,6 +126,7 @@ export async function syncBotProfile() {
     // "Menu" tugmasi — buyruqlar ro'yxati (Mini App ishlatilmaydi)
     await instance.telegram.setChatMenuButton({ menuButton: { type: 'commands' } }).catch(() => {});
     console.log('✅ Telegram "Menu" tugmasi — buyruqlar ro\'yxati (inline interfeys)');
+    await ensureBotAvatar(instance).catch((error) => console.warn('[bot] Avatar:', error.message));
     return true;
   } catch (error) {
     console.error('[bot] Profilni sozlab bo\'lmadi:', error.message);
