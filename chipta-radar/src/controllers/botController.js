@@ -24,7 +24,8 @@ import { createWatches, ValidationError } from '../services/watchService.js';
 import { checkWatchNow, withLiveState } from '../services/watcher.js';
 import { getSettings } from '../services/settings.js';
 import { parseQuery } from '../services/queryParser.js';
-import { todayISO, addDays } from '../utils/dates.js';
+import { todayISO } from '../utils/dates.js';
+import { getRoutePrices, mergeMinPrices } from '../services/routePrices.js';
 import { escapeHtml, formatMoney } from '../utils/text.js';
 import ui from '../services/botUi.js';
 import wizard from '../services/botWizard.js';
@@ -248,7 +249,6 @@ async function onWizard(ctx, rest) {
   if (action === 't') {
     if (value === session.fromCode) return ctx.answerCbQuery('Jo\'nash va borish bir xil bo\'lmasin');
     session = wizard.patchSession(ctx.from.id, { toCode: value, step: 'date' });
-    warmRoutePrices(session.fromCode, value).catch(() => {}); // narxlar fonda — sana tanlanguncha tayyor
     await ctx.answerCbQuery();
     return showStep(ctx, session);
   }
@@ -883,21 +883,7 @@ async function handleFlowText(ctx, active, text) {
 /*  Poyezd narxlari (mashhur yo'nalishlar)                             */
 /* ------------------------------------------------------------------ */
 
-/* -------- Vagon narxlari (yo'nalish bo'yicha; narx odatda hamma sanada bir xil) -------- */
-
-const routePrices = new Map(); // "from-to" → { prices, at, pending }
-const ROUTE_PRICE_TTL = 12 * 60 * 60_000;
-const WARM_OFFSETS = [1, 3, 7, 14, 21]; // joy bo'lmagan sanada narx yo'q — boshqa kunlardan olinadi
-
-/** Poyezdlar ro'yxatidan har bir vagon turi uchun eng arzon narx (target'ga qo'shiladi) */
-function mergeMinPrices(target, trains) {
-  for (const train of trains || []) {
-    for (const car of train.cars || []) {
-      if (car.minPrice && (!target[car.type] || car.minPrice < target[car.type])) target[car.type] = car.minPrice;
-    }
-  }
-  return target;
-}
+/* -------- Vagon narxlari: har kuni yig'iladigan ro'yxatdan (services/routePrices.js) -------- */
 
 const withTimeout = (promise, ms) => {
   let timer;
@@ -905,44 +891,21 @@ const withTimeout = (promise, ms) => {
     .finally(() => clearTimeout(timer));
 };
 
-/** Yo'nalish narxlarini fonda bir necha sanadan yig'ish (keshlanadi). Natija qisman ham ishlatiladi. */
-function warmRoutePrices(from, to) {
-  const key = `${from}-${to}`;
-  const hit = routePrices.get(key);
-  if (hit && (hit.pending || Date.now() - hit.at < ROUTE_PRICE_TTL)) return hit.pending || Promise.resolve(hit.prices);
-  const entry = { prices: hit?.prices || {}, at: hit?.at || 0, pending: null };
-  entry.pending = (async () => {
-    for (const offset of WARM_OFFSETS) {
-      try {
-        const { trains } = await searchTrains({ from, to, date: addDays(todayISO(), offset) }, { priority: 'high', maxAgeMs: 60 * 60_000 });
-        mergeMinPrices(entry.prices, trains);
-      } catch { /* keyingi sana */ }
-    }
-    entry.at = Date.now();
-    entry.pending = null;
-    return entry.prices;
-  })();
-  routePrices.set(key, entry);
-  return entry.pending;
-}
-
 /**
- * Vagon turi bo'yicha eng arzon narx: { tur: so'm }. Avval tanlangan sana; joy yo'q
- * turlar uchun narx shu yo'nalishning boshqa sanalaridan olinadi. Xato bo'lsa — narxsiz.
+ * Vagon turi bo'yicha eng arzon narx: { tur: so'm }. Har kuni yig'iladigan ro'yxatdan
+ * darhol olinadi. Ro'yxatda hali yo'q bo'lsa (birinchi yig'ish tugamagan) — tanlangan
+ * sana bo'yicha tez urinish (4 s), bo'lmasa narxsiz.
  */
 async function carPricesFor(from, to, date) {
-  if (!from || !to || !date) return {};
-  const warm = warmRoutePrices(from, to).catch(() => ({}));
-  const prices = {};
+  if (!from || !to) return {};
+  const stored = getRoutePrices(from, to);
+  if (Object.keys(stored).length) return { ...stored };
   try {
-    const { trains } = await withTimeout(searchTrains({ from, to, date }, { priority: 'high', maxAgeMs: 10 * 60_000 }), 6000);
-    mergeMinPrices(prices, trains);
-  } catch { /* boshqa sanalardan */ }
-  // Tanlangan sanada umuman narx bo'lmasa — fondagi yig'ishni biroz kutamiz
-  if (!Object.keys(prices).length) await withTimeout(warm, 8000).catch(() => {});
-  const route = routePrices.get(`${from}-${to}`)?.prices || {};
-  for (const [type, price] of Object.entries(route)) if (!prices[type]) prices[type] = price;
-  return prices;
+    const { trains } = await withTimeout(searchTrains({ from, to, date }, { priority: 'high', maxAgeMs: 10 * 60_000 }), 4000);
+    return mergeMinPrices({}, trains);
+  } catch {
+    return {};
+  }
 }
 
 /** Mashhur yo'nalishlar juftlik bo'lib: [A, B] → tugmalar "A → B" | "B → A" */

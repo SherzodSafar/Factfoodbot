@@ -23,6 +23,7 @@ import { loadSettings } from './services/settings.js';
 import { refreshStations } from './services/stations.js';
 import { startWatcher, stopWatcher, getWatcherStatus, flushWatcher } from './services/watcher.js';
 import { startKeepAlive } from './services/keepAlive.js';
+import { startRoutePrices } from './services/routePrices.js';
 import { todayISO, addDays } from './utils/dates.js';
 
 const app = express();
@@ -139,6 +140,7 @@ async function onDatabaseReady() {
   console.log('✅ Ma\'lumotlar bazasi: ulandi');
   startWatcher();
   startKeepAlive();
+  startRoutePrices().catch((error) => console.error('[narxlar]', error.message));
 }
 
 async function connectWithRetry() {
