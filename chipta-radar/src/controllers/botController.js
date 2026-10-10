@@ -25,7 +25,7 @@ import { checkWatchNow, withLiveState } from '../services/watcher.js';
 import { getSettings } from '../services/settings.js';
 import { parseQuery } from '../services/queryParser.js';
 import { todayISO } from '../utils/dates.js';
-import { getRoutePrices, mergeMinPrices } from '../services/routePrices.js';
+import { getRoutePrices, getTrainPrices, mergeMinPrices } from '../services/routePrices.js';
 import { escapeHtml, formatMoney } from '../utils/text.js';
 import ui from '../services/botUi.js';
 import wizard from '../services/botWizard.js';
@@ -938,7 +938,7 @@ async function showRoutePrices(ctx, from, to) {
   try {
     const { trains } = await searchTrains({ from, to, date });
     SearchLogModel.record({ userId: user.id, fromCode: from, toCode: to, date, source: 'bot', trains: trains.length, withSeats: trains.filter((t) => t.totalFree > 0).length });
-    const reply = searchReply({ from: stationName(from), to: stationName(to), date, trains });
+    const reply = searchReply({ from: stationName(from), to: stationName(to), date, trains, pricesOf: (train) => getTrainPrices(from, to, train.number) });
     const keyboard = Markup.inlineKeyboard([
       [Markup.button.callback('🔔 Joy chiqsa xabar ber', `qw:${from}:${to}:${date}`)],
       [Markup.button.callback('⬅️ Yo\'nalishlar', 'm:prices'), ...ui.backToMenuRow()],
@@ -1093,7 +1093,7 @@ export async function onText(ctx) {
   try {
     const { trains } = await searchTrains({ from: from.code, to: to.code, date });
     SearchLogModel.record({ userId: user.id, fromCode: from.code, toCode: to.code, date, source: 'bot', trains: trains.length, withSeats: trains.filter((t) => t.totalFree > 0).length });
-    const reply = searchReply({ from: from.nameUz, to: to.nameUz, date, trains });
+    const reply = searchReply({ from: from.nameUz, to: to.nameUz, date, trains, pricesOf: (train) => getTrainPrices(from.code, to.code, train.number) });
     const keyboard = Markup.inlineKeyboard([
       [Markup.button.callback('🔔 Joy chiqsa xabar ber', `qw:${from.code}:${to.code}:${date}`)],
       [Markup.button.callback('➕ Aniq kuzatuv', 'm:add'), ...ui.backToMenuRow()],

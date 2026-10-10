@@ -99,7 +99,18 @@ export function foundMessage(watch, result) {
 }
 
 /** Botdagi tezkor qidiruv javobi */
-export function searchReply({ from, to, date, trains }) {
+const PRICE_ORDER = ['sitting', 'platskart', 'kupe', 'sv', 'general'];
+
+/** Saqlangan narxlar qatori: "💰 Plaskart 245 140 so'm · Kupe 360 000 so'm" */
+function storedPriceLine(prices = {}) {
+  const parts = Object.keys(prices)
+    .sort((a, b) => (PRICE_ORDER.indexOf(a) + 99) % 99 - (PRICE_ORDER.indexOf(b) + 99) % 99)
+    .map((type) => `${carTypeLabel(type)} ${formatMoney(prices[type])}`);
+  return parts.length ? `💰 <i>${parts.join(' · ')}</i>` : '';
+}
+
+/** pricesOf(train) — saqlangan narxlar (joy qolmagan poyezdlarda ko'rsatiladi) */
+export function searchReply({ from, to, date, trains, pricesOf = null }) {
   const lines = [`🚆 <b>${escapeHtml(from)} → ${escapeHtml(to)}</b>`, `📅 ${dateLine(date)}`, ''];
 
   if (!trains.length) {
@@ -115,6 +126,8 @@ export function searchReply({ from, to, date, trains }) {
       for (const car of types) lines.push(`     ${typeLine(car)}`);
     } else {
       lines.push('     ❌ Joy qolmagan');
+      const priceLine = pricesOf ? storedPriceLine(pricesOf(train)) : '';
+      if (priceLine) lines.push(`     ${priceLine}`);
     }
   });
   if (trains.length > 12) lines.push(`… va yana ${trains.length - 12} ta poyezd`);
