@@ -78,6 +78,11 @@ const config = {
     cacheTtlMs: toNumber(process.env.RAILWAY_CACHE_TTL_MS, 30000),
     // Mijoz chiptani shu sahifada sotib oladi
     buyUrl: process.env.RAILWAY_BUY_URL || 'https://eticket.railway.uz/uz/home',
+    // Chipta topilganda to'g'ridan-to'g'ri qidiruv havolasi — {from},{to},{date},{train}
+    // o'rniga qiymat qo'yiladi. Saytdagi haqiqiy URL boshqacha bo'lsa — RAILWAY_SEARCH_URL
+    // env orqali to'g'rilash mumkin (qayta deploy shart emas).
+    searchUrl: process.env.RAILWAY_SEARCH_URL
+      || 'https://eticket.railway.uz/uz/home?depStation={from}&arvStation={to}&depDate={date}',
   },
 
   /**

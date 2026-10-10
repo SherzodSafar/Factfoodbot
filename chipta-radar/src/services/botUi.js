@@ -21,7 +21,7 @@ export function mainMenu() {
   return Markup.inlineKeyboard([
     [Markup.button.callback('➕ Kuzatuv qo\'shish', 'm:add')],
     [Markup.button.callback('🚆 Poyezd narxlari', 'm:prices'), Markup.button.callback('📋 Kuzatuvlarim', 'm:watches')],
-    [Markup.button.callback('🔐 Akkaunt', 'm:account'), Markup.button.callback('🧾 Bronlarim', 'm:orders')],
+    // Akkaunt/Bronlarim vaqtincha olib tashlandi (kod va handlerlar saqlanadi — keyin qaytarsa bo'ladi)
     [Markup.button.callback('👥 Do\'stlarni taklif qilish', 'm:ref'), Markup.button.callback('ℹ️ Yordam', 'm:help')],
   ]);
 }
@@ -178,7 +178,7 @@ export function manageKeyboard(watch) {
   if (watch.status === 'PAUSED' || watch.status === 'FOUND') top.push(Markup.button.callback('▶️ Davom', `g:resume:${watch.id}`));
   top.push(Markup.button.callback('🔄 Tekshirish', `g:check:${watch.id}`));
   rows.push(top);
-  rows.push([Markup.button.callback(`🤖 Avto-bron: ${watch.autoBook ? 'YOQILGAN' : 'o\'chiq'}`, `ab:${watch.id}`)]);
+  // Avto-bron tugmasi vaqtincha olib tashlandi (kod saqlanadi)
   rows.push([Markup.button.callback('✅ Chipta oldim', `g:got:${watch.id}`), Markup.button.callback('🗑 O\'chirish', `g:del:${watch.id}`)]);
   rows.push([Markup.button.callback('📋 Ro\'yxat', 'm:watches'), ...backToMenuRow()]);
   return Markup.inlineKeyboard(rows);
@@ -186,8 +186,8 @@ export function manageKeyboard(watch) {
 
 /** Chipta topilganda xabar ostidagi tugmalar */
 export function foundKeyboard(watch, buyUrl, { accountUrl = '' } = {}) {
-  const rows = [[Markup.button.url('🎫 eticket.railway.uz da sotib olish', buyUrl)]];
-  // Akkaunt ulangan bo'lsa — bron/to'lov sahifasini ochish mumkin
+  // Bitta bosishda shu yo'nalish + sana tanlangan sahifa ochiladi
+  const rows = [[Markup.button.url('🎫 Shu yo\'nalishni ochib sotib olish', buyUrl)]];
   if (accountUrl) rows.push([Markup.button.webApp('💳 Bron va to\'lov', accountUrl)]);
   rows.push([Markup.button.callback('✅ Chipta oldim', `g:got:${watch.id}`), Markup.button.callback('⏸ To\'xtatish', `g:pause:${watch.id}`)]);
   return Markup.inlineKeyboard(rows);

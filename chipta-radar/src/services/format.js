@@ -1,6 +1,7 @@
 /**
  * Telegram xabarlari matnlari (HTML formatida).
  */
+import config from '../config/default.js';
 import { escapeHtml, formatMoney } from '../utils/text.js';
 import { formatDateUz, formatDuration, relativeDayUz } from '../utils/dates.js';
 import { carTypeLabel, carTypeEmoji } from './carTypes.js';
@@ -60,8 +61,21 @@ export function suggestionLine(suggestion) {
     .join(' + ');
 }
 
+/**
+ * Chipta topilganda — to'g'ridan-to'g'ri qidiruv havolasi (yo'nalish + sana + poyezd
+ * tanlangan sahifa). Shablon config.railway.searchUrl'dan olinadi.
+ */
+export function buildSearchUrl(watch, train = null) {
+  const tpl = config.railway.searchUrl || config.railway.buyUrl;
+  return tpl
+    .replace(/\{from\}/g, encodeURIComponent(watch.fromCode || ''))
+    .replace(/\{to\}/g, encodeURIComponent(watch.toCode || ''))
+    .replace(/\{date\}/g, encodeURIComponent(watch.date || ''))
+    .replace(/\{train\}/g, encodeURIComponent(train?.number || ''));
+}
+
 /** Chipta topilganda yuboriladigan xabar */
-export function foundMessage(watch, result, { buyUrl } = {}) {
+export function foundMessage(watch, result) {
   const head = watch.mode === 'EXACT' ? '🎯 <b>Siz kutgan joylar topildi!</b>' : '🎉 <b>Chipta paydo bo\'ldi!</b>';
   const lines = [
     head,
@@ -79,7 +93,8 @@ export function foundMessage(watch, result, { buyUrl } = {}) {
   if (result.items.length > 5) lines.push('', `… va yana ${result.items.length - 5} ta poyezd`);
 
   lines.push('', '⚡️ Chiptalar tez tugaydi — hoziroq sotib oling!');
-  if (buyUrl) lines.push(`🎫 <a href="${escapeHtml(buyUrl)}">eticket.railway.uz</a>`);
+  const buyUrl = buildSearchUrl(watch, result.items[0]?.train);
+  lines.push(`🎫 <a href="${escapeHtml(buyUrl)}">Shu yo'nalishni saytda ochish →</a>`);
   return lines.join('\n');
 }
 

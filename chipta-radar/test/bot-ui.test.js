@@ -57,10 +57,11 @@ test('topilgan chipta xabari: rasmiy sayt havolasi + inline amallar', () => {
   assert.ok(d.includes('g:got:3') && d.includes('g:pause:3'));
 });
 
-test('asosiy menyuda Akkaunt va Bronlarim bor', () => {
+test('asosiy menyuda Akkaunt/Bronlarim olib tashlangan, asosiy tugmalar bor', () => {
   const d = datas(ui.mainMenu());
-  assert.ok(d.includes('m:account'), 'akkaunt');
-  assert.ok(d.includes('m:orders'), 'bronlarim');
+  assert.ok(!d.includes('m:account'), 'akkaunt olib tashlangan');
+  assert.ok(!d.includes('m:orders'), 'bronlarim olib tashlangan');
+  assert.ok(d.includes('m:add') && d.includes('m:watches') && d.includes('m:prices'), 'asosiy tugmalar');
 });
 
 /** web_app tugmalaridagi url larni yig'ish */
@@ -134,11 +135,11 @@ test('buyurtma to\'lovi klaviaturasi', () => {
   assert.ok(d.includes('pay:go:ORD-1:payme') && d.includes('pay:go:ORD-1:click'));
 });
 
-test('avto-bron klaviaturasi va kuzatuvdagi tugma', () => {
+test('avto-bron klaviaturasi kodi saqlangan, lekin kuzatuv tugmasidan olib tashlangan', () => {
+  // Funksiya kodi saqlanadi (keyin qaytarsa bo'ladi)
   assert.ok(datas(ui.autoBookKeyboard({ id: 7, autoBook: false })).includes('ab:on:7'));
-  assert.ok(datas(ui.autoBookKeyboard({ id: 7, autoBook: true })).includes('ab:off:7'));
-  // Kuzatuvni boshqarishda avto-bron tugmasi
-  assert.ok(datas(ui.manageKeyboard({ id: 7, status: 'ACTIVE', autoBook: false })).includes('ab:7'));
+  // Kuzatuvni boshqarishda avto-bron tugmasi endi yo'q
+  assert.ok(!datas(ui.manageKeyboard({ id: 7, status: 'ACTIVE', autoBook: false })).includes('ab:7'));
 });
 
 test('topilgan chipta: akkaunt ulangan bo\'lsa bron/to\'lov Web App tugmasi', () => {

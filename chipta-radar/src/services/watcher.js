@@ -27,7 +27,7 @@ import NotificationModel from '../models/Notification.js';
 import { searchTrains, getTrainDetail } from '../core/railway.js';
 import { sendMessage } from '../core/bot.js';
 import { evaluateWatch } from './matcher.js';
-import { foundMessage } from './format.js';
+import { foundMessage, buildSearchUrl } from './format.js';
 import { getSettings } from './settings.js';
 import accountService from './accountService.js';
 import { escapeHtml } from '../utils/text.js';
@@ -154,8 +154,8 @@ export async function flushWatcher() {
 /*  Xabar tugmalari                                                    */
 /* ------------------------------------------------------------------ */
 
-export function watchKeyboard(watch) {
-  return foundKeyboard(watch, config.railway.buyUrl);
+export function watchKeyboard(watch, buyUrl) {
+  return foundKeyboard(watch, buyUrl || buildSearchUrl(watch));
 }
 
 function countSeats(result) {
@@ -228,8 +228,9 @@ export async function applyResult(watch, result, { notify = true, markNotified =
 
   let notified = false;
   if (shouldNotify && watch.user) {
-    const text = foundMessage(watch, result, { buyUrl: config.railway.buyUrl });
-    const delivered = await sendMessage(watch.user.telegramId, text, watchKeyboard(watch), {
+    const buyUrl = buildSearchUrl(watch, result.items[0]?.train);
+    const text = foundMessage(watch, result);
+    const delivered = await sendMessage(watch.user.telegramId, text, watchKeyboard(watch, buyUrl), {
       quietNight: watch.user.quietNight,
     });
     await NotificationModel.create({
@@ -472,10 +473,11 @@ export async function runCycle() {
         if (result.items.length) summary.found += 1;
         if (applied.notified) summary.notified += 1;
 
-        // Avto-bron: yangi mos joy chiqdi va kuzatuvda avto-bron yoqilgan bo'lsa
-        if (watch.autoBook && applied.appeared > 0 && result.items.length && watch.autoBookStatus !== 'PAID_REQUESTED') {
-          await tryAutoBook(watch, result);
-        }
+        // Avto-bron VAQTINCHA O'CHIRILGAN (uzrailpass bron chala/0-narx muammosi).
+        // Kod saqlanadi — keyin qaytarish uchun quyidagi blokni oching:
+        // if (watch.autoBook && applied.appeared > 0 && result.items.length && watch.autoBookStatus !== 'PAID_REQUESTED') {
+        //   await tryAutoBook(watch, result);
+        // }
       } catch (error) {
         summary.errors += 1;
         console.error(`[watcher] Kuzatuv #${watch.id}:`, error.message);
