@@ -20,7 +20,8 @@ import { isIntlRoute, intlStations, intlDestinations, matchIntlStation } from '.
 import { POPULAR_ROUTES } from '../services/stationData.js';
 import { carTypeLabel } from '../services/carTypes.js';
 import { regionName, normalizeRegion } from '../services/personal.js';
-import { searchReply, describeWatch, dateLine, trainLine, typeLine, suggestionLine } from '../services/format.js';
+import { searchReply, describeWatch, dateLine, trainLine, typeLine, suggestionLine, buildSearchUrl } from '../services/format.js';
+import { uzsRate } from '../services/exchangeRates.js';
 import { createWatches, ValidationError } from '../services/watchService.js';
 import { checkWatchNow, withLiveState } from '../services/watcher.js';
 import { getSettings } from '../services/settings.js';
@@ -149,7 +150,7 @@ const TASHKENT_SUB = ['2900001', '2900002']; // Markaziy, Janubiy vokzallar
 function carPriceHint(session) {
   if (isIntlRoute(session.fromCode, session.toCode)) {
     return Object.keys(session.carPrices || {}).length
-      ? '<i>Narx — tanlangan kundagi eng arzon chipta (tenge). Chipta bilet.railways.kz saytida sotiladi.</i>'
+      ? `<i>Narx — tanlangan kundagi eng arzon chipta, tengeda${uzsRate('KZT') ? ` (1 tenge ≈ ${uzsRate('KZT').toFixed(1)} so'm, Markaziy bank kursi)` : ''}. Chipta bilet.railways.kz saytida sotiladi.</i>`
       : '<i>Bu kunga bo\'sh joy topilmadi yoki sayt javob bermadi. Kerakli vagon turini belgilang — joy chiqsa xabar beraman.</i>';
   }
   const lines = [];
@@ -409,7 +410,9 @@ async function finishWizard(ctx, user, session) {
         if (item.suggestions?.length) for (const s of item.suggestions.slice(0, 2)) lines.push(`   ✅ ${suggestionLine(s)}`);
         else for (const car of item.types.slice(0, 3)) lines.push(`   ${typeLine(car)}`);
       }
-      lines.push('', `🎫 Sotib olish: <a href="${config.railway.buyUrl}">eticket.railway.uz</a>`);
+      const buyUrl = buildSearchUrl({ fromCode: session.fromCode, toCode: session.toCode, date: session.date }, first.result.items[0]?.train);
+      const site = isIntlRoute(session.fromCode, session.toCode) ? 'bilet.railways.kz' : 'eticket.railway.uz';
+      lines.push('', `🎫 Sotib olish: <a href="${escapeHtml(buyUrl)}">${site}</a>`);
     } else {
       lines.push('⏳ Hozircha mos joy yo\'q — paydo bo\'lishi bilan darrov xabar beraman 🔔');
     }

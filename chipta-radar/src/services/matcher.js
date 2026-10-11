@@ -42,7 +42,7 @@ export function filterTrainsForWatch(trains, watch, now = Date.now()) {
 const typeAllowed = (watch, type) => !watch.carTypes?.length || watch.carTypes.includes(type);
 const priceAllowed = (watch, price) => !watch.maxPrice || !price || price <= watch.maxPrice;
 
-const briefType = (car) => ({ type: car.type, label: car.label, free: car.free, minPrice: car.minPrice });
+const briefType = (car) => ({ type: car.type, label: car.label, free: car.free, minPrice: car.minPrice, ...(car.currency ? { currency: car.currency } : {}) });
 
 /** ANY kuzatuv: faqat ro'yxat bo'yicha */
 export function evaluateAnyWatch(watch, trains, now = Date.now()) {

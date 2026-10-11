@@ -5,6 +5,7 @@ import { buildSearchUrl, typeLine } from '../src/services/format.js';
 import { isIntlRoute, matchIntlStation, intlDestinations } from '../src/services/foreignStations.js';
 import { findStation } from '../src/services/stations.js';
 import ui from '../src/services/botUi.js';
+import { setUzsRate } from '../src/services/exchangeRates.js';
 
 // bilet.railways.kz qidiruv sahifasidan qisqartirilgan namuna
 const HTML = `<form name="route_search_form" method="get" class="ui form"></form>
@@ -59,4 +60,11 @@ test('sehrgar tugmalari bot ishlatadigan ui obyektida bor', () => {
   assert.equal(typeof ui.intlStationGrid, 'function');
   const datas = ui.scopeKeyboard().reply_markup.inline_keyboard.flat().map((b) => b.callback_data);
   assert.ok(datas.includes('wz:scope:local') && datas.includes('wz:scope:intl'));
+});
+
+test('tenge narx yonida taxminiy so\'m qiymati (kurs bo\'lsa)', () => {
+  setUzsRate('KZT', 25.4);
+  const line = typeLine({ type: 'sitting', label: 'O\'rindiqli', free: 35, minPrice: 9342, currency: 'KZT' });
+  assert.match(line, /9 342 tenge dan \(≈ 237 000 so'm\)/);
+  assert.doesNotMatch(typeLine({ type: 'kupe', label: 'Kupe', free: 2, minPrice: 177990 }), /≈/);
 });

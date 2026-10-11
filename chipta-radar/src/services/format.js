@@ -8,6 +8,13 @@ import { carTypeLabel, carTypeEmoji } from './carTypes.js';
 import { LAYOUTS } from './seats.js';
 import { isIntlRoute } from './foreignStations.js';
 import { ktzSearchUrl } from '../core/ktz.js';
+import { uzsRate } from './exchangeRates.js';
+
+/** Xorijiy narx yonida taxminiy so'm qiymati: " (≈ 237 000 so'm)" (kurs noma'lum bo'lsa — bo'sh) */
+export function uzsHint(value, currency) {
+  const rate = currency && currency !== 'UZS' ? uzsRate(currency) : null;
+  return rate && value ? ` (≈ ${formatMoney(Math.round((value * rate) / 1000) * 1000)})` : '';
+}
 
 const SECTION_LABELS = { compartment: 'to\'rttalik', side: 'bokovoy' };
 const BERTH_LABELS = { lower: 'pastki', upper: 'yuqori' };
@@ -47,7 +54,7 @@ export function trainLine(train) {
 }
 
 export function typeLine(car) {
-  const price = car.minPrice ? ` · ${formatMoney(car.minPrice, car.currency)} dan` : '';
+  const price = car.minPrice ? ` · ${formatMoney(car.minPrice, car.currency)} dan${uzsHint(car.minPrice, car.currency)}` : '';
   return `${carTypeEmoji(car.type)} ${escapeHtml(car.label || carTypeLabel(car.type))}: <b>${car.free}</b> ta joy${price}`;
 }
 
@@ -133,7 +140,7 @@ export function searchReply({ from, to, date, trains, pricesOf = null }) {
     if (train.depTime) lines.push(`  🕐 ${train.depTime} → ${train.arrTime || '?'}`);
     const types = train.cars.filter((car) => car.free > 0);
     for (const car of types) {
-      const price = car.minPrice ? ` · ${formatMoney(car.minPrice, car.currency)}${car.maxPrice > car.minPrice ? ' dan' : ''}` : '';
+      const price = car.minPrice ? ` · ${formatMoney(car.minPrice, car.currency)}${car.maxPrice > car.minPrice ? ' dan' : ''}${uzsHint(car.minPrice, car.currency)}` : '';
       lines.push(`  💺 ${escapeHtml(car.label || carTypeLabel(car.type))}: ${car.free} joy${price}`);
     }
     if (!types.length) {

@@ -20,6 +20,7 @@ import { getBot, syncBotProfile } from './core/bot.js';
 import { searchTrains, getTrainDetail, getRailwayStatus } from './core/railway.js';
 import { searchKtzTrains } from './core/ktz.js';
 import { KTZ_STATIONS } from './services/foreignStations.js';
+import { startExchangeRates } from './services/exchangeRates.js';
 import { isKnownCarType } from './services/carTypes.js';
 import { loadSettings } from './services/settings.js';
 import { refreshStations } from './services/stations.js';
@@ -263,6 +264,7 @@ async function bootstrap() {
 
   await startBot();
   railwaySelfTest();
+  startExchangeRates().catch(() => {});
   setTimeout(() => ktzSelfTest().catch(() => {}), 15_000).unref?.();
 
   if (process.env.RAILWAY_INSPECT === '1') {
