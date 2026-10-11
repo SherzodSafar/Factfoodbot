@@ -25,7 +25,7 @@ import { checkWatchNow, withLiveState } from '../services/watcher.js';
 import { getSettings } from '../services/settings.js';
 import { parseQuery } from '../services/queryParser.js';
 import { todayISO } from '../utils/dates.js';
-import { getRoutePrices, getTrainPrices, mergeMinPrices } from '../services/routePrices.js';
+import { getRoutePrices, getTrainPriceInfo, mergeMinPrices } from '../services/routePrices.js';
 import { escapeHtml, formatMoney } from '../utils/text.js';
 import ui from '../services/botUi.js';
 import wizard from '../services/botWizard.js';
@@ -84,6 +84,7 @@ const HELP_TEXT =
   '1️⃣ Qayerdan → qayerga\n' +
   '2️⃣ Sana\n' +
   '3️⃣ Vagon turi — <b>bir nechtasini</b> belgilash mumkin, har birining yonida shu yo\'nalishdagi narx ko\'rinadi.\n' +
+  '🚃 <i>Umumiy — eng arzon vagon: o\'tirib ketiladi, choyshab berilmaydi.</i>\n' +
   '🎯 Faqat Plaskart yoki Kupe tanlasangiz — pastki/yuqori, to\'rttalik/bokovoy joyni ham aniq kuzatish mumkin.\n\n' +
   '📋 <b>Kuzatuvlarim</b> — to\'xtatish, davom ettirish, darhol tekshirish yoki o\'chirish.\n' +
   '🚆 <b>Poyezd narxlari</b> — mashhur yo\'nalishlar (borish va qaytish) bo\'yicha bugungi poyezdlar, vaqt va narxlar.\n\n' +
@@ -140,6 +141,22 @@ function summary(session) {
   return lines.join('\n');
 }
 
+const TASHKENT_SUB = ['2900001', '2900002']; // Markaziy, Janubiy vokzallar
+
+/** Vagon bosqichidagi izoh: narxlar ma'nosi, narxi yo'q turlar va "Umumiy" nima ekani */
+function carPriceHint(session) {
+  const lines = [];
+  if (Object.keys(session.carPrices || {}).length) {
+    lines.push('<i>Narx — shu yo\'nalishdagi eng arzon chipta. Narxi yo\'q tur bu yo\'nalishda topilmadi (odatda bunday vagon yurmaydi).</i>');
+  } else {
+    const tashkent = [session.fromCode, session.toCode].some((code) => TASHKENT_SUB.includes(code));
+    lines.push('⚠️ <i>Bu yo\'nalishda narx topilmadi — to\'g\'ridan-to\'g\'ri poyezd bo\'lmasligi mumkin.'
+      + (tashkent ? ' Vokzal o\'rniga «Toshkent» (barcha vokzallar)ni tanlab ko\'ring.' : '') + '</i>');
+  }
+  lines.push('<i>🚃 Umumiy — eng arzon vagon: o\'tirib ketiladi, choyshab berilmaydi.</i>');
+  return lines.join('\n');
+}
+
 function renderStep(session) {
   const max = getSettings().maxDaysAhead;
   switch (session.step) {
@@ -151,8 +168,7 @@ function renderStep(session) {
       return { text: `${summary(session)}\n\n📅 <b>Qaysi kunga?</b>`, kb: ui.dateGrid(session.dateOffset || 0, max) };
     case 'car':
       return {
-        text: `${summary(session)}\n\n🚆 <b>Qanday vagon kerak?</b>\nBir nechtasini belgilab, «Davom etish»ni bosing.`
-          + `${Object.keys(session.carPrices || {}).length ? '\n<i>Narx — shu yo\'nalishdagi eng arzon chipta.</i>' : ''}`,
+        text: `${summary(session)}\n\n🚆 <b>Qanday vagon kerak?</b>\nBir nechtasini belgilab, «Davom etish»ni bosing.\n${carPriceHint(session)}`,
         kb: ui.carKeyboard(session.carTypes || [], session.carPrices || {}),
       };
     case 'section':
@@ -938,7 +954,7 @@ async function showRoutePrices(ctx, from, to) {
   try {
     const { trains } = await searchTrains({ from, to, date });
     SearchLogModel.record({ userId: user.id, fromCode: from, toCode: to, date, source: 'bot', trains: trains.length, withSeats: trains.filter((t) => t.totalFree > 0).length });
-    const reply = searchReply({ from: stationName(from), to: stationName(to), date, trains, pricesOf: (train) => getTrainPrices(from, to, train.number) });
+    const reply = searchReply({ from: stationName(from), to: stationName(to), date, trains, pricesOf: (train) => getTrainPriceInfo(from, to, train.number) });
     const keyboard = Markup.inlineKeyboard([
       [Markup.button.callback('🔔 Joy chiqsa xabar ber', `qw:${from}:${to}:${date}`)],
       [Markup.button.callback('⬅️ Yo\'nalishlar', 'm:prices'), ...ui.backToMenuRow()],
@@ -1093,7 +1109,7 @@ export async function onText(ctx) {
   try {
     const { trains } = await searchTrains({ from: from.code, to: to.code, date });
     SearchLogModel.record({ userId: user.id, fromCode: from.code, toCode: to.code, date, source: 'bot', trains: trains.length, withSeats: trains.filter((t) => t.totalFree > 0).length });
-    const reply = searchReply({ from: from.nameUz, to: to.nameUz, date, trains, pricesOf: (train) => getTrainPrices(from.code, to.code, train.number) });
+    const reply = searchReply({ from: from.nameUz, to: to.nameUz, date, trains, pricesOf: (train) => getTrainPriceInfo(from.code, to.code, train.number) });
     const keyboard = Markup.inlineKeyboard([
       [Markup.button.callback('🔔 Joy chiqsa xabar ber', `qw:${from.code}:${to.code}:${date}`)],
       [Markup.button.callback('➕ Aniq kuzatuv', 'm:add'), ...ui.backToMenuRow()],

@@ -101,15 +101,18 @@ export function foundMessage(watch, result) {
 /** Botdagi tezkor qidiruv javobi */
 const PRICE_ORDER = ['sitting', 'platskart', 'kupe', 'sv', 'general'];
 
-/** Saqlangan narxlar qatori: "💰 Plaskart 245 140 so'm · Kupe 360 000 so'm" */
-function storedPriceLine(prices = {}) {
-  const parts = Object.keys(prices)
-    .sort((a, b) => (PRICE_ORDER.indexOf(a) + 99) % 99 - (PRICE_ORDER.indexOf(b) + 99) % 99)
-    .map((type) => `${carTypeLabel(type)} ${formatMoney(prices[type])}`);
-  return parts.length ? `💰 <i>${parts.join(' · ')}</i>` : '';
+/** Saqlangan narxlar — har bir tur alohida qatorda (exact=false: yo'nalish bo'yicha eng arzon) */
+function storedPriceLines({ prices = {}, exact = true } = {}) {
+  const types = Object.keys(prices)
+    .sort((a, b) => (PRICE_ORDER.indexOf(a) + 99) % 99 - (PRICE_ORDER.indexOf(b) + 99) % 99);
+  if (!types.length) return [];
+  return [
+    `     💰 <i>Narxlar${exact ? '' : ' (yo\'nalish bo\'yicha, eng arzon)'}:</i>`,
+    ...types.map((type) => `        ${carTypeEmoji(type)} ${escapeHtml(carTypeLabel(type))} — ${formatMoney(prices[type])}`),
+  ];
 }
 
-/** pricesOf(train) — saqlangan narxlar (joy qolmagan poyezdlarda ko'rsatiladi) */
+/** pricesOf(train) → { prices, exact } — saqlangan narxlar (joy qolmagan poyezdlarda ko'rsatiladi) */
 export function searchReply({ from, to, date, trains, pricesOf = null }) {
   const lines = [`🚆 <b>${escapeHtml(from)} → ${escapeHtml(to)}</b>`, `📅 ${dateLine(date)}`, ''];
 
@@ -120,14 +123,14 @@ export function searchReply({ from, to, date, trains, pricesOf = null }) {
 
   const withSeats = trains.filter((train) => train.totalFree > 0);
   trains.slice(0, 12).forEach((train, i) => {
+    if (i > 0) lines.push(''); // poyezdlar orasida bo'sh qator — o'qish oson
     lines.push(`${i + 1}) ${trainLine(train)}`);
     const types = train.cars.filter((car) => car.free > 0);
     if (types.length) {
       for (const car of types) lines.push(`     ${typeLine(car)}`);
     } else {
       lines.push('     ❌ Joy qolmagan');
-      const priceLine = pricesOf ? storedPriceLine(pricesOf(train)) : '';
-      if (priceLine) lines.push(`     ${priceLine}`);
+      if (pricesOf) lines.push(...storedPriceLines(pricesOf(train)));
     }
   });
   if (trains.length > 12) lines.push(`… va yana ${trains.length - 12} ta poyezd`);

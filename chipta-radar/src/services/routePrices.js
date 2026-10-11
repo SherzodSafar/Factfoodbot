@@ -48,10 +48,16 @@ export function getRoutePrices(from, to) {
   return route?.t || (route && !route.n ? route : {}); // eski (v1) yassi ko'rinish ham o'qiladi
 }
 
+/** Poyezd narxlari: { prices, exact } — exact=false bo'lsa bu yo'nalishning eng arzon narxlari */
+export function getTrainPriceInfo(from, to, number) {
+  const own = data.routes[`${from}-${to}`]?.n?.[trainKey(number)];
+  if (own && Object.keys(own).length) return { prices: own, exact: true };
+  return { prices: getRoutePrices(from, to), exact: false };
+}
+
 /** Aniq poyezd narxlari; topilmasa — yo'nalishning eng arzon narxlari */
 export function getTrainPrices(from, to, number) {
-  const own = data.routes[`${from}-${to}`]?.n?.[trainKey(number)];
-  return own && Object.keys(own).length ? own : getRoutePrices(from, to);
+  return getTrainPriceInfo(from, to, number).prices;
 }
 
 export function getRoutePricesStatus() {
