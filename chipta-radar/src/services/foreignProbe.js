@@ -24,26 +24,33 @@ async function hit(name, url, { method = 'GET', body = null, headers = {} } = {}
   }
 }
 
+const uniq = (list, n = 30) => [...new Set(list)].slice(0, n);
+
 export async function runForeignProbe() {
   const date = day(14);
   const [y, m, d] = date.split('-');
-  const rzdHeaders = { Origin: 'https://ticket.rzd.ru', Referer: 'https://ticket.rzd.ru/' };
-  await hit('RZD-new Moskva→Toshkent', 'https://ticket.rzd.ru/apib2b/p/Railway/V1/Search/TrainPricing?service_provider=B2B_RZD', {
-    method: 'POST',
-    headers: rzdHeaders,
-    body: { Origin: '2000000', Destination: '2900000', DepartureDate: `${date}T00:00:00`, TimeFrom: 0, TimeTo: 24, CarGrouping: 'DontGroup', GetByLocalTime: true, SpecialPlacesDemand: 'StandardPlacesAndForDisabledPersons', CarIssuingType: 'All', GetTrainsFromSchedule: true },
-  });
-  await hit('RZD-suggest Toshkent', 'https://ticket.rzd.ru/api/v1/suggests?Query=%D0%A2%D0%B0%D1%88%D0%BA%D0%B5%D0%BD%D1%82&TransportType=rail&GroupResults=true&RailwaySortPriority=true&Language=ru', { headers: rzdHeaders });
-  await hit('RZD-old Moskva→Toshkent', `https://pass.rzd.ru/timetable/public/ru?layer_id=5827&dir=0&tfl=3&checkSeats=1&code0=2000000&code1=2900000&dt0=${d}.${m}.${y}`);
-  const ktz = await hit('KTZ bosh sahifa', 'https://bilet.railways.kz/');
-  const scripts = [...ktz.matchAll(/<script[^>]+src="([^"]+)"/g)].map((match) => match[1]).slice(0, 6);
-  console.log(`[probe] KTZ skriptlar: ${scripts.join(' | ')}`);
-  for (const src of scripts.slice(0, 3)) {
-    const js = await hit(`KTZ js ${src.slice(-40)}`, new URL(src, 'https://bilet.railways.kz/').href);
-    const apis = [...new Set([...js.matchAll(/["'`]((?:https?:\/\/[a-z0-9.-]+)?\/api[^"'`\s]{0,80})["'`]/gi)].map((match) => match[1]))].slice(0, 25);
-    if (apis.length) console.log(`[probe] KTZ api yo'llari: ${apis.join(' | ')}`);
+  // KTZ: qidiruv formasi, skriptlar ichidagi yo'llar
+  const home = await hit('KTZ bosh sahifa', 'https://bilet.railways.kz/', {});
+  console.log(`[probe] KTZ formalar: ${uniq([...home.matchAll(/<form[^>]*>/g)].map((x) => x[0])).join(' | ').slice(0, 800)}`);
+  console.log(`[probe] KTZ maydonlar: ${uniq([...home.matchAll(/name="([^"]+)"/g)].map((x) => x[1])).join(', ').slice(0, 800)}`);
+  console.log(`[probe] KTZ data-url: ${uniq([...home.matchAll(/data-[a-z-]*(?:url|path|route)[a-z-]*="([^"]+)"/g)].map((x) => x[1])).join(' | ').slice(0, 800)}`);
+  const assets = [...home.matchAll(/<script[^>]+src="(\/assets\/[^"]+)"/g)].map((x) => x[1]);
+  for (const src of assets) {
+    const js = await hit(`KTZ js ${src}`, `https://bilet.railways.kz${src}`, {});
+    const paths = uniq([...js.matchAll(/["'`](\/[a-z]{2}\/[a-z0-9_\/-]{3,80}|\/(?:sale|api|station|route|ajax|search|train)[a-z0-9_\/.-]{0,80})["'`]/gi)].map((x) => x[1]), 40);
+    if (paths.length) console.log(`[probe] KTZ yo'llar (${src}): ${paths.join(' | ').slice(0, 1500)}`);
   }
-  await hit('tutu Moskva→Toshkent', 'https://www.tutu.ru/poezda/Moskva/Tashkent/');
+  const q = `route_search_form%5BdepartureStation%5D=2700000&route_search_form%5BarrivalStation%5D=2900000&route_search_form%5BforwardDepartureDate%5D=${d}-${m}-${y}`;
+  for (const path of ['/sale/default/route/search', '/ru/sale/default/route/search']) {
+    const html = await hit(`KTZ qidiruv ${path}`, `https://bilet.railways.kz${path}?${q}`, {});
+    console.log(`[probe] KTZ qidiruv poyezdlar: ${uniq(html.match(/\b\d{3}[А-ЯA-Z]{1,2}\b/g) || [], 20).join(', ')} | Ташкент: ${(html.match(/Ташкент/g) || []).length}`);
+  }
+  // tutu: jadval sahifasidagi poyezdlar va API yo'llari
+  const tutu = await hit('tutu Moskva→Toshkent', 'https://www.tutu.ru/poezda/Moskva/Tashkent/', {});
+  const next = tutu.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/)?.[1] || '';
+  console.log(`[probe] tutu NEXT len=${next.length} poyezdlar: ${uniq(next.match(/"(?:trainNumber|number|num)":"?([0-9]{3}[^",]{0,3})/g) || [], 20).join(', ')}`);
+  console.log(`[probe] tutu api: ${uniq([...tutu.matchAll(/https?:\/\/[a-z0-9.-]*tutu\.ru\/[a-z0-9_\/.-]*api[a-z0-9_\/.-]*/gi)].map((x) => x[0]), 20).join(' | ')}`);
+  await hit('tutu sanali qidiruv', `https://www.tutu.ru/poezda/rasp_d.php?nnst1=2000000&nnst2=2900000&date=${d}.${m}.${y}`, {});
 }
 
 export default { runForeignProbe };
