@@ -147,7 +147,7 @@ const TASHKENT_SUB = ['2900001', '2900002']; // Markaziy, Janubiy vokzallar
 function carPriceHint(session) {
   const lines = [];
   if (Object.keys(session.carPrices || {}).length) {
-    lines.push('<i>Faqat shu yo\'nalishda yuradigan vagon turlari ko\'rsatildi. Narx — eng arzon chipta.</i>');
+    lines.push('<i>Bu yo\'nalishda qatnaydigan vagon turlari va eng arzon narxi (so\'nggi haftalar ma\'lumoti). Tanlangan kunda bo\'sh joy bor-yo\'qligini kuzatuv tekshiradi.</i>');
   } else {
     const tashkent = [session.fromCode, session.toCode].some((code) => TASHKENT_SUB.includes(code));
     lines.push('⚠️ <i>Bu yo\'nalishda narx topilmadi — to\'g\'ridan-to\'g\'ri poyezd bo\'lmasligi mumkin.'

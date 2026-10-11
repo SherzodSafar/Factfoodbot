@@ -178,17 +178,24 @@ export async function refreshRoutePrices({ full = false } = {}) {
         .map((key) => key.split('-'))
         .filter(([a, b]) => a < b || !data.routes[`${b}-${a}`]);
     }
+    // Server qayta ishga tushsa (deploy), bugungi tekshiruv to'xtagan joyidan davom etadi
+    const resume = data.sweep?.day === tashkentDay() && data.sweep.full === full ? data.sweep.done : 0;
     let done = 0;
     for (const [from, to] of pairs) {
+      if (done < resume) { done += 1; continue; }
       if (await collectPair(from, to, full ? FULL_OFFSETS : LIGHT_OFFSETS)) found += 1;
-      if (++done % SAVE_EVERY === 0) await save().catch(() => {});
+      if (++done % SAVE_EVERY === 0) {
+        data.sweep = { day: tashkentDay(), full, done };
+        await save().catch(() => {});
+      }
     }
+    data.sweep = null;
     mirrorReverse();
     Object.assign(data, { updatedAt: new Date().toISOString(), day: tashkentDay(), version: VERSION });
     if (full) Object.assign(data, { fullDay: tashkentDay(), swept: listStations().map((station) => station.code) });
     await save().catch(() => {});
     const minutes = Math.round((Date.now() - started) / 60_000);
-    console.log(`✅ Narxlar ro'yxati yangilandi (${full ? 'to\'liq' : 'kunlik'}): ${found}/${pairs.length} yo'nalish, ${minutes} daq`);
+    console.log(`✅ Narxlar ro'yxati yangilandi (${full ? 'to\'liq' : 'kunlik'}${resume ? `, ${resume}-juftlikdan davom` : ''}): ${found}/${pairs.length - resume} yo'nalish, ${minutes} daq`);
   } catch (error) {
     console.error('[narxlar] Yangilab bo\'lmadi:', error.message);
   } finally {
