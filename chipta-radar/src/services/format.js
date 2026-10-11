@@ -98,44 +98,50 @@ export function foundMessage(watch, result) {
   return lines.join('\n');
 }
 
-/** Botdagi tezkor qidiruv javobi */
 const PRICE_ORDER = ['sitting', 'platskart', 'kupe', 'sv', 'general'];
+const typeRank = (type) => (PRICE_ORDER.indexOf(type) + 99) % 99;
+/** "11.10.2026" */
+const dotDate = (iso) => String(iso || '').split('-').reverse().join('.');
+const amount = (value) => formatMoney(value).replace(/ so'm$/, '');
 
-/** Saqlangan narxlar — har bir tur alohida qatorda (exact=false: yo'nalish bo'yicha eng arzon) */
-function storedPriceLines({ prices = {}, exact = true } = {}) {
-  const types = Object.keys(prices)
-    .sort((a, b) => (PRICE_ORDER.indexOf(a) + 99) % 99 - (PRICE_ORDER.indexOf(b) + 99) % 99);
-  if (!types.length) return [];
-  return [
-    `     💰 <i>Narxlar${exact ? '' : ' (yo\'nalish bo\'yicha, eng arzon)'}:</i>`,
-    ...types.map((type) => `        ${carTypeEmoji(type)} ${escapeHtml(carTypeLabel(type))} — ${formatMoney(prices[type])}`),
-  ];
+/** Joy qolmagan poyezd narxlari bitta qatorda (exact=false: yo'nalish bo'yicha eng arzon) */
+function storedPriceLine({ prices = {}, exact = true } = {}) {
+  const types = Object.keys(prices).sort((a, b) => typeRank(a) - typeRank(b));
+  if (!types.length) return null;
+  const list = types.map((type) => `${escapeHtml(carTypeLabel(type))} ${amount(prices[type])}`).join(' · ');
+  return exact ? `  💰 ${list} so'm` : `  💰 <i>Yo'nalishda: ${list} so'm dan</i>`;
 }
 
-/** pricesOf(train) → { prices, exact } — saqlangan narxlar (joy qolmagan poyezdlarda ko'rsatiladi) */
+/**
+ * Botdagi qidiruv javobi — ixcham ro'yxat.
+ * pricesOf(train) → { prices, exact } — saqlangan narxlar (joy qolmagan poyezdlarda ko'rsatiladi).
+ */
 export function searchReply({ from, to, date, trains, pricesOf = null }) {
-  const lines = [`🚆 <b>${escapeHtml(from)} → ${escapeHtml(to)}</b>`, `📅 ${dateLine(date)}`, ''];
+  const lines = [`🚆 <b>${escapeHtml(from)} → ${escapeHtml(to)}</b> — ${dotDate(date)}`];
 
   if (!trains.length) {
-    lines.push('Bu sanaga poyezd topilmadi. Boshqa sanani tanlab ko\'ring.');
+    lines.push('', 'Bu sanaga poyezd topilmadi. Boshqa sanani tanlab ko\'ring.');
     return lines.join('\n');
   }
 
-  const withSeats = trains.filter((train) => train.totalFree > 0);
-  trains.slice(0, 12).forEach((train, i) => {
-    if (i > 0) lines.push(''); // poyezdlar orasida bo'sh qator — o'qish oson
-    lines.push(`${i + 1}) ${trainLine(train)}`);
+  for (const train of trains.slice(0, 12)) {
+    const title = train.title && train.title !== 'Poyezd' ? ` · ${escapeHtml(train.title)}` : '';
+    lines.push('', `🚆 <b>${escapeHtml(train.number)}${title}</b>`);
+    if (train.depTime) lines.push(`  🕐 ${train.depTime} → ${train.arrTime || '?'}`);
     const types = train.cars.filter((car) => car.free > 0);
-    if (types.length) {
-      for (const car of types) lines.push(`     ${typeLine(car)}`);
-    } else {
-      lines.push('     ❌ Joy qolmagan');
-      if (pricesOf) lines.push(...storedPriceLines(pricesOf(train)));
+    for (const car of types) {
+      const price = car.minPrice ? ` · ${formatMoney(car.minPrice)}${car.maxPrice > car.minPrice ? ' dan' : ''}` : '';
+      lines.push(`  💺 ${escapeHtml(car.label || carTypeLabel(car.type))}: ${car.free} joy${price}`);
     }
-  });
-  if (trains.length > 12) lines.push(`… va yana ${trains.length - 12} ta poyezd`);
+    if (!types.length) {
+      lines.push('  ❌ Joylar tugagan');
+      const stored = pricesOf ? storedPriceLine(pricesOf(train)) : null;
+      if (stored) lines.push(stored);
+    }
+  }
+  if (trains.length > 12) lines.push('', `… va yana ${trains.length - 12} ta poyezd`);
 
-  lines.push('', `Jami: <b>${trains.length}</b> ta poyezd, <b>${withSeats.length}</b> tasida joy bor.`);
+  lines.push('', '🔔 Joy chiqishini kuzatish uchun «🔔 Joy chiqsa xabar ber»ni bosing.');
   return lines.join('\n');
 }
 

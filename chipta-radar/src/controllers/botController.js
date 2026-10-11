@@ -25,7 +25,7 @@ import { checkWatchNow, withLiveState } from '../services/watcher.js';
 import { getSettings } from '../services/settings.js';
 import { parseQuery } from '../services/queryParser.js';
 import { todayISO } from '../utils/dates.js';
-import { getRoutePrices, getTrainPriceInfo, mergeMinPrices } from '../services/routePrices.js';
+import { getRoutePrices, getTrainPriceInfo, mergeMinPrices, knownDestinations, knownOrigins } from '../services/routePrices.js';
 import { escapeHtml, formatMoney } from '../utils/text.js';
 import ui from '../services/botUi.js';
 import wizard from '../services/botWizard.js';
@@ -164,9 +164,14 @@ function renderStep(session) {
   const max = getSettings().maxDaysAhead;
   switch (session.step) {
     case 'from':
-      return { text: '🚉 <b>Qayerdan jo\'naysiz?</b>\nTugmadan tanlang yoki bekat nomini yozing (masalan: <i>Nukus</i>).', kb: ui.stationGrid('wz:f', { page: session.fromPage || 0 }) };
-    case 'to':
-      return { text: `✅ Jo'nash: <b>${escapeHtml(stationName(session.fromCode))}</b>\n\n🏁 <b>Qayerga borasiz?</b>\nTugmadan tanlang yoki yozing.`, kb: ui.stationGrid('wz:t', { page: session.toPage || 0, excludeCode: session.fromCode }) };
+      return { text: '🚉 <b>Qayerdan jo\'naysiz?</b>\nTugmadan tanlang yoki bekat nomini yozing (masalan: <i>Nukus</i>).', kb: ui.stationGrid('wz:f', { page: session.fromPage || 0, only: session.allFrom ? null : knownOrigins() }) };
+    case 'to': {
+      const only = session.allTo ? null : knownDestinations(session.fromCode);
+      const note = only
+        ? `\n<i>Faqat shu bekatdan poyezd qatnaydigan bekatlar ko'rsatildi.${TASHKENT_SUB.includes(session.fromCode) ? ' Ro\'yxatda yo\'q bekat uchun jo\'nashni «Toshkent» (barcha vokzallar) qilib tanlang.' : ''}</i>`
+        : '';
+      return { text: `✅ Jo'nash: <b>${escapeHtml(stationName(session.fromCode))}</b>\n\n🏁 <b>Qayerga borasiz?</b>\nTugmadan tanlang yoki yozing.${note}`, kb: ui.stationGrid('wz:t', { page: session.toPage || 0, excludeCode: session.fromCode, only }) };
+    }
     case 'date':
       return { text: `${summary(session)}\n\n📅 <b>Qaysi kunga?</b>`, kb: ui.dateGrid(session.dateOffset || 0, max) };
     case 'car':
@@ -241,6 +246,11 @@ async function onWizard(ctx, rest) {
     await ctx.answerCbQuery();
     return showStep(ctx, session);
   }
+  if (action === 'fa' || action === 'ta') { // «Barcha bekatlar» — poyezd ko'rilmagan bekatlar ham
+    session = wizard.patchSession(ctx.from.id, action === 'fa' ? { step: 'from', allFrom: true, fromPage: 0 } : { step: 'to', allTo: true, toPage: 0 });
+    await ctx.answerCbQuery();
+    return showStep(ctx, session);
+  }
   if (action === 'dp') {
     session = wizard.patchSession(ctx.from.id, { step: 'date', dateOffset: Number(value) || 0 });
     await ctx.answerCbQuery();
@@ -261,7 +271,7 @@ async function onWizard(ctx, rest) {
   }
 
   if (action === 'f') {
-    session = wizard.patchSession(ctx.from.id, { fromCode: value, step: 'to' });
+    session = wizard.patchSession(ctx.from.id, { fromCode: value, step: 'to', allTo: false, toPage: 0 });
     await ctx.answerCbQuery();
     return showStep(ctx, session);
   }
@@ -936,6 +946,8 @@ async function carPricesFor(from, to, date) {
 function priceRoutePairs() {
   const seen = new Set();
   return POPULAR_ROUTES.filter(([a, b]) => {
+    const known = knownDestinations(a);
+    if (known && !known.has(b)) return false; // poyezd qatnamaydigan yo'nalish
     const key = [a, b].sort().join('-');
     if (seen.has(key)) return false;
     seen.add(key);
@@ -1094,10 +1106,15 @@ export async function onText(ctx) {
   if (session && (session.step === 'from' || session.step === 'to')) {
     const match = searchStations(text, 1)[0];
     if (!match) return ctx.replyWithHTML('Bunday bekat topilmadi. Boshqacha yozib ko\'ring yoki tugmadan tanlang.');
+    const noTrains = (route) => ctx.replyWithHTML(`⚠️ <b>${route}</b> — poyezd topilmadi (bot so'nggi tekshiruvlariga ko'ra).\nRo'yxatdagi bekatlardan tanlang yoki «🔎 Barcha bekatlar»ni bosing.`);
     if (session.step === 'from') {
-      wizard.patchSession(ctx.from.id, { fromCode: match.code, step: 'to' });
+      const known = session.allFrom ? null : knownOrigins();
+      if (known && !known.has(match.code)) return noTrains(`${escapeHtml(match.nameUz)} bekatidan`);
+      wizard.patchSession(ctx.from.id, { fromCode: match.code, step: 'to', allTo: false, toPage: 0 });
     } else {
       if (match.code === session.fromCode) return ctx.reply('Jo\'nash va borish bir xil bo\'lmasin. Boshqa bekat yozing.');
+      const known = session.allTo ? null : knownDestinations(session.fromCode);
+      if (known && !known.has(match.code)) return noTrains(`${escapeHtml(stationName(session.fromCode))} → ${escapeHtml(match.nameUz)}`);
       wizard.patchSession(ctx.from.id, { toCode: match.code, step: 'date' });
     }
     return editStoredStep(ctx, wizard.getSession(ctx.from.id));

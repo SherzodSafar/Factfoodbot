@@ -8,6 +8,7 @@
  *  • Qarama-qarshi yo'nalish: A→B narxi B→A'ning yetishmayotgan turlarini to'ldiradi.
  *  • Bepul o'rganish: kuzatuv va foydalanuvchi qidiruvlaridagi narxlar ham yoziladi
  *    (qo'shimcha so'rovsiz — faol yo'nalishlar doim yangi).
+ *  • Yo'nalish bormi: poyezd ko'rilgan juftliklar — kuzatuv qo'shishda faqat shu bekatlar chiqadi.
  * So'rovlar past ustuvorlikda — kuzatuv tekshiruvlariga xalal bermaydi.
  */
 import prisma, { isDatabaseReady } from '../database/connection.js';
@@ -73,12 +74,16 @@ function routeOf(key) {
   return route;
 }
 
-/** Kelgan poyezdlar narxini yozish: poyezd narxi yangilanadi, yo'nalish narxi qayta hisoblanadi */
+/**
+ * Kelgan poyezdlarni yozish: poyezd narxi yangilanadi, yo'nalish narxi qayta hisoblanadi.
+ * Joy qolmagan (narxsiz) poyezd ham yoziladi — yo'nalishda poyezd qatnashini bildiradi.
+ */
 function applyTrains(from, to, trains) {
-  const priced = (trains || []).filter((train) => trainKey(train.number) && (train.cars || []).some((car) => car.minPrice));
-  if (!priced.length) return false;
+  const seen = (trains || []).filter((train) => trainKey(train.number));
+  if (!seen.length) return false;
   const route = routeOf(`${from}-${to}`);
-  for (const train of priced) {
+  const before = JSON.stringify(route);
+  for (const train of seen) {
     route.n[trainKey(train.number)] = { ...route.n[trainKey(train.number)], ...mergeMinPrices({}, [train]) };
   }
   const fresh = {};
@@ -86,8 +91,42 @@ function applyTrains(from, to, trains) {
     for (const [type, price] of Object.entries(prices)) if (!fresh[type] || price < fresh[type]) fresh[type] = price;
   }
   route.t = { ...route.t, ...fresh }; // poyezdlarda ko'rinmagan (masalan, aks yo'nalishdan olingan) turlar qoladi
-  dirty = true;
+  if (JSON.stringify(route) !== before) dirty = true;
   return true;
+}
+
+/* ------------------------- Yo'nalish bormi? ------------------------- */
+
+const hasTrains = (key) => Object.keys(data.routes[key]?.n || {}).length > 0;
+/** To'liq tekshiruvdan o'tgan bekat (keyin qo'shilgan bekat — noma'lum, doim ko'rsatiladi) */
+const swept = (code) => !Array.isArray(data.swept) || data.swept.includes(code);
+const addUnswept = (set) => {
+  for (const station of listStations()) if (!swept(station.code)) set.add(station.code);
+  return set;
+};
+
+/**
+ * Shu bekatdan poyezd qatnaydigan bekatlar (Set). Poyezdlar juft bo'lib ikki tomonga yuradi —
+ * qarama-qarshi yo'nalish ham hisoblanadi. null — ma'lumot yetarli emas (hammasini ko'rsatish kerak).
+ */
+export function knownDestinations(from) {
+  if (!data.fullDay || !swept(from)) return null;
+  const result = new Set();
+  for (const key of Object.keys(data.routes)) {
+    if (!hasTrains(key)) continue;
+    const [a, b] = key.split('-');
+    if (a === from) result.add(b);
+    else if (b === from) result.add(a);
+  }
+  return result.size ? addUnswept(result) : null;
+}
+
+/** Kamida bitta poyezd ko'rilgan bekatlar (Set) yoki null */
+export function knownOrigins() {
+  if (!data.fullDay) return null;
+  const result = new Set();
+  for (const key of Object.keys(data.routes)) if (hasTrains(key)) key.split('-').forEach((code) => result.add(code));
+  return result.size ? addUnswept(result) : null;
 }
 
 /** Qarama-qarshi yo'nalish: A→B narxlari B→A'ning yetishmayotgan turlarini to'ldiradi (va aksincha) */
@@ -109,7 +148,7 @@ async function save() {
 
 /** Bitta yo'nalish uchun berilgan sanalarni tekshirish; narx topilsa true */
 async function collectPair(from, to, offsets) {
-  let found = false;
+  let found = false; // poyezd ko'rildi
   let tried = 0;
   for (const offset of offsets) {
     tried += 1;
@@ -118,7 +157,7 @@ async function collectPair(from, to, offsets) {
       ({ trains } = await searchTrains({ from, to, date: addDays(todayISO(), offset) }, { priority: 'low', maxAgeMs: 60 * 60_000 }));
     } catch { /* keyingi sana */ }
     if (applyTrains(from, to, trains)) found = true;
-    if (tried >= 3 && !found) break; // 3 sanada ham narx yo'q — bu yo'nalishda poyezd yo'q
+    if (tried >= 3 && !found) break; // 3 sanada ham poyezd yo'q — bu yo'nalishda poyezd qatnamaydi
   }
   return found;
 }
@@ -146,7 +185,7 @@ export async function refreshRoutePrices({ full = false } = {}) {
     }
     mirrorReverse();
     Object.assign(data, { updatedAt: new Date().toISOString(), day: tashkentDay(), version: VERSION });
-    if (full) data.fullDay = tashkentDay();
+    if (full) Object.assign(data, { fullDay: tashkentDay(), swept: listStations().map((station) => station.code) });
     await save().catch(() => {});
     const minutes = Math.round((Date.now() - started) / 60_000);
     console.log(`✅ Narxlar ro'yxati yangilandi (${full ? 'to\'liq' : 'kunlik'}): ${found}/${pairs.length} yo'nalish, ${minutes} daq`);
@@ -157,13 +196,18 @@ export async function refreshRoutePrices({ full = false } = {}) {
   }
 }
 
+/** Saqlangan ro'yxatni xotiraga yuklash (bazadan; testlarda ham) */
+export function loadRouteData(value) {
+  if (value?.routes) data = { ...data, ...value };
+  if (!data.fullDay && data.version === VERSION) data.fullDay = data.day; // v2 yig'ishi to'liq bo'lgan
+}
+
 /** Server ishga tushganda: bazadan yuklash, bepul o'rganishni ulash va jadvalni boshlash */
 export async function startRoutePrices() {
   try {
     const row = isDatabaseReady() ? await prisma.setting.findUnique({ where: { key: KEY } }) : null;
-    if (row?.value?.routes) data = { ...data, ...row.value };
+    loadRouteData(row?.value);
   } catch { /* bo'sh ro'yxat bilan */ }
-  if (!data.fullDay && data.version === VERSION) data.fullDay = data.day; // v2 yig'ishi to'liq bo'lgan
 
   onSearchResult(({ from, to, trains }) => applyTrains(from, to, trains));
 
@@ -182,4 +226,4 @@ export async function startRoutePrices() {
   console.log(`✅ Narxlar ro'yxati: ${Object.keys(data.routes).length} yo'nalish (har kuni ${RUN_HOUR}:00 — kunlik, yakshanba — to'liq)`);
 }
 
-export default { getRoutePrices, getTrainPrices, getRoutePricesStatus, refreshRoutePrices, startRoutePrices, mergeMinPrices };
+export default { getRoutePrices, getTrainPrices, knownDestinations, knownOrigins, getRoutePricesStatus, refreshRoutePrices, startRoutePrices, mergeMinPrices };

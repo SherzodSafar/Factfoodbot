@@ -225,3 +225,11 @@ npm start       # needs BOT_TOKEN, DATABASE_URL, PUBLIC_URL, ADMIN_SECRET
 - **Language:** project comments & bot UI are in **Uzbek (Latin)**. Keep that style.
 - **Commits:** clear messages; the repo uses a Claude-Code co-author/session footer convention.
 - Everything user-facing (bot text, errors) is Uzbek. Money, dates: Tashkent time (UTC+5, no DST).
+
+## Narxlar ro'yxati va yo'nalishlar (src/services/routePrices.js)
+
+- Bazada `Setting.key = "routePrices"`: `routes["from-to"] = { t: {tur: so'm}, n: {poyezd: {tur: so'm}} }`, `fullDay`, `swept`.
+- Har kuni 05:00 (Toshkent) yengil tekshiruv (ma'lum yo'nalishlar, 1 sana). Yakshanba kuni to'liq tekshiruv: barcha juftliklar × 6 sana (~50 daqiqa). Kuzatuv va qidiruv natijalaridan bepul o'rganadi (`railway.onSearchResult`).
+- Sayt joyi qolmagan vagon turini qaytarmaydi, shuning uchun narxlar ko'p sanadan yig'iladi.
+- `knownDestinations(from)` / `knownOrigins()`: poyezd ko'rilgan juftliklar (ikki tomon hisoblanadi). Kuzatuv sehrgarida faqat shu bekatlar chiqadi, «🔎 Barcha bekatlar» tugmasi (`wz:fa` / `wz:ta`) hammasini ochadi. Ma'lumot bo'lmasa `null` qaytadi, ya'ni hammasi ko'rsatiladi.
+- `searchReply` (format.js): «Poyezd narxlari» va matnli qidiruv uchun ixcham ro'yxat.

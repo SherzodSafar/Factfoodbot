@@ -39,9 +39,10 @@ const PER_PAGE = 18; // 3 ustun × 6 qator
 /**
  * Stansiyalar to'ri (inline). Prefiks: 'wz:f' (qayerdan) yoki 'wz:t' (qayerga).
  * Pagination: `${prefix}p:<page>`, tanlash: `${prefix}:<code>`.
+ * only (Set) — faqat poyezd qatnaydigan bekatlar; bunda «Barcha bekatlar» (`${prefix}a`) tugmasi chiqadi.
  */
-export function stationGrid(prefix, { page = 0, excludeCode = null } = {}) {
-  const all = listStations().filter((station) => station.code !== excludeCode);
+export function stationGrid(prefix, { page = 0, excludeCode = null, only = null } = {}) {
+  const all = listStations().filter((station) => station.code !== excludeCode && (!only || only.has(station.code)));
   const pages = Math.max(1, Math.ceil(all.length / PER_PAGE));
   const current = Math.min(Math.max(0, page), pages - 1);
   const slice = all.slice(current * PER_PAGE, current * PER_PAGE + PER_PAGE);
@@ -59,6 +60,7 @@ export function stationGrid(prefix, { page = 0, excludeCode = null } = {}) {
     rows.push(nav);
   }
 
+  if (only) rows.push([Markup.button.callback('🔎 Barcha bekatlar', `${prefix}a`)]);
   rows.push([Markup.button.callback('❌ Bekor qilish', 'm:home')]);
   return Markup.inlineKeyboard(rows);
 }
