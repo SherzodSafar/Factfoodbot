@@ -12,9 +12,9 @@ const HTML = `<form name="route_search_form" method="get" class="ui form"></form
  <div class="result-card__title"> <span class="result-card__carrier-name"> &quot;Жолаушылар тасымал&quot; АҚ </span> <br>
  <span class="train-information" data-href="/api/v1/ktj/train/information?name=001%D0%A5" data-title="001Х">001Х </span>
  <span class="train-route" data-href="/api/v1/ktj/train/route/html" data-station="2700000" data-title="АЛМАТЫ 2 <i class='arrow right icon'></i> ТОШКЕНТ-ЙУЛО" title="АЛМАТЫ 2ТОШКЕНТ-ЙУЛО" >АЛМАТЫ 2 → ТОШКЕНТ-ЙУЛО </span> <span>&#x25cf Тальго</span> </div>
- <div class="result-card__time"> <div class=""> <div class="result-card__hour">19:05</div> <div class="result-card__date"> 2026 ж. 25 қаз.</div> </div>
+ <div class="result-card__time"> <div class=""> <div class="result-card__hour">19:05</div> <div class="result-card__date"> 2026 ж. 25 қаз.</div> <div class="result-card__station"> АЛМАТЫ <br> <i> (жергілікті уақыт) </i> </div> </div>
  <div class="result-card__arrow"> <span>17:53</span> <svg></svg> </div>
- <div> <div class="result-card__hour">12:58</div> <div class="result-card__date">2026 ж. 26 қаз.</div> </div> </div>
+ <div> <div class="result-card__hour">12:58</div> <div class="result-card__date">2026 ж. 26 қаз.</div> <div class="result-card__station"> ТАШКЕНТ <br> <i> (жергілікті уақыт) </i> </div> </div> </div>
  <table class="table"><tbody>
  <tr> <td class="result-card__details-table-car-type">Отыратын</td> <td class="result-card__details-table-seats-count">41</td> <td class="result-card__details-table-cost"> 9 258 ₸ бастап </td> </tr>
  <tr> <td class="result-card__details-table-car-type">Купе</td> <td class="result-card__details-table-seats-count">2</td> <td class="result-card__details-table-cost"> 19 146 ₸ бастап </td> </tr>
@@ -32,6 +32,8 @@ test('KTZ qidiruv sahifasidan poyezdlar o\'qiladi', () => {
   assert.equal(train.durationMin, 17 * 60 + 53);
   assert.equal(train.fromStation, 'АЛМАТЫ 2');
   assert.equal(train.toStation, 'ТОШКЕНТ-ЙУЛО');
+  assert.equal(train.depStationName, 'АЛМАТЫ');
+  assert.equal(train.arrStationName, 'ТАШКЕНТ');
   assert.equal(train.currency, 'KZT');
   assert.equal(train.totalFree, 43);
   assert.deepEqual(train.cars.map((car) => [car.type, car.free, car.minPrice]), [['sitting', 41, 9258], ['kupe', 2, 19146]]);

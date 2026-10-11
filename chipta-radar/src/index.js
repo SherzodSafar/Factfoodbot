@@ -205,7 +205,7 @@ async function ktzSelfTest() {
   for (const station of KTZ_STATIONS) {
     try {
       const { trains } = await searchKtzTrains({ from: station.code, to: '2900000', date });
-      parts.push(`${station.nameUz}→Toshkent ${trains.length} (${trains.map((train) => `${train.number} ${train.depTime}`).join(', ') || '—'})`);
+      parts.push(`${station.nameUz}→Toshkent ${trains.length} (${trains.map((train) => `${train.number} ${train.depTime} ${train.depStationName}→${train.arrStationName} ${train.cars.map((car) => `${car.type}:${car.free}`).join('/')}`).join(', ') || '—'})`);
     } catch (error) {
       parts.push(`${station.nameUz}: ❌ ${error.message}`);
     }

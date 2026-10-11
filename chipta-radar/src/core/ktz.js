@@ -56,6 +56,8 @@ export function parseKtzTrains(html) {
     const arrival = durationMin ? addMinutes(departure, durationMin) : null;
     // "АЛМАТЫ 2 → ТОШКЕНТ-ЙУЛО" (data-title atributida HTML bor — ko'rinadigan matndan olinadi)
     const [fromStation = '', toStation = ''] = decode(block.match(/>\s*([^<>]+→[^<>]+?)\s*<\/span>/)?.[1]).split('→').map((part) => part.trim());
+    // Chiqish va yetib borish bekati (shahar ichida bir nechta bekat bo'lishi mumkin)
+    const [depStationName = '', arrStationName = ''] = [...block.matchAll(/result-card__station">([^<]*)</g)].map((match) => decode(match[1]));
     const brandRaw = decode(block.match(/<span>\s*&#x25cf;?\s*([^<]+)<\/span>/i)?.[1]);
     const title = TITLES[normalizeSearch(brandRaw)] || brandRaw || 'Poyezd';
 
@@ -84,6 +86,8 @@ export function parseKtzTrains(html) {
       title,
       fromStation,
       toStation,
+      depStationName,
+      arrStationName,
       departure,
       arrival,
       depDate: departure.slice(0, 10),
