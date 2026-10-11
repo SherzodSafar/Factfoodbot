@@ -141,6 +141,7 @@ async function onDatabaseReady() {
   startWatcher();
   startKeepAlive();
   startRoutePrices().catch((error) => console.error('[narxlar]', error.message));
+  setTimeout(() => import('./services/foreignProbe.js').then((m) => m.runForeignProbe()).catch(() => {}), 20_000).unref?.(); // VAQTINCHA sinov
 }
 
 async function connectWithRetry() {
