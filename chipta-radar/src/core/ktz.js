@@ -35,6 +35,9 @@ function parseDuration(text) {
   return (Number(match[1]) || 0) * 1440 + Number(match[2]) * 60 + Number(match[3]);
 }
 
+/** "АЛМАТЫ 2" → "Алматы 2", "ТОШКЕНТ-ЙУЛО" → "Тошкент-Йуло" */
+const titleCase = (text) => String(text || '').toLowerCase().replace(/(^|[\s-])(\S)/g, (_, sep, ch) => sep + ch.toUpperCase());
+
 const addMinutes = (local, minutes) => new Date(Date.parse(`${local}:00Z`) + minutes * 60_000).toISOString().slice(0, 16);
 
 /** Qidiruv sahifasidan poyezdlar (trains.js normalizeTrain ko'rinishida, narx — tenge) */
@@ -59,7 +62,10 @@ export function parseKtzTrains(html) {
     // Chiqish va yetib borish bekati (shahar ichida bir nechta bekat bo'lishi mumkin)
     const [depStationName = '', arrStationName = ''] = [...block.matchAll(/result-card__station">([^<]*)</g)].map((match) => decode(match[1]));
     const brandRaw = decode(block.match(/<span>\s*&#x25cf;?\s*([^<]+)<\/span>/i)?.[1]);
-    const title = TITLES[normalizeSearch(brandRaw)] || brandRaw || 'Poyezd';
+    // Bir xil raqamli ikki poyezd bo'lishi mumkin (turli yo'nalishdan) — sarlavhada qayerdan-qayerga ham
+    const routeLabel = [fromStation, toStation].filter(Boolean).map(titleCase).join(' → ');
+    const brand = TITLES[normalizeSearch(brandRaw)] || brandRaw || 'Poyezd';
+    const title = routeLabel ? `${brand} (${routeLabel})` : brand;
 
     const byType = new Map();
     for (const row of block.matchAll(/details-table-car-type">([^<]+)<\/td>\s*<td[^>]*seats-count">\s*(\d+)\s*<\/td>\s*<td[^>]*cost">([^<]*)</g)) {

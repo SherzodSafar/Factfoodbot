@@ -25,7 +25,7 @@ test('KTZ qidiruv sahifasidan poyezdlar o\'qiladi', () => {
   const [train, ...rest] = parseKtzTrains(HTML);
   assert.equal(rest.length, 0);
   assert.equal(train.number, '001Х');
-  assert.equal(train.title, 'Talgo');
+  assert.equal(train.title, 'Talgo (Алматы 2 → Тошкент-Йуло)');
   assert.equal(train.depTime, '19:05');
   assert.equal(train.arrTime, '12:58');
   assert.equal(train.arrDate, '2026-10-26');
