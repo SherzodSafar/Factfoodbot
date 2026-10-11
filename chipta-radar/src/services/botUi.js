@@ -121,13 +121,19 @@ export const CAR_CHOICES = [
  * Vagon turlari — bir nechtasini belgilash mumkin (`wz:c:<tur>` — belgilash/olib tashlash,
  * `wz:cok` — davom). Yonida shu yo'nalishdagi eng arzon narx (prices: {tur: so'm}).
  */
-export function carKeyboard(selected = [], prices = {}) {
+export function carKeyboard(selected = [], prices = {}, { showAll = false } = {}) {
   const rows = [[Markup.button.callback('✅ Farqi yo\'q (istalgan vagon)', 'wz:c:any')]];
-  for (const choice of CAR_CHOICES.filter((item) => item.type !== 'any')) {
+  const choices = CAR_CHOICES.filter((item) => item.type !== 'any');
+  // Faqat shu yo'nalishda yuradigan turlar (narx ro'yxatidan). Ma'lumot yo'q bo'lsa — hammasi.
+  const known = Object.keys(prices).length > 0;
+  const visible = showAll || !known ? choices : choices.filter((item) => prices[item.type] || selected.includes(item.type));
+  const hidden = choices.length - visible.length;
+  for (const choice of visible) {
     const mark = selected.includes(choice.type) ? '☑️ ' : '';
     const price = prices[choice.type] ? ` · ${formatMoney(prices[choice.type])}dan` : '';
     rows.push([Markup.button.callback(`${mark}${choice.label}${price}`, `wz:c:${choice.type}`)]);
   }
+  if (hidden > 0) rows.push([Markup.button.callback(`➕ Boshqa vagon turlari (${hidden})`, 'wz:call')]);
   if (selected.length) rows.push([Markup.button.callback(`➡️ Davom etish (${selected.length} ta tanlandi)`, 'wz:cok')]);
   rows.push([Markup.button.callback('⬅️ Orqaga', 'wz:back'), Markup.button.callback('❌ Bekor', 'm:home')]);
   return Markup.inlineKeyboard(rows);

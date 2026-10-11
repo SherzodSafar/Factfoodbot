@@ -147,13 +147,16 @@ const TASHKENT_SUB = ['2900001', '2900002']; // Markaziy, Janubiy vokzallar
 function carPriceHint(session) {
   const lines = [];
   if (Object.keys(session.carPrices || {}).length) {
-    lines.push('<i>Narx — shu yo\'nalishdagi eng arzon chipta. Narxi yo\'q tur bu yo\'nalishda topilmadi (odatda bunday vagon yurmaydi).</i>');
+    lines.push('<i>Faqat shu yo\'nalishda yuradigan vagon turlari ko\'rsatildi. Narx — eng arzon chipta.</i>');
   } else {
     const tashkent = [session.fromCode, session.toCode].some((code) => TASHKENT_SUB.includes(code));
     lines.push('⚠️ <i>Bu yo\'nalishda narx topilmadi — to\'g\'ridan-to\'g\'ri poyezd bo\'lmasligi mumkin.'
       + (tashkent ? ' Vokzal o\'rniga «Toshkent» (barcha vokzallar)ni tanlab ko\'ring.' : '') + '</i>');
   }
-  lines.push('<i>🚃 Umumiy — eng arzon vagon: o\'tirib ketiladi, choyshab berilmaydi.</i>');
+  const prices = session.carPrices || {};
+  if (prices.general || session.showAllCars || !Object.keys(prices).length) {
+    lines.push('<i>🚃 Umumiy — eng arzon vagon: o\'tirib ketiladi, choyshab berilmaydi.</i>');
+  }
   return lines.join('\n');
 }
 
@@ -169,7 +172,7 @@ function renderStep(session) {
     case 'car':
       return {
         text: `${summary(session)}\n\n🚆 <b>Qanday vagon kerak?</b>\nBir nechtasini belgilab, «Davom etish»ni bosing.\n${carPriceHint(session)}`,
-        kb: ui.carKeyboard(session.carTypes || [], session.carPrices || {}),
+        kb: ui.carKeyboard(session.carTypes || [], session.carPrices || {}, { showAll: Boolean(session.showAllCars) }),
       };
     case 'section':
       return { text: `${summary(session)}\n\n🛋 <b>Qaysi qism?</b>`, kb: ui.sectionKeyboard() };
@@ -271,7 +274,7 @@ async function onWizard(ctx, rest) {
   if (action === 'd') {
     await ctx.answerCbQuery('Narxlar yuklanmoqda...').catch(() => {});
     const carPrices = await carPricesFor(session?.fromCode, session?.toCode, value);
-    session = wizard.patchSession(ctx.from.id, { date: value, step: 'car', carPrices });
+    session = wizard.patchSession(ctx.from.id, { date: value, step: 'car', carPrices, showAllCars: false });
     return showStep(ctx, session);
   }
   if (action === 'c') {
@@ -286,6 +289,11 @@ async function onWizard(ctx, rest) {
     else selected.add(value);
     session = wizard.patchSession(ctx.from.id, { carTypes: [...selected], step: 'car' });
     await ctx.answerCbQuery(selected.has(value) ? '☑️ Belgilandi' : 'Olib tashlandi');
+    return showStep(ctx, session);
+  }
+  if (action === 'call') {
+    session = wizard.patchSession(ctx.from.id, { showAllCars: true, step: 'car' });
+    await ctx.answerCbQuery();
     return showStep(ctx, session);
   }
   if (action === 'cok') {
