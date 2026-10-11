@@ -455,6 +455,12 @@ function shapeError(error) {
  * @param {{from:string, to:string, date:string}} query  date: "YYYY-MM-DD"
  * @param {{priority?:'high'|'low', maxAgeMs?:number}} options
  */
+const searchListeners = new Set();
+/** Saytdan kelgan har bir yangi qidiruv natijasini tinglash (masalan, narxlarni bepul o'rganish) */
+export function onSearchResult(listener) {
+  searchListeners.add(listener);
+}
+
 export async function searchTrains({ from, to, date }, { priority = 'high', maxAgeMs = config.railway.cacheTtlMs } = {}) {
   const key = `list:${from}:${to}:${date}`;
   return cached(key, maxAgeMs, async () => {
@@ -463,11 +469,16 @@ export async function searchTrains({ from, to, date }, { priority = 'high', maxA
       { directions: { forward: { date, depStationCode: from, arvStationCode: to } } },
       priority,
     );
+    let trains;
     try {
-      return { trains: normalizeTrainList(json) };
+      trains = normalizeTrainList(json);
     } catch (error) {
       throw shapeError(error);
     }
+    for (const listener of searchListeners) {
+      try { listener({ from, to, date, trains }); } catch { /* tinglovchi xatosi qidiruvga ta'sir qilmaydi */ }
+    }
+    return { trains };
   });
 }
 
