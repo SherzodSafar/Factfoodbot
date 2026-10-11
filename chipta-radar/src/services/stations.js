@@ -5,6 +5,7 @@
  */
 import prisma, { isDatabaseReady } from '../database/connection.js';
 import { STATIONS } from './stationData.js';
+import { findForeignStation } from './foreignStations.js';
 import { normalizeSearch, searchSkeleton } from '../utils/text.js';
 
 let stations = STATIONS.map((station) => ({ ...station, isActive: true }));
@@ -49,7 +50,7 @@ export function listStations() {
 }
 
 export function findStation(code) {
-  return index.find((item) => item.station.code === String(code))?.station || null;
+  return index.find((item) => item.station.code === String(code))?.station || findForeignStation(code);
 }
 
 export function stationName(code) {

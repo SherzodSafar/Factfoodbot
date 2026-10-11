@@ -29,12 +29,12 @@ const ALIASES = {
   kupe: ['kupe', 'coupe', 'compartment', 'kupeyniy'],
   sv: ['sv', 'sleeper', 'spalniy', 'myagkiy sv', 'lyuks', 'lux', 'luxury', 'lyuks sv', 'myagkiy'],
   sitting: [
-    'sidyachiy', 'orindiqli', 'orindikli', 'sitting', 'seated', 'seat',
+    'sidyachiy', 'otiratin', 'orindiqli', 'orindikli', 'sitting', 'seated', 'seat',
     'ekonom', 'economy', 'ekonom klass', 'turist', 'standart', 'standard',
   ],
   business: ['biznes', 'business', 'biznes klass', 'birinchi klass', 'first class', 'perviy klass'],
   vip: ['vip'],
-  general: ['obshiy', 'umumiy', 'general', 'obshchiy'],
+  general: ['obshiy', 'umumiy', 'general', 'obshchiy', 'jalpi'],
 };
 
 const LOOKUP = new Map();

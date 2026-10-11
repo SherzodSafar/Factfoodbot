@@ -61,7 +61,27 @@ export function stationGrid(prefix, { page = 0, excludeCode = null, only = null 
   }
 
   if (only) rows.push([Markup.button.callback('🔎 Barcha bekatlar', `${prefix}a`)]);
-  rows.push([Markup.button.callback('❌ Bekor qilish', 'm:home')]);
+  rows.push([Markup.button.callback('⬅️ Orqaga', 'wz:back'), Markup.button.callback('❌ Bekor qilish', 'm:home')]);
+  return Markup.inlineKeyboard(rows);
+}
+
+/** Kuzatuv qo'shishning birinchi bosqichi: mahalliy yoki xorijiy yo'nalish */
+export function scopeKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('🇺🇿 Mahalliy (O\'zbekiston ichida)', 'wz:scope:local')],
+    [Markup.button.callback('🌍 Xorijiy (Qozog\'iston)', 'wz:scope:intl')],
+    [Markup.button.callback('❌ Bekor qilish', 'm:home')],
+  ]);
+}
+
+/** Xorijiy yo'nalish bekatlari (kichik ro'yxat, bayroq bilan) */
+export function intlStationGrid(prefix, stations) {
+  const flag = (station) => (station.country === 'KZ' ? '🇰🇿' : '🇺🇿');
+  const rows = [];
+  for (let i = 0; i < stations.length; i += 2) {
+    rows.push(stations.slice(i, i + 2).map((station) => Markup.button.callback(`${flag(station)} ${station.nameUz}`, `${prefix}:${station.code}`)));
+  }
+  rows.push([Markup.button.callback('⬅️ Orqaga', 'wz:back'), Markup.button.callback('❌ Bekor', 'm:home')]);
   return Markup.inlineKeyboard(rows);
 }
 
@@ -123,7 +143,7 @@ export const CAR_CHOICES = [
  * Vagon turlari — bir nechtasini belgilash mumkin (`wz:c:<tur>` — belgilash/olib tashlash,
  * `wz:cok` — davom). Yonida shu yo'nalishdagi eng arzon narx (prices: {tur: so'm}).
  */
-export function carKeyboard(selected = [], prices = {}, { showAll = false } = {}) {
+export function carKeyboard(selected = [], prices = {}, { showAll = false, currency = 'UZS' } = {}) {
   const rows = [[Markup.button.callback('✅ Farqi yo\'q (istalgan vagon)', 'wz:c:any')]];
   const choices = CAR_CHOICES.filter((item) => item.type !== 'any');
   // Faqat shu yo'nalishda yuradigan turlar (narx ro'yxatidan). Ma'lumot yo'q bo'lsa — hammasi.
@@ -132,7 +152,7 @@ export function carKeyboard(selected = [], prices = {}, { showAll = false } = {}
   const hidden = choices.length - visible.length;
   for (const choice of visible) {
     const mark = selected.includes(choice.type) ? '☑️ ' : '';
-    const price = prices[choice.type] ? ` · ${formatMoney(prices[choice.type])}dan` : '';
+    const price = prices[choice.type] ? ` · ${formatMoney(prices[choice.type], currency)}dan` : '';
     rows.push([Markup.button.callback(`${mark}${choice.label}${price}`, `wz:c:${choice.type}`)]);
   }
   if (hidden > 0) rows.push([Markup.button.callback(`➕ Boshqa vagon turlari (${hidden})`, 'wz:call')]);

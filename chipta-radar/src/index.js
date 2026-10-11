@@ -18,6 +18,8 @@ import adminRoutes from './routes/admin.routes.js';
 import registerBotRoutes from './routes/bot.routes.js';
 import { getBot, syncBotProfile } from './core/bot.js';
 import { searchTrains, getTrainDetail, getRailwayStatus } from './core/railway.js';
+import { searchKtzTrains } from './core/ktz.js';
+import { KTZ_STATIONS } from './services/foreignStations.js';
 import { isKnownCarType } from './services/carTypes.js';
 import { loadSettings } from './services/settings.js';
 import { refreshStations } from './services/stations.js';
@@ -141,7 +143,6 @@ async function onDatabaseReady() {
   startWatcher();
   startKeepAlive();
   startRoutePrices().catch((error) => console.error('[narxlar]', error.message));
-  setTimeout(() => import('./services/foreignProbe.js').then((m) => m.runForeignProbe()).catch(() => {}), 20_000).unref?.(); // VAQTINCHA KTZ tahlili
 }
 
 async function connectWithRetry() {
@@ -197,6 +198,21 @@ async function railwaySelfTest() {
   }
 }
 
+/** Ishga tushganda KTZ (bilet.railways.kz) bilan aloqa: xorijiy bekatlardan Toshkentga poyezdlar */
+async function ktzSelfTest() {
+  const date = addDays(todayISO(), 14);
+  const parts = [];
+  for (const station of KTZ_STATIONS) {
+    try {
+      const { trains } = await searchKtzTrains({ from: station.code, to: '2900000', date });
+      parts.push(`${station.nameUz}→Toshkent ${trains.length} (${trains.map((train) => `${train.number} ${train.depTime}`).join(', ') || '—'})`);
+    } catch (error) {
+      parts.push(`${station.nameUz}: ❌ ${error.message}`);
+    }
+  }
+  console.log(`✅ KTZ (${date}): ${parts.join('; ')}`);
+}
+
 async function startBot() {
   const bot = await registerBotRoutes();
   if (!bot) return;
@@ -247,6 +263,7 @@ async function bootstrap() {
 
   await startBot();
   railwaySelfTest();
+  setTimeout(() => ktzSelfTest().catch(() => {}), 15_000).unref?.();
 
   if (process.env.RAILWAY_INSPECT === '1') {
     // Diagnostika: saytning ochiq JS fayllaridan API yo'llarini topish (scripts/railway-inspect.js)

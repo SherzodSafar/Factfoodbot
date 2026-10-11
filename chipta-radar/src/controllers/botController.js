@@ -16,6 +16,7 @@ import SearchLogModel from '../models/SearchLog.js';
 import { searchTrains } from '../core/railway.js';
 import { getBot } from '../core/bot.js';
 import { stationName, searchStations } from '../services/stations.js';
+import { isIntlRoute, intlStations, intlDestinations, matchIntlStation } from '../services/foreignStations.js';
 import { POPULAR_ROUTES } from '../services/stationData.js';
 import { carTypeLabel } from '../services/carTypes.js';
 import { regionName, normalizeRegion } from '../services/personal.js';
@@ -80,12 +81,13 @@ const HELP_TEXT =
   '🔔 <b>Bot nima qiladi?</b>\n' +
   'Kerakli poyezdga chipta qolmagan bo\'lsa — kuzatuvga qo\'yasiz. Bo\'sh joy chiqishi bilan ' +
   'bot darhol xabar beradi.\n\n' +
-  '➕ <b>Kuzatuv qo\'shish</b> — 3 qadam:\n' +
+  '➕ <b>Kuzatuv qo\'shish</b> — avval <b>🇺🇿 Mahalliy</b> yoki <b>🌍 Xorijiy</b> yo\'nalishni tanlaysiz, keyin 3 qadam:\n' +
   '1️⃣ Qayerdan → qayerga\n' +
   '2️⃣ Sana\n' +
   '3️⃣ Vagon turi — <b>bir nechtasini</b> belgilash mumkin, har birining yonida shu yo\'nalishdagi narx ko\'rinadi.\n' +
   '🚃 <i>Umumiy — eng arzon vagon: o\'tirib ketiladi, choyshab berilmaydi.</i>\n' +
-  '🎯 Faqat Plaskart yoki Kupe tanlasangiz — pastki/yuqori, to\'rttalik/bokovoy joyni ham aniq kuzatish mumkin.\n\n' +
+  '🎯 Faqat Plaskart yoki Kupe tanlasangiz — pastki/yuqori, to\'rttalik/bokovoy joyni ham aniq kuzatish mumkin.\n' +
+  '🌍 <b>Xorijiy</b> — Qozog\'iston poyezdlari (Olmaota, Taroz, Shimkent ↔ Toshkent). Narxlar tengeda, chipta bilet.railways.kz saytida sotiladi.\n\n' +
   '📋 <b>Kuzatuvlarim</b> — to\'xtatish, davom ettirish, darhol tekshirish yoki o\'chirish.\n' +
   '🚆 <b>Poyezd narxlari</b> — mashhur yo\'nalishlar (borish va qaytish) bo\'yicha bugungi poyezdlar, vaqt va narxlar.\n\n' +
   '⚡️ <b>Tezkor qidiruv</b> — shunchaki yozing:\n' +
@@ -145,6 +147,11 @@ const TASHKENT_SUB = ['2900001', '2900002']; // Markaziy, Janubiy vokzallar
 
 /** Vagon bosqichidagi izoh: narxlar ma'nosi, narxi yo'q turlar va "Umumiy" nima ekani */
 function carPriceHint(session) {
+  if (isIntlRoute(session.fromCode, session.toCode)) {
+    return Object.keys(session.carPrices || {}).length
+      ? '<i>Narx — tanlangan kundagi eng arzon chipta (tenge). Chipta bilet.railways.kz saytida sotiladi.</i>'
+      : '<i>Bu kunga bo\'sh joy topilmadi yoki sayt javob bermadi. Kerakli vagon turini belgilang — joy chiqsa xabar beraman.</i>';
+  }
   const lines = [];
   if (Object.keys(session.carPrices || {}).length) {
     lines.push('<i>Bu yo\'nalishda qatnaydigan vagon turlari va eng arzon narxi (so\'nggi haftalar ma\'lumoti). Tanlangan kunda bo\'sh joy bor-yo\'qligini kuzatuv tekshiradi.</i>');
@@ -163,9 +170,23 @@ function carPriceHint(session) {
 function renderStep(session) {
   const max = getSettings().maxDaysAhead;
   switch (session.step) {
+    case 'scope':
+      return {
+        text: '➕ <b>Kuzatuv qo\'shish</b>\n\nQaysi yo\'nalishda chipta kerak?\n\n🇺🇿 <b>Mahalliy</b> — O\'zbekiston ichidagi poyezdlar.\n🌍 <b>Xorijiy</b> — Qozog\'iston bilan qatnov: Olmaota, Taroz, Shimkent ↔ Toshkent.',
+        kb: ui.scopeKeyboard(),
+      };
     case 'from':
+      if (session.scope === 'intl') {
+        return {
+          text: '🌍 <b>Xorijiy yo\'nalish</b>\n\n🚉 <b>Qayerdan jo\'naysiz?</b>\n<i>Qozog\'iston temir yo\'li (KTZ) poyezdlari. Chipta bilet.railways.kz saytida sotiladi.</i>',
+          kb: ui.intlStationGrid('wz:f', intlStations()),
+        };
+      }
       return { text: '🚉 <b>Qayerdan jo\'naysiz?</b>\nTugmadan tanlang yoki bekat nomini yozing (masalan: <i>Nukus</i>).', kb: ui.stationGrid('wz:f', { page: session.fromPage || 0, only: session.allFrom ? null : knownOrigins() }) };
     case 'to': {
+      if (session.scope === 'intl') {
+        return { text: `✅ Jo'nash: <b>${escapeHtml(stationName(session.fromCode))}</b>\n\n🏁 <b>Qayerga borasiz?</b>`, kb: ui.intlStationGrid('wz:t', intlDestinations(session.fromCode)) };
+      }
       const only = session.allTo ? null : knownDestinations(session.fromCode);
       const note = only
         ? `\n<i>Faqat shu bekatdan poyezd qatnaydigan bekatlar ko'rsatildi.${TASHKENT_SUB.includes(session.fromCode) ? ' Ro\'yxatda yo\'q bekat uchun jo\'nashni «Toshkent» (barcha vokzallar) qilib tanlang.' : ''}</i>`
@@ -177,7 +198,10 @@ function renderStep(session) {
     case 'car':
       return {
         text: `${summary(session)}\n\n🚆 <b>Qanday vagon kerak?</b>\nBir nechtasini belgilab, «Davom etish»ni bosing.\n${carPriceHint(session)}`,
-        kb: ui.carKeyboard(session.carTypes || [], session.carPrices || {}, { showAll: Boolean(session.showAllCars) }),
+        kb: ui.carKeyboard(session.carTypes || [], session.carPrices || {}, {
+          showAll: Boolean(session.showAllCars),
+          currency: isIntlRoute(session.fromCode, session.toCode) ? 'KZT' : 'UZS',
+        }),
       };
     case 'section':
       return { text: `${summary(session)}\n\n🛋 <b>Qaysi qism?</b>`, kb: ui.sectionKeyboard() };
@@ -246,6 +270,11 @@ async function onWizard(ctx, rest) {
     await ctx.answerCbQuery();
     return showStep(ctx, session);
   }
+  if (action === 'scope') {
+    session = wizard.patchSession(ctx.from.id, { scope: value === 'intl' ? 'intl' : 'local', step: 'from', fromPage: 0, allFrom: false });
+    await ctx.answerCbQuery();
+    return showStep(ctx, session);
+  }
   if (action === 'fa' || action === 'ta') { // «Barcha bekatlar» — poyezd ko'rilmagan bekatlar ham
     session = wizard.patchSession(ctx.from.id, action === 'fa' ? { step: 'from', allFrom: true, fromPage: 0 } : { step: 'to', allTo: true, toPage: 0 });
     await ctx.answerCbQuery();
@@ -310,7 +339,8 @@ async function onWizard(ctx, rest) {
     const types = session?.carTypes || [];
     const single = types.length === 1 ? types[0] : null;
     // Bitta Plaskart/Kupe bo'lsa — aniq joy bosqichlari; bir nechta bo'lsa — to'g'ri soniga
-    const next = single === 'platskart' ? 'section' : single === 'kupe' ? 'berth' : 'qty';
+    const exactSteps = session?.scope !== 'intl'; // KTZ: aniq joy raqamlari yo'q
+    const next = exactSteps && single === 'platskart' ? 'section' : exactSteps && single === 'kupe' ? 'berth' : 'qty';
     const carType = types.length ? (single || 'multi') : 'any';
     session = wizard.patchSession(ctx.from.id, { carType, section: 'any', berth: 'any', step: next });
     await ctx.answerCbQuery();
@@ -932,6 +962,14 @@ const withTimeout = (promise, ms) => {
  */
 async function carPricesFor(from, to, date) {
   if (!from || !to) return {};
+  if (isIntlRoute(from, to)) {
+    try {
+      const { trains } = await withTimeout(searchTrains({ from, to, date }, { maxAgeMs: 10 * 60_000 }), 12_000);
+      return mergeMinPrices({}, trains);
+    } catch {
+      return {};
+    }
+  }
   const stored = getRoutePrices(from, to);
   if (Object.keys(stored).length) return { ...stored };
   try {
@@ -1103,6 +1141,13 @@ export async function onText(ctx) {
 
   // Sehrgarda stansiya bosqichida bo'lsa — nomdan topamiz
   const session = wizard.getSession(ctx.from.id);
+  if (session && (session.step === 'from' || session.step === 'to') && session.scope === 'intl') {
+    const list = session.step === 'from' ? intlStations() : intlDestinations(session.fromCode);
+    const found = matchIntlStation(text, list);
+    if (!found) return ctx.replyWithHTML(`Bu bekat ro'yxatda yo'q. Tugmadan tanlang: ${list.map((station) => station.nameUz).join(', ')}.`);
+    wizard.patchSession(ctx.from.id, session.step === 'from' ? { fromCode: found.code, step: 'to' } : { toCode: found.code, step: 'date' });
+    return editStoredStep(ctx, wizard.getSession(ctx.from.id));
+  }
   if (session && (session.step === 'from' || session.step === 'to')) {
     const match = searchStations(text, 1)[0];
     if (!match) return ctx.replyWithHTML('Bunday bekat topilmadi. Boshqacha yozib ko\'ring yoki tugmadan tanlang.');

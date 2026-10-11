@@ -12,9 +12,9 @@ export function escapeHtml(value) {
 }
 
 /** 270000 → "270 000 so'm" */
-export function formatMoney(value) {
+export function formatMoney(value, currency = 'UZS') {
   const number = Math.round(Number(value) || 0);
-  return `${String(number).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} so'm`;
+  return `${String(number).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} ${currency === 'KZT' ? 'tenge' : 'so\'m'}`;
 }
 
 const CYRILLIC = {

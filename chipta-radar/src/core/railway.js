@@ -10,6 +10,8 @@
  * Agar API hisobga kirishni talab qilsa, RAILWAY_LOGIN / RAILWAY_PASSWORD ishlatiladi.
  */
 import config from '../config/default.js';
+import { searchKtzTrains } from './ktz.js';
+import { isIntlRoute } from '../services/foreignStations.js';
 import { normalizeTrainList, normalizeTrainDetail, UnexpectedShapeError } from '../services/trains.js';
 
 const ENDPOINTS = {
@@ -462,6 +464,7 @@ export function onSearchResult(listener) {
 }
 
 export async function searchTrains({ from, to, date }, { priority = 'high', maxAgeMs = config.railway.cacheTtlMs } = {}) {
+  if (isIntlRoute(from, to)) return searchKtzTrains({ from, to, date }, { maxAgeMs }); // xorijiy — KTZ
   const key = `list:${from}:${to}:${date}`;
   return cached(key, maxAgeMs, async () => {
     const json = await request(
@@ -489,6 +492,7 @@ export async function getTrainDetail(
   { from, to, date, trainNumber, trainId = null },
   { priority = 'high', maxAgeMs = config.railway.cacheTtlMs } = {},
 ) {
+  if (isIntlRoute(from, to)) return { cars: [] }; // KTZ: aniq joy raqamlari olinmaydi
   const key = `detail:${from}:${to}:${date}:${trainNumber}`;
   return cached(key, maxAgeMs, async () => {
     const json = await request(

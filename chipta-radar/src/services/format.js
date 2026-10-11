@@ -6,6 +6,8 @@ import { escapeHtml, formatMoney } from '../utils/text.js';
 import { formatDateUz, formatDuration, relativeDayUz } from '../utils/dates.js';
 import { carTypeLabel, carTypeEmoji } from './carTypes.js';
 import { LAYOUTS } from './seats.js';
+import { isIntlRoute } from './foreignStations.js';
+import { ktzSearchUrl } from '../core/ktz.js';
 
 const SECTION_LABELS = { compartment: 'to\'rttalik', side: 'bokovoy' };
 const BERTH_LABELS = { lower: 'pastki', upper: 'yuqori' };
@@ -45,7 +47,7 @@ export function trainLine(train) {
 }
 
 export function typeLine(car) {
-  const price = car.minPrice ? ` · ${formatMoney(car.minPrice)} dan` : '';
+  const price = car.minPrice ? ` · ${formatMoney(car.minPrice, car.currency)} dan` : '';
   return `${carTypeEmoji(car.type)} ${escapeHtml(car.label || carTypeLabel(car.type))}: <b>${car.free}</b> ta joy${price}`;
 }
 
@@ -66,6 +68,7 @@ export function suggestionLine(suggestion) {
  * tanlangan sahifa). Shablon config.railway.searchUrl'dan olinadi.
  */
 export function buildSearchUrl(watch, train = null) {
+  if (isIntlRoute(watch.fromCode, watch.toCode)) return ktzSearchUrl({ from: watch.fromCode, to: watch.toCode, date: watch.date });
   const tpl = config.railway.searchUrl || config.railway.buyUrl;
   return tpl
     .replace(/\{from\}/g, encodeURIComponent(watch.fromCode || ''))
@@ -130,7 +133,7 @@ export function searchReply({ from, to, date, trains, pricesOf = null }) {
     if (train.depTime) lines.push(`  🕐 ${train.depTime} → ${train.arrTime || '?'}`);
     const types = train.cars.filter((car) => car.free > 0);
     for (const car of types) {
-      const price = car.minPrice ? ` · ${formatMoney(car.minPrice)}${car.maxPrice > car.minPrice ? ' dan' : ''}` : '';
+      const price = car.minPrice ? ` · ${formatMoney(car.minPrice, car.currency)}${car.maxPrice > car.minPrice ? ' dan' : ''}` : '';
       lines.push(`  💺 ${escapeHtml(car.label || carTypeLabel(car.type))}: ${car.free} joy${price}`);
     }
     if (!types.length) {

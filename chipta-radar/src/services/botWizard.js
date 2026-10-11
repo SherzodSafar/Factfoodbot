@@ -9,9 +9,12 @@ const TTL_MS = 20 * 60 * 1000;
 
 /** Sehrgar bosqichlari ketma-ketligi (vagon turiga qarab o'zgaradi) */
 export function stepOrder(session) {
-  const steps = ['from', 'to', 'date', 'car'];
-  if (session.carType === 'platskart') steps.push('section', 'berth');
-  else if (session.carType === 'kupe') steps.push('berth');
+  const steps = ['scope', 'from', 'to', 'date', 'car'];
+  // Xorijiy (KTZ) yo'nalishda aniq joy raqamlari olinmaydi — qism/qavat bosqichlari yo'q
+  if (session.scope !== 'intl') {
+    if (session.carType === 'platskart') steps.push('section', 'berth');
+    else if (session.carType === 'kupe') steps.push('berth');
+  }
   steps.push('qty');
   if (isExact(session) && (session.quantity || 1) > 1) steps.push('together');
   steps.push('confirm');
@@ -35,7 +38,7 @@ export function getSession(id) {
 }
 
 export function startSession(id) {
-  const session = { step: 'from', at: Date.now() };
+  const session = { step: 'scope', at: Date.now() };
   sessions.set(String(id), session);
   return session;
 }
@@ -60,7 +63,7 @@ export function goBack(id) {
   if (index <= 0) return session;
   const previous = order[index - 1];
   // Oldingi bosqichda tanlangan qiymatni tozalaymiz
-  const clear = { from: 'fromCode', to: 'toCode', date: 'date', car: 'carType', section: 'section', berth: 'berth', qty: 'quantity', together: 'together' };
+  const clear = { scope: 'scope', from: 'fromCode', to: 'toCode', date: 'date', car: 'carType', section: 'section', berth: 'berth', qty: 'quantity', together: 'together' };
   if (clear[previous]) delete session[clear[previous]];
   session.step = previous;
   session.at = Date.now();

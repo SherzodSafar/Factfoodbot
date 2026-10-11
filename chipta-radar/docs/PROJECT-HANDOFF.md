@@ -233,3 +233,11 @@ npm start       # needs BOT_TOKEN, DATABASE_URL, PUBLIC_URL, ADMIN_SECRET
 - Sayt joyi qolmagan vagon turini qaytarmaydi, shuning uchun narxlar ko'p sanadan yig'iladi.
 - `knownDestinations(from)` / `knownOrigins()`: poyezd ko'rilgan juftliklar (ikki tomon hisoblanadi). Kuzatuv sehrgarida faqat shu bekatlar chiqadi, «🔎 Barcha bekatlar» tugmasi (`wz:fa` / `wz:ta`) hammasini ochadi. Ma'lumot bo'lmasa `null` qaytadi, ya'ni hammasi ko'rsatiladi.
 - `searchReply` (format.js): «Poyezd narxlari» va matnli qidiruv uchun ixcham ro'yxat.
+
+## Xorijiy yo'nalishlar — KTZ (src/core/ktz.js, src/services/foreignStations.js)
+
+- Qozog'iston temir yo'li: `https://bilet.railways.kz/sale/default/route/search?route_search_form[departureStation]=..&[arrivalStation]=..&[forwardDepartureDate]=DD-MM-YYYY`. GET so'rovi, javob HTML, captcha so'ralmaydi. Har bir poyezd `div.train.item.result-card` ichida keladi: `data-train`, `data-departure-date`, `result-card__hour`, `result-card__arrow` (yo'l vaqti), vagonlar jadvali (tur, bo'sh joy, "X ₸ бастап").
+- Bekat qidiruvi: `/api/v1/ktj/station/search?q=...` (JSON). Kodlar Express tizimidan: Olmaota `2700000`, Taroz `2700710`, Shimkent `2700770`, Toshkent `2900000`.
+- `railway.searchTrains` yo'nalish xorijiy bo'lsa (`isIntlRoute`: kodi 27 bilan boshlanadi) KTZ'ga yo'naltiradi. Kuzatuvchi, qidiruv va havolalar shu orqali ishlaydi. Narxlar tengeda (`currency: 'KZT'`).
+- Sehrgar: birinchi qadam `scope` («🇺🇿 Mahalliy» / «🌍 Xorijiy», `wz:scope:local|intl`). Xorijiyda qism/qavat bosqichlari yo'q (faqat ANY rejim).
+- RZD (Rossiya) Render serveridan ochilmaydi (ulanish vaqti tugaydi), shuning uchun ulanmagan.
