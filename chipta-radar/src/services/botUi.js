@@ -363,7 +363,7 @@ export function ordersKeyboard(status, accountUrl) {
 }
 
 export default {
-  WELCOME, mainMenu, backToMenuRow, stationGrid, dateGrid, shortDate,
+  WELCOME, mainMenu, backToMenuRow, stationGrid, scopeKeyboard, intlStationGrid, dateGrid, shortDate,
   carKeyboard, sectionKeyboard, berthKeyboard, togetherKeyboard, qtyKeyboard,
   confirmKeyboard, manageKeyboard, foundKeyboard, CAR_CHOICES,
   accountKeyboard, disconnectConfirmKeyboard, ordersKeyboard,

@@ -4,6 +4,7 @@ import { parseKtzTrains, ktzSearchUrl } from '../src/core/ktz.js';
 import { buildSearchUrl, typeLine } from '../src/services/format.js';
 import { isIntlRoute, matchIntlStation, intlDestinations } from '../src/services/foreignStations.js';
 import { findStation } from '../src/services/stations.js';
+import ui from '../src/services/botUi.js';
 
 // bilet.railways.kz qidiruv sahifasidan qisqartirilgan namuna
 const HTML = `<form name="route_search_form" method="get" class="ui form"></form>
@@ -51,4 +52,11 @@ test('xorijiy yo\'nalish: bekatlar, havola va tenge', () => {
   assert.match(ktzSearchUrl({ from: '2700000', to: '2900000', date: '2026-10-25' }), /forwardDepartureDate%5D=25-10-2026/);
   assert.match(buildSearchUrl({ fromCode: '2700000', toCode: '2900000', date: '2026-10-25' }), /^https:\/\/bilet\.railways\.kz\//);
   assert.match(typeLine({ type: 'kupe', label: 'Kupe', free: 2, minPrice: 19146, currency: 'KZT' }), /19 146 tenge/);
+});
+
+test('sehrgar tugmalari bot ishlatadigan ui obyektida bor', () => {
+  assert.equal(typeof ui.scopeKeyboard, 'function');
+  assert.equal(typeof ui.intlStationGrid, 'function');
+  const datas = ui.scopeKeyboard().reply_markup.inline_keyboard.flat().map((b) => b.callback_data);
+  assert.ok(datas.includes('wz:scope:local') && datas.includes('wz:scope:intl'));
 });
