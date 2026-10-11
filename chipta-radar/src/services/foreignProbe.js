@@ -34,37 +34,31 @@ function around(text, word, count = 3, width = 250) {
   return out.join(' ⟂ ');
 }
 
+const inlineScripts = (html) => [...html.matchAll(/<script(?![^>]*src=)[^>]*>([\s\S]*?)<\/script>/g)].map((x) => x[1]).filter((t) => !/gtag|dataLayer/.test(t));
+
 export async function runForeignProbe() {
   const [y, m, d] = day(14).split('-');
-  const home = await get('KTZ bosh', `${BASE}/ru`);
-  log('KTZ formalar', uniq([...home.matchAll(/<form[^>]*>/g)].map((x) => x[0])).join(' | '));
-  log('KTZ maydonlar', uniq([...home.matchAll(/name="([^"]+)"/g)].map((x) => x[1]), 60).join(', '));
-  log('KTZ data-*', uniq([...home.matchAll(/data-[a-z-]+="([^"]*(?:\/|url|route)[^"]*)"/g)].map((x) => x[0]), 30).join(' | '));
-  log('KTZ havolalar', uniq([...home.matchAll(/href="(\/[^"]{2,100})"/g)].map((x) => x[1]), 50).join(' | '));
-  log('KTZ captcha', `sitekey=${(home.match(/data-sitekey="[^"]+"/) || [''])[0]} g-recaptcha=${home.includes('g-recaptcha')} grecaptcha.execute=${home.includes('grecaptcha.execute')}`);
-  log('KTZ inline skript', around(home, 'Routing', 2) || around(home, 'station', 2));
-
-  for (const path of ['/js/routing?callback=fos.Router.setData', '/js/routing.json']) {
-    const text = await get(`KTZ routing ${path}`, BASE + path);
-    if (text.includes('routes')) log('KTZ routes', uniq([...text.matchAll(/"([a-z0-9_]+)":\{"tokens":\[\["text","([^"]+)"/g)].map((x) => `${x[1]}=${x[2]}`), 120).join(' | '));
-  }
-
+  const home = await get('KTZ bosh', `${BASE}/`);
   const assets = [...home.matchAll(/<script[^>]+src="(\/assets\/[^"]+)"/g)].map((x) => x[1]);
+  log('KTZ assets', assets.join(' | '));
   for (const src of assets) {
     const js = await get(`KTZ js ${src}`, BASE + src);
-    log(`KTZ js yo'llar ${src}`, uniq([...js.matchAll(/["'`](\/[a-z0-9_\-/{}.:]{3,90})["'`]/gi)].map((x) => x[1]), 60).join(' | '));
-    log(`KTZ js url/generate ${src}`, uniq([...js.matchAll(/(?:url|action|endpoint)\s*:\s*["'`]([^"'`]{2,100})["'`]|generate\(\s*["']([^"']+)["']/g)].map((x) => x[1] || x[2]), 40).join(' | '));
+    log(`KTZ js yo'llar ${src}`, uniq([...js.matchAll(/["'`](\/[a-z0-9_\-/{}.:]{3,90})["'`]/gi)].map((x) => x[1]), 70).join(' | '));
+    log(`KTZ js url ${src}`, uniq([...js.matchAll(/(?:url|action|endpoint|href)\s*[:=]\s*["'`]([^"'`]{2,120})["'`]/g)].map((x) => x[1]), 50).join(' | '));
+    log(`KTZ js ajax ${src}`, around(js, 'ajax(', 3, 200) || around(js, 'fetch(', 3, 200));
   }
 
   const q = `route_search_form%5BdepartureStation%5D=2700000&route_search_form%5BarrivalStation%5D=2900000&route_search_form%5BforwardDepartureDate%5D=${d}-${m}-${y}`;
-  for (const path of ['/sale/default/route/search', '/ru/sale/default/route/search']) {
-    const html = await get(`KTZ qidiruv ${path}`, `${BASE}${path}?${q}`);
-    log('KTZ qidiruv natija', `Ташкент=${(html.match(/Ташкент/g) || []).length} captcha=${html.includes('recaptcha')} formalar=${uniq([...html.matchAll(/<form[^>]*>/g)].map((x) => x[0]), 5).join(' | ')}`);
-    log('KTZ qidiruv atrofi', around(html, 'Ташкент', 3));
-  }
-  for (const path of ['/sale/default/station/autocomplete?term=', '/ru/sale/default/station/autocomplete?term=', '/station/autocomplete?term=', '/api/stations?query=']) {
-    await get(`KTZ bekat ${path}`, `${BASE}${path}${encodeURIComponent('Ташкент')}`, { headers: { 'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json' } });
-  }
+  const page = await get('KTZ qidiruv sahifa', `${BASE}/sale/default/route/search?${q}`);
+  log('KTZ sahifa data-*', uniq([...page.matchAll(/data-[a-z-]+="([^"]{3,300})"/g)].map((x) => x[0]), 40).join(' | '));
+  log('KTZ sahifa inline', inlineScripts(page).map(flat).join(' ⟂ ').slice(0, 2500));
+  log('KTZ departureStation', around(page, 'departureStation', 3, 300));
+  log('KTZ 2900000', around(page, '2900000', 3, 200));
+  log('KTZ poyezd/train', around(page, 'train', 4, 200));
+  log('KTZ select option', uniq([...page.matchAll(/<option[^>]*value="(\d{7})"[^>]*>([^<]{2,40})</g)].map((x) => `${x[1]}=${x[2]}`), 80).join(', '));
+
+  const ajax = await get('KTZ qidiruv ajax', `${BASE}/sale/default/route/search?${q}`, { headers: { 'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json, text/html' } });
+  log('KTZ ajax atrofi', `Алматы=${(ajax.match(/Алматы/g) || []).length} Ташкент=${(ajax.match(/Ташкент/gi) || []).length} ${around(ajax, 'Алматы', 2, 300)}`);
 }
 
 export default { runForeignProbe };
