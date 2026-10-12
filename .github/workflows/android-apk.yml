@@ -34,14 +34,36 @@ jobs:
         continue-on-error: true
         run: |
           RAW=chipta-radar/android/app/src/main/res/raw
-          if [ ! -f "$RAW/voice.mp3" ]; then
-            pip install --quiet edge-tts==7.2.8
-            mkdir -p "$RAW"
-            edge-tts --voice uz-UZ-MadinaNeural --rate=-5% \
-              --text "Assalomu alaykum! Chipta topuvchi botda siz soʻragan chipta paydo boʻldi. Tezroq kirib, sotib oling!" \
-              --write-media "$RAW/voice.mp3"
+          mkdir -p "$RAW"
+          if [ ! -s "$RAW/voice.mp3" ]; then
+            rm -f "$RAW/voice.mp3"
+            TEXT="Assalomu alaykum! Chipta topuvchi botda siz soʻragan chipta paydo boʻldi. Tezroq kirib, sotib oling!"
+            # 1) Microsoft Edge neyron ovozi (Madina)
+            pip install --quiet --upgrade edge-tts \
+              && edge-tts --voice uz-UZ-MadinaNeural --rate=-5% --text "$TEXT" --write-media /tmp/voice.mp3 \
+              && [ -s /tmp/voice.mp3 ] && cp /tmp/voice.mp3 "$RAW/voice.mp3" && echo "Ovoz: Edge (Madina)"
           fi
-          ls -la "$RAW" || true
+          if [ ! -s "$RAW/voice.mp3" ]; then
+            # 2) Zaxira: Meta MMS-TTS o'zbekcha (lotin) ochiq modeli
+            pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+            pip install --quiet transformers scipy
+            python - <<'PY'
+          import torch, scipy.io.wavfile
+          from transformers import VitsModel, AutoTokenizer
+          name = "facebook/mms-tts-uzb-script_latin"
+          model, tok = VitsModel.from_pretrained(name), AutoTokenizer.from_pretrained(name)
+          torch.manual_seed(7)
+          parts = ["assalomu alaykum!", "chipta topuvchi botda siz so'ragan chipta paydo bo'ldi.", "tezroq kirib, sotib oling!"]
+          waves = []
+          with torch.no_grad():
+              for text in parts:
+                  waves.append(model(**tok(text, return_tensors="pt")).waveform[0])
+                  waves.append(torch.zeros(int(model.config.sampling_rate * 0.35)))
+          scipy.io.wavfile.write("/tmp/voice.wav", model.config.sampling_rate, torch.cat(waves).numpy())
+          PY
+            ffmpeg -loglevel error -y -i /tmp/voice.wav -codec:a libmp3lame -qscale:a 3 "$RAW/voice.mp3" && echo "Ovoz: Meta MMS"
+          fi
+          ls -la "$RAW"
 
       - name: APK yig'ish
         run: gradle -p chipta-radar/android assembleRelease --no-daemon --stacktrace
