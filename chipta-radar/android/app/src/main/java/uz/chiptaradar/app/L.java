@@ -112,6 +112,12 @@ final class L {
         s("st_miui_h", "«Qulflangan ekranda ko'rsatish» va «Fonda qalqib chiquvchi oynalarni ochish»ni yoqing, so'ng «Bajardim»ni bosing.",
                 "Включите «Показывать на экране блокировки» и «Открывать всплывающие окна в фоне», затем нажмите «Готово».",
                 "Turn on «Show on lock screen» and «Open new windows while running in the background», then tap «Done».");
+        s("st_callacc", "Telefonning o'z qo'ng'iroq oynasi", "Звонок через приложение «Телефон»", "Call via the phone's own dialer");
+        s("st_callacc_h", "Qo'ng'iroq telefonning «Telefon» ilovasida kelsin va qo'ng'iroqlar tarixiga yozilsin. Ochilgan «Qo'ng'iroq hisoblari» (Calling accounts) ro'yxatida «Chipta Radar»ni yoqing. Bunday bo'lim bo'lmasa — «O'tkazib yuborish»: unda ilovaning o'z qo'ng'iroq oynasi chiqadi.",
+                "Чтобы звонок приходил в приложении «Телефон» и записывался в журнал вызовов. В открывшемся списке «Аккаунты для звонков» (Calling accounts) включите «Chipta Radar». Если такого раздела нет — «Пропустить»: тогда откроется окно звонка самого приложения.",
+                "So the call arrives in your phone's own dialer and is saved in the call history. In the «Calling accounts» list that opens, turn on «Chipta Radar». If there's no such section, tap «Skip» — the app's own call screen will be used.");
+        s("skip", "⏭ O'tkazib yuborish", "⏭ Пропустить", "⏭ Skip");
+        s("acc_desc", "Chipta topilganda qo'ng'iroq", "Звонок, когда найден билет", "Calls you when a ticket is found");
         s("st_test", "Sinov qo'ng'irog'i", "Тестовый звонок", "Test call");
         s("st_test_h", "Qo'ng'iroq kelishi va ovoz eshitilishini tekshiring.", "Проверьте, что звонок приходит и голос слышен.", "Check that the call comes in and you can hear the voice.");
     }

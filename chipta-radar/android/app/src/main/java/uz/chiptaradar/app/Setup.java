@@ -51,6 +51,10 @@ final class Setup {
                 : Build.VERSION.SDK_INT < 24 || nm == null || nm.areNotificationsEnabled();
         list.add(new Step("notify", L.t(c, "st_notify"), L.t(c, "st_notify_h"), false, notify));
 
+        if (SystemCall.supported()) {
+            list.add(new Step("callacc", L.t(c, "st_callacc"), L.t(c, "st_callacc_h"), false,
+                    SystemCall.enabled(c) || Prefs.flag(c, "callacc_skip")));
+        }
         if (Build.VERSION.SDK_INT >= 34 && nm != null) {
             list.add(new Step("fullscreen", L.t(c, "st_fullscreen"), L.t(c, "st_fullscreen_h"), false, nm.canUseFullScreenIntent()));
         }
@@ -89,6 +93,9 @@ final class Setup {
                         ? new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, pkg)
                         : new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, uri);
                 break;
+            case "callacc":
+                SystemCall.openSettings(a);
+                return;
             case "fullscreen":
                 intent = new Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, uri);
                 break;

@@ -14,7 +14,7 @@ import WatchModel from '../models/Watch.js';
 import NotificationModel from '../models/Notification.js';
 import SearchLogModel from '../models/SearchLog.js';
 import { passwordMatches } from '../middlewares/auth.middleware.js';
-import { getWatcherStatus, triggerSoon } from '../services/watcher.js';
+import { getWatcherStatus, triggerSoon, waitCycle } from '../services/watcher.js';
 import { getRailwayStatus } from '../core/railway.js';
 import { getSettings, updateSettings } from '../services/settings.js';
 import { startBroadcast, getBroadcastStatus } from '../services/broadcast.js';
@@ -121,24 +121,33 @@ function system() {
 }
 
 const ADJUST = {
-  watchIntervalSec: { label: 'Tekshirish oralig\'i', unit: 's', step: 30 },
-  maxDaysAhead: { label: 'Necha kun oldinga', unit: 'kun', step: 5 },
-  maxWatchesPerUser: { label: 'Bir kishiga kuzatuv', unit: 'ta', step: 5 },
-  notifyCooldownMin: { label: 'Qayta xabar oralig\'i', unit: 'daq', step: 5 },
+  watchIntervalSec: { label: '⏱ Tekshirish oralig\'i', unit: 'soniya', step: 30, hint: 'bot kuzatuvlarni necha soniyada bir tekshiradi' },
+  maxDaysAhead: { label: '📅 Necha kun oldinga', unit: 'kun', step: 5, hint: 'kuzatuv uchun eng uzoq sana' },
+  maxWatchesPerUser: { label: '👤 Bir kishiga kuzatuv', unit: 'ta', step: 5, hint: 'bitta foydalanuvchining faol kuzatuvlari chegarasi' },
+  notifyCooldownMin: { label: '🔁 Qayta xabar oralig\'i', unit: 'daq', step: 5, hint: 'bir xil joy haqida qayta xabar berishdan oldin kutish' },
 };
 
+/** Sozlamalar: nomi va qiymati alohida to'liq qatorda (kichik ekranda ham kesilmaydi), ostida ➖/➕ */
 function settings() {
   const current = getSettings();
+  const value = (key) => `${current[key]} ${ADJUST[key].unit}`;
   const rows = [[Markup.button.callback(`🔔 Kuzatuvchi: ${current.watcherEnabled ? '✅ yoqilgan' : '⛔️ o\'chirilgan'}`, 'adm:s:watcherEnabled:t')]];
   for (const [key, item] of Object.entries(ADJUST)) {
+    rows.push([Markup.button.callback(`${item.label}: ${value(key)}`, 'noop')]);
     rows.push([
-      Markup.button.callback('➖', `adm:s:${key}:-`),
-      Markup.button.callback(`${item.label}: ${current[key]} ${item.unit}`, 'noop'),
-      Markup.button.callback('➕', `adm:s:${key}:+`),
+      Markup.button.callback(`➖ ${item.step} ${item.unit}`, `adm:s:${key}:-`),
+      Markup.button.callback(`➕ ${item.step} ${item.unit}`, `adm:s:${key}:+`),
     ]);
   }
   rows.push(back());
-  return { text: '⚙️ <b>Sozlamalar</b>\n\n➖/➕ bilan o\'zgartiring — darhol kuchga kiradi.', kb: Markup.inlineKeyboard(rows) };
+  const lines = [
+    '⚙️ <b>Sozlamalar</b>',
+    '',
+    ...Object.entries(ADJUST).map(([key, item]) => `${item.label}: <b>${value(key)}</b> — ${item.hint}.`),
+    '',
+    '➖/➕ bilan o\'zgartiring — darhol kuchga kiradi.',
+  ];
+  return { text: lines.join('\n'), kb: Markup.inlineKeyboard(rows) };
 }
 
 /** Ilova qo'ng'irog'idagi ovozli xabarlar: ro'yxat, faolini tanlash, eshitish, o'chirish */
@@ -198,8 +207,16 @@ export async function adminCommand(ctx) {
 export async function adminCallback(ctx, [action, key, op]) {
   if (!(await isBotAdmin(ctx.from.id))) return ctx.answerCbQuery('Faqat admin uchun', { show_alert: true });
   if (action === 'run') {
+    // Barcha faol kuzatuvlarni 60 soniyani kutmasdan hozir tekshiradi; tugagach — natija
+    const started = Date.now();
     triggerSoon();
-    return ctx.answerCbQuery('🔄 Kuzatuvlar tekshiruvi boshlandi', { show_alert: true });
+    await ctx.answerCbQuery('🔄 Kuzatuvlar tekshiruvi boshlandi');
+    waitCycle(started)
+      .then((cycle) => ctx.reply(cycle
+        ? `✅ Tekshiruv tugadi: ${cycle.checked} ta kuzatuv tekshirildi · joy bor: ${cycle.found} · yuborilgan xabar: ${cycle.notified}${cycle.errors ? ` · xatolar: ${cycle.errors}` : ''}`
+        : '⏳ Tekshiruv hali tugamadi — natija kuzatuv kartalarida ko\'rinadi.'))
+      .catch(() => {});
+    return undefined;
   }
   if (action === 's') {
     const current = getSettings();

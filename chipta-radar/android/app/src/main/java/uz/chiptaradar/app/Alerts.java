@@ -82,7 +82,15 @@ final class Alerts {
         }
         nm.notify(SMS_ID, sms.build());
 
-        // 2) Soxta kiruvchi qo'ng'iroq (qulflangan ekranda ham to'liq ekran)
+        // 2) Qo'ng'iroq: telefonning o'z «Telefon» ilovasida (tarixga yoziladi), imkoni bo'lmasa — ilova oynasi
+        if (!SystemCall.ring(c, title, intl)) callScreen(c, title, intl);
+    }
+
+    /** Ilovaning o'z kiruvchi qo'ng'iroq oynasi (qulflangan ekranda ham to'liq ekran) */
+    static void callScreen(Context c, String title, boolean intl) {
+        channels(c);
+        NotificationManager nm = Compat.notifications(c);
+        if (nm == null) return;
         Intent call = new Intent(c, CallActivity.class)
                 .putExtra("title", title)
                 .putExtra("intl", intl)

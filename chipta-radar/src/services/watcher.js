@@ -544,6 +544,17 @@ export function stopWatcher() {
 }
 
 /** Yangi kuzatuv qo'shilganda navbatdagi siklni tezlashtirish */
+/** Admin "hozir tekshirish": after (ms) dan keyin tugagan siklni kutish (ko'pi bilan timeoutMs) */
+export async function waitCycle(after, timeoutMs = 120_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const finished = Date.parse(status.lastCycle?.finishedAt || '') || 0;
+    if (finished > after) return status.lastCycle;
+    await new Promise((resolve) => { setTimeout(resolve, 1000).unref?.(); });
+  }
+  return null;
+}
+
 export function triggerSoon() {
   if (!stopped && !running) schedule(3_000);
 }

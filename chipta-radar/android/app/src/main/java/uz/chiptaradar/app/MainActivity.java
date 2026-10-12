@@ -39,6 +39,7 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         Alerts.channels(this);
+        SystemCall.register(this);
     }
 
     @Override
@@ -300,6 +301,10 @@ public class MainActivity extends Activity {
                     button(first ? t("setup_btn") + " →" : t("setup_btn"), first ? 0xFF1E88E5 : 0xFF90A4AE, v -> Setup.open(this, step.key));
                     if (step.manual) button(t("done_btn"), 0xFF607D8B, v -> {
                         Prefs.setFlag(this, step.key);
+                        render();
+                    });
+                    if (step.key.equals("callacc")) button(t("skip"), 0xFF90A4AE, v -> {
+                        Prefs.setFlag(this, "callacc_skip");
                         render();
                     });
                 }

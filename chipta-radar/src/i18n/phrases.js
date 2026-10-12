@@ -202,6 +202,13 @@ export const PHRASES = [
   ['Ilovani yuklab olish', 'Скачать приложение', 'Download the app'],
   ['Ulashish', 'Поделиться', 'Share'],
 
+  // Kirish kodi
+  ['Kirish kodi', 'Код доступа', 'Access code'],
+  ['Botdan foydalanish uchun kirish kodini yuboring.', 'Чтобы пользоваться ботом, отправьте код доступа.', 'Send the access code to use the bot.'],
+  ['Kod qabul qilindi!', 'Код принят!', 'Code accepted!'],
+  ["Kod noto'g'ri. Qaytadan yuboring:", 'Неверный код. Отправьте ещё раз:', 'Wrong code. Please send it again:'],
+  ['Avval kirish kodini yuboring', 'Сначала отправьте код доступа', 'Send the access code first'],
+
   // Til
   ["Til o'zgartirildi", 'Язык изменён', 'Language changed'],
 
@@ -281,6 +288,16 @@ export const PHRASES = [
   ['olinmagan', 'не получен', 'not loaded'],
   ['Server ishlayapti:', 'Сервер работает:', 'Server uptime:'],
   ["Tekshirish oralig'i", 'Интервал проверки', 'Check interval'],
+  ['bot kuzatuvlarni necha soniyada bir tekshiradi', 'как часто бот проверяет отслеживания', 'how often the bot checks alerts'],
+  ['kuzatuv uchun eng uzoq sana', 'самая дальняя дата для отслеживания', 'the furthest date for an alert'],
+  ['bitta foydalanuvchining faol kuzatuvlari chegarasi', 'лимит активных отслеживаний на пользователя', 'active alerts limit per user'],
+  ['bir xil joy haqida qayta xabar berishdan oldin kutish', 'пауза перед повторным уведомлением о тех же местах', 'pause before re-notifying about the same seats'],
+  ['Tekshiruv tugadi:', 'Проверка завершена:', 'Check finished:'],
+  ['tekshirildi', 'проверено', 'checked'],
+  ['joy bor:', 'есть места:', 'with seats:'],
+  ['yuborilgan xabar:', 'отправлено сообщений:', 'messages sent:'],
+  ['xatolar:', 'ошибок:', 'errors:'],
+  ["Tekshiruv hali tugamadi — natija kuzatuv kartalarida ko'rinadi.", 'Проверка ещё идёт — результат появится в карточках отслеживаний.', 'The check is still running — results will show on the alert cards.'],
   ['Necha kun oldinga', 'Дней вперёд', 'Days ahead'],
   ['Bir kishiga kuzatuv', 'Отслеживаний на человека', 'Alerts per user'],
   ["Qayta xabar oralig'i", 'Интервал повторного уведомления', 'Repeat notification interval'],

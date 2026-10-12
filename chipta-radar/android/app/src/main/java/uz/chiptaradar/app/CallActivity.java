@@ -8,7 +8,6 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.media.AudioAttributes;
 import android.media.AudioManager;
-import android.media.MediaPlayer;
 import android.media.Ringtone;
 import android.media.RingtoneManager;
 import android.net.Uri;
@@ -18,7 +17,6 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
-import android.speech.tts.TextToSpeech;
 import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
@@ -26,22 +24,17 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import java.io.File;
-import java.util.Locale;
 
 /** Soxta kiruvchi qo'ng'iroq: jiringlaydi, ko'tarilganda ovozli xabar aytadi */
-public class CallActivity extends Activity implements TextToSpeech.OnInitListener {
+public class CallActivity extends Activity {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private Ringtone ringtone;
     private Vibrator vibrator;
-    private TextToSpeech tts;
-    private MediaPlayer player;
-    private int plays;
+    private Voice voice;
     private LinearLayout buttons;
     private TextView status;
     private String title;
     private boolean intl;
-    private String lang;
     private String message;
 
     @Override
@@ -56,7 +49,6 @@ public class CallActivity extends Activity implements TextToSpeech.OnInitListene
                 | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         title = getIntent().getStringExtra("title");
         intl = getIntent().getBooleanExtra("intl", false);
-        lang = L.lang(this);
         message = L.t(this, "voice_msg");
         buildUi();
         startRinging();
@@ -173,80 +165,8 @@ public class CallActivity extends Activity implements TextToSpeech.OnInitListene
         for (int i = 0; i < buttons.getChildCount(); i++) {
             buttons.getChildAt(i).setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(60)));
         }
-        // O'zbekcha — yozib olingan ovoz (bo'lmasa telefon ovozi); ruscha/inglizcha — telefon ovozi (bo'lmasa yozib olingan)
-        if (spokenFirst() || !playRecordedVoice()) tts = new TextToSpeech(this, this);
-    }
-
-    /** Ovozli xabar — ikki marta: admin yuklagan (serverdan) yoki ilovadagi standart (res/raw/voice) */
-    private boolean playRecordedVoice() {
-        AudioAttributes attrs = new AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_ALARM)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                .build();
-        String custom = Prefs.voicePath(this);
-        if (custom != null && new File(custom).length() > 0) {
-            try {
-                player = new MediaPlayer();
-                player.setAudioAttributes(attrs);
-                player.setDataSource(custom);
-                player.prepare();
-            } catch (Exception e) {
-                if (player != null) player.release();
-                player = null; // fayl ochilmadi (masalan, eski Android'da ogg) — standart ovoz
-            }
-        }
-        int res = getResources().getIdentifier("voice", "raw", getPackageName());
-        if (player == null && res == 0) return false;
-        try {
-            if (player == null) {
-                AudioManager audio = (AudioManager) getSystemService(AUDIO_SERVICE);
-                player = MediaPlayer.create(this, res, attrs, audio.generateAudioSessionId());
-            }
-            if (player == null) return false;
-            plays = 0;
-            player.setOnCompletionListener(mp -> {
-                if (++plays < 2) {
-                    mp.seekTo(0);
-                    mp.start();
-                }
-            });
-            player.start();
-            return true;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    private boolean spokenFirst() {
-        return "ru".equals(lang) || "en".equals(lang);
-    }
-
-    @Override
-    public void onInit(int result) {
-        if (tts == null) return;
-        if (result != TextToSpeech.SUCCESS) {
-            if (spokenFirst()) playRecordedVoice();
-            return;
-        }
-        Locale[] candidates = "ru".equals(lang) ? new Locale[] {new Locale("ru", "RU")}
-                : "en".equals(lang) ? new Locale[] {Locale.US, Locale.UK}
-                : new Locale[] {new Locale("uz", "UZ"), new Locale("tr", "TR"), new Locale("ru", "RU")};
-        boolean found = false;
-        for (Locale locale : candidates) {
-            if (tts.isLanguageAvailable(locale) >= TextToSpeech.LANG_AVAILABLE) {
-                tts.setLanguage(locale);
-                found = true;
-                break;
-            }
-        }
-        if (!found && spokenFirst() && playRecordedVoice()) return; // tilda ovoz yo'q — yozib olingan ovoz
-        tts.setAudioAttributes(new AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_ALARM)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                .build());
-        String say = message + (title == null ? "" : " " + title.replace("→", ","));
-        tts.speak(say, TextToSpeech.QUEUE_FLUSH, null, "msg1");
-        tts.speak(say, TextToSpeech.QUEUE_ADD, null, "msg2");
+        voice = new Voice(this, AudioAttributes.USAGE_ALARM, title, null);
+        voice.start();
     }
 
     private void open(String url) {
@@ -261,8 +181,7 @@ public class CallActivity extends Activity implements TextToSpeech.OnInitListene
     protected void onDestroy() {
         handler.removeCallbacksAndMessages(null);
         stopRinging();
-        if (tts != null) tts.shutdown();
-        if (player != null) player.release();
+        if (voice != null) voice.stop();
         super.onDestroy();
     }
 }

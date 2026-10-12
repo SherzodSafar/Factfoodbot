@@ -20,6 +20,8 @@ model User {
   languageCode String?  @map("language_code")
   /// Bot va ilova tili: uz, uzc (kirill), ru, en
   lang         String   @default("uz")
+  /// Botga kirish kodi tasdiqlangan (joriy kod xeshi; kod o'zgarsa — qayta so'raladi)
+  accessKey    String?  @map("access_key")
   /// Tunda (23:00–07:00) xabarlar ovozsiz keladi
   quietNight   Boolean  @default(false) @map("quiet_night")
   /// Admin tomonidan bloklangan

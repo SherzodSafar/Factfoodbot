@@ -15,6 +15,7 @@ export async function registerBotRoutes() {
     return null;
   }
 
+  bot.use(botController.accessGate); // kirish kodi (BOT_ACCESS_CODE berilgan bo'lsa)
   bot.start(botController.start);
   bot.help(botController.help);
   bot.command('menu', botController.start);

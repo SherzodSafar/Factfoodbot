@@ -43,6 +43,8 @@ const config = {
     // "webhook" — bulut uchun, "polling" — localhost uchun. Bo'sh bo'lsa avtomatik tanlanadi.
     mode: (process.env.BOT_MODE || '').toLowerCase(),
     webhookSecret: process.env.WEBHOOK_SECRET || '',
+    // Botdan foydalanish kodi (bo'sh — bot hammaga ochiq). Qiymati faqat server muhitida saqlanadi.
+    accessCode: (process.env.BOT_ACCESS_CODE || '').trim(),
   },
 
   admin: {

@@ -122,6 +122,7 @@ const RULES = [
   // Vaqt
   [`(\\d+) soat (\\d+) daq${END}`, (l, h, m) => (l === 'ru' ? `${h} ч ${m} мин` : `${h} h ${m} min`)],
   [`(\\d+) soat${END}`, (l, h) => (l === 'ru' ? `${h} ч` : `${h} h`)],
+  [`(\\d+) soniya${END}`, (l, n) => (l === 'ru' ? `${n} сек` : `${n} s`)],
   [`(\\d+) (?:daq|daqiqa)${END}`, (l, m) => (l === 'ru' ? `${m} мин` : `${m} min`)],
   [`(\\d+) kun${END}`, (l, n) => count(n, ['день', 'дня', 'дней'], ['day', 'days'])[l]],
   // Vagon va bo'lim raqamlari: "7-vagon", "3, 4-bo'lim"

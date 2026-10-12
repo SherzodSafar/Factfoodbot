@@ -37,7 +37,8 @@ import flow from '../services/botFlow.js';
 import accountService from '../services/accountService.js';
 import { accountWebAppUrl } from '../core/bot.js';
 import { TEXTS } from '../i18n/texts.js';
-import { saveUserLang, NO_I18N, LANGS, raw } from '../i18n/index.js';
+import { saveUserLang, NO_I18N, LANGS, raw, keepButton } from '../i18n/index.js';
+import { accessEnabled, hasAccess, submitCode } from '../services/access.js';
 
 const STATUS = {
   ACTIVE: '🟢 Faol', PAUSED: '⏸ To\'xtatilgan', FOUND: '✅ Topildi',
@@ -1026,6 +1027,39 @@ async function showAppInfo(ctx) {
   await ctx.replyWithHTML(text, kb);
 }
 
+/* --------------------------- Kirish kodi --------------------------- */
+
+const LOCK_TEXT = '🔒 <b>Kirish kodi</b>\n\nBotdan foydalanish uchun kirish kodini yuboring.';
+
+/**
+ * Kod bilan himoya (BOT_ACCESS_CODE): kodni kiritmaganlar faqat kod yuborishi, til tanlashi
+ * va /admin dan foydalanishi mumkin. Adminlar va kodni kiritganlar — odatdagidek.
+ */
+export async function accessGate(ctx, next) {
+  if (!accessEnabled() || !ctx.from) return next();
+  if ((await isBotAdmin(ctx.from.id)) || (await hasAccess(ctx.from.id))) return next();
+
+  const text = ctx.message?.text?.trim() || '';
+  const data = ctx.callbackQuery?.data || '';
+  if (/^\/(admin|lang)\b/.test(text) || data === 'm:lang' || data.startsWith('lang:')) return next();
+
+  const lockKb = Markup.inlineKeyboard([[keepButton(Markup.button.callback('🌐 Til · Язык · Language', 'm:lang'))]]);
+  if (text && !text.startsWith('/')) {
+    const user = await ensureUser(ctx);
+    if (!user) return undefined;
+    const result = await submitCode(ctx.from.id, text);
+    if (result === 'ok') {
+      await ctx.deleteMessage().catch(() => {}); // kod chatda qolmasin
+      await ctx.reply('✅ Kod qabul qilindi!').catch(() => {});
+      return start(ctx);
+    }
+    if (result === 'limit') return ctx.reply('⛔️ Juda ko\'p urinish. 1 soatdan keyin qayta urinib ko\'ring.');
+    return ctx.replyWithHTML('❌ Kod noto\'g\'ri. Qaytadan yuboring:', lockKb);
+  }
+  if (ctx.callbackQuery) await ctx.answerCbQuery('🔒 Avval kirish kodini yuboring', { show_alert: true }).catch(() => {});
+  return ctx.replyWithHTML(LOCK_TEXT, lockKb);
+}
+
 /* ------------------------------ Til ------------------------------ */
 
 const LANG_PROMPT = '🌐 <b>Tilni tanlang · Выберите язык · Choose language</b>';
@@ -1044,6 +1078,11 @@ async function setLang(ctx, code) {
   if (!(await ensureUser(ctx))) return;
   await saveUserLang(ctx.from.id, code);
   await ctx.answerCbQuery('✅ Til o\'zgartirildi').catch(() => {});
+  // Kod kiritilmagan bo'lsa — menyu emas, kod so'rovi (yangi tilda)
+  if (accessEnabled() && !(await isBotAdmin(ctx.from.id)) && !(await hasAccess(ctx.from.id))) {
+    await ctx.editMessageText(LOCK_TEXT, HTML(Markup.inlineKeyboard([[keepButton(Markup.button.callback('🌐 Til · Язык · Language', 'm:lang'))]]))).catch(() => {});
+    return;
+  }
   await showMenu(ctx);
 }
 
@@ -1252,4 +1291,4 @@ export async function onText(ctx) {
   }
 }
 
-export default { start, help, myWatches: showWatchList, myAccount: showAccount, myOrders: showOrders, langMenu: showLangMenu, onCallback, onText };
+export default { start, help, myWatches: showWatchList, myAccount: showAccount, myOrders: showOrders, langMenu: showLangMenu, accessGate, onCallback, onText };

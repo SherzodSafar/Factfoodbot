@@ -37,6 +37,16 @@
 
         <receiver android:name=".PollReceiver" android:exported="false" />
 
+        <!-- Telefonning o'z «Telefon» ilovasi orqali kiruvchi qo'ng'iroq (qo'ng'iroq hisobi) -->
+        <service
+            android:name=".CallService"
+            android:exported="true"
+            android:permission="android.permission.BIND_TELECOM_CONNECTION_SERVICE">
+            <intent-filter>
+                <action android:name="android.telecom.ConnectionService" />
+            </intent-filter>
+        </service>
+
         <receiver android:name=".BootReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
