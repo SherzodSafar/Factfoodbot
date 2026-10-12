@@ -70,6 +70,7 @@ function publicWatch(row) {
     berth: watch.berth,
     together: watch.together,
     noToilet: watch.noToilet,
+    noConductor: watch.noConductor,
     status: watch.status,
     lastCheckedAt: watch.lastCheckedAt,
     lastFoundAt: watch.lastFoundAt,

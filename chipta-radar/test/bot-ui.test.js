@@ -152,9 +152,9 @@ test('shortDate — "DD-oy, kun" ko\'rinishida', () => {
 });
 
 test('sehrgar bosqichlari vagon turiga qarab o\'zgaradi', () => {
-  assert.deepEqual(wizard.stepOrder({ carType: 'platskart' }), ['scope', 'from', 'to', 'date', 'car', 'section', 'berth', 'qty', 'confirm']);
-  assert.deepEqual(wizard.stepOrder({ carType: 'kupe' }), ['scope', 'from', 'to', 'date', 'car', 'berth', 'qty', 'confirm']);
-  assert.deepEqual(wizard.stepOrder({ carType: 'sv' }), ['scope', 'from', 'to', 'date', 'car', 'qty', 'confirm']);
+  assert.deepEqual(wizard.stepOrder({ carType: 'platskart' }), ['scope', 'from', 'to', 'date', 'car', 'section', 'berth', 'avoid', 'qty', 'confirm']);
+  assert.deepEqual(wizard.stepOrder({ carType: 'kupe' }), ['scope', 'from', 'to', 'date', 'car', 'berth', 'avoid', 'qty', 'confirm']);
+  assert.deepEqual(wizard.stepOrder({ carType: 'sv' }), ['scope', 'from', 'to', 'date', 'car', 'avoid', 'qty', 'confirm']);
   // xorijiy (KTZ) — qism/qavat bosqichlari yo'q
   assert.deepEqual(wizard.stepOrder({ scope: 'intl', carType: 'kupe' }), ['scope', 'from', 'to', 'date', 'car', 'qty', 'confirm']);
   // aniq joy + 1 dan ko'p chipta → "together" bosqichi qo'shiladi

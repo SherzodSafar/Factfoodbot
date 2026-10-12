@@ -7,6 +7,7 @@
  *   3) Kuzatuv xizmati — joylar paydo bo'lishini kuzatib, xabar yuboradi
  */
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import path from 'node:path';
 import express from 'express';
 import cors from 'cors';
@@ -228,7 +229,8 @@ async function startBot() {
         path: WEBHOOK_PATH,
         drop_pending_updates: false,
         allowed_updates: ['message', 'callback_query'],
-        ...(config.bot.webhookSecret ? { secret_token: config.bot.webhookSecret } : {}),
+        // Maxfiy kalit: shu manzilga ulanib qolgan boshqa (eski) bot yangilanishlari qabul qilinmaydi
+        secret_token: config.bot.webhookSecret || crypto.createHash('sha256').update(`webhook:${config.bot.token}`).digest('hex').slice(0, 48),
       });
       bot.botInfo = await bot.telegram.getMe();
       console.log(`✅ Bot (webhook): @${bot.botInfo.username} → ${domain}${WEBHOOK_PATH}`);

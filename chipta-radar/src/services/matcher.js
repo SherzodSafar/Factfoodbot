@@ -22,6 +22,7 @@ export function prefsOfWatch(watch) {
       berth: watch.berth,
       together: watch.together,
       noToilet: watch.noToilet,
+      noConductor: watch.noConductor,
       quantity: watch.quantity,
     },
     type,

@@ -99,6 +99,7 @@ model Watch {
   together           String      @default("any")
   /// EXACT: hojatxona yonidagi (1- va oxirgi) bo'limlarsiz
   noToilet           Boolean     @default(false) @map("no_toilet")
+  noConductor        Boolean     @default(false) @map("no_conductor")
   /// Joy chiqsa — bot avtomatik bron qilib, to'lov so'rovini yuboradi
   autoBook           Boolean     @default(false) @map("auto_book")
   /// Avto-bron uchun tanlangan yo'lovchilar (Passenger id lari)

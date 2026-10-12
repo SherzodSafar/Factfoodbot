@@ -54,10 +54,16 @@ test('talablar: bokovoy/to\'rttalik, pastki/yuqori, hojatxona yonidagisiz', () =
   assert.equal(seatFits('platskart', 45, lowerMain), false);
 
   const noToilet = prefs({ noToilet: true }, 'platskart');
-  assert.equal(seatFits('platskart', 2, noToilet), false); // 1-bo'lim
+  assert.equal(seatFits('platskart', 2, noToilet), true); // 1-bo'lim — konduktor tomoni (hojatxona emas)
   assert.equal(seatFits('platskart', 35, noToilet), false); // 9-bo'lim
   assert.equal(seatFits('platskart', 37, noToilet), false); // 9-bo'lim bokovoyi
   assert.equal(seatFits('platskart', 20, noToilet), true);
+
+  const noConductor = prefs({ noConductor: true }, 'platskart');
+  assert.equal(seatFits('platskart', 2, noConductor), false); // 1-bo'lim: kirish eshigi, konduktor kabinasi
+  assert.equal(seatFits('platskart', 53, noConductor), false); // 1-bo'lim bokovoyi
+  assert.equal(seatFits('platskart', 35, noConductor), true);
+  assert.equal(seatFits('kupe', 3, prefs({ noConductor: true }, 'kupe')), false);
 });
 
 test('normalizePrefs vagon turiga moslashadi', () => {

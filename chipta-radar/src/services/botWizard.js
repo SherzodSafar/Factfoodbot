@@ -12,8 +12,9 @@ export function stepOrder(session) {
   const steps = ['scope', 'from', 'to', 'date', 'car'];
   // Xorijiy (KTZ) yo'nalishda aniq joy raqamlari olinmaydi — qism/qavat bosqichlari yo'q
   if (session.scope !== 'intl') {
-    if (session.carType === 'platskart') steps.push('section', 'berth');
-    else if (session.carType === 'kupe') steps.push('berth');
+    if (session.carType === 'platskart') steps.push('section', 'berth', 'avoid');
+    else if (session.carType === 'kupe') steps.push('berth', 'avoid');
+    else if (session.carType === 'sv') steps.push('avoid');
   }
   steps.push('qty');
   if (isExact(session) && (session.quantity || 1) > 1) steps.push('together');
@@ -23,7 +24,7 @@ export function stepOrder(session) {
 
 /** Aniq joy (EXACT) rejimimi — qism yoki qavat tanlangan bo'lsa */
 export function isExact(session) {
-  return (session.section && session.section !== 'any') || (session.berth && session.berth !== 'any');
+  return Boolean((session.section && session.section !== 'any') || (session.berth && session.berth !== 'any') || session.noToilet || session.noConductor);
 }
 
 export function getSession(id) {
@@ -65,6 +66,7 @@ export function goBack(id) {
   // Oldingi bosqichda tanlangan qiymatni tozalaymiz
   const clear = { scope: 'scope', from: 'fromCode', to: 'toCode', date: 'date', car: 'carType', section: 'section', berth: 'berth', qty: 'quantity', together: 'together' };
   if (clear[previous]) delete session[clear[previous]];
+  if (previous === 'avoid') { delete session.noToilet; delete session.noConductor; }
   session.step = previous;
   session.at = Date.now();
   return session;

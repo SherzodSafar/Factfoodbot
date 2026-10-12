@@ -36,7 +36,8 @@ export function describeWatch(watch) {
     if (SECTION_LABELS[watch.section]) parts.push(SECTION_LABELS[watch.section]);
     if (BERTH_LABELS[watch.berth]) parts.push(BERTH_LABELS[watch.berth]);
     if (watch.quantity > 1) parts.push(TOGETHER_LABELS[watch.together] || '');
-    if (watch.noToilet) parts.push('hojatxona yonidagisiz');
+    if (watch.noConductor) parts.push('konduktor tomonida emas');
+    if (watch.noToilet) parts.push('hojatxona yonida emas');
   }
 
   if (watch.trainNumbers?.length) parts.push(`poyezd: ${watch.trainNumbers.join(', ')}`);

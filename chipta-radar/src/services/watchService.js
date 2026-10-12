@@ -74,6 +74,7 @@ export function validateWatchInput(input = {}) {
       berth: mode === 'EXACT' ? prefs.berth : 'any',
       together: mode === 'EXACT' ? prefs.together : 'any',
       noToilet: mode === 'EXACT' ? prefs.noToilet : false,
+      noConductor: mode === 'EXACT' ? prefs.noConductor : false,
     },
   };
 }
@@ -81,7 +82,7 @@ export function validateWatchInput(input = {}) {
 const sameWatch = (a, b) =>
   a.mode === b.mode && a.fromCode === b.fromCode && a.toCode === b.toCode && a.date === b.date
   && a.quantity === b.quantity && a.section === b.section && a.berth === b.berth && a.together === b.together
-  && a.noToilet === b.noToilet && a.maxPrice === b.maxPrice && a.timeFrom === b.timeFrom && a.timeTo === b.timeTo
+  && a.noToilet === b.noToilet && Boolean(a.noConductor) === Boolean(b.noConductor) && a.maxPrice === b.maxPrice && a.timeFrom === b.timeFrom && a.timeTo === b.timeTo
   && [...a.carTypes].sort().join() === [...b.carTypes].sort().join()
   && [...a.trainNumbers].sort().join() === [...b.trainNumbers].sort().join();
 

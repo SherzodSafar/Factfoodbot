@@ -27,6 +27,10 @@ export function mainMenu() {
   ]);
 }
 
+/** Rangli tugma (Telegram 2026-fevraldan: primary — ko'k, success — yashil, danger — qizil; eski ilovada oddiy) */
+const styled = (button, style) => ({ ...button, style });
+const cancelButton = (text = '❌ Bekor') => styled(Markup.button.callback(text, 'm:home'), 'danger');
+
 /** Har bir ekran oxirida "asosiy menyu" tugmasi */
 export function backToMenuRow() {
   return [Markup.button.callback('🏠 Asosiy menyu', 'm:home')];
@@ -61,7 +65,7 @@ export function stationGrid(prefix, { page = 0, excludeCode = null, only = null 
   }
 
   if (only) rows.push([Markup.button.callback('🔎 Barcha bekatlar', `${prefix}a`)]);
-  rows.push([Markup.button.callback('⬅️ Orqaga', 'wz:back'), Markup.button.callback('❌ Bekor qilish', 'm:home')]);
+  rows.push([Markup.button.callback('⬅️ Orqaga', 'wz:back'), cancelButton('❌ Bekor qilish')]);
   return Markup.inlineKeyboard(rows);
 }
 
@@ -70,7 +74,7 @@ export function scopeKeyboard() {
   return Markup.inlineKeyboard([
     [Markup.button.callback('🇺🇿 Mahalliy (O\'zbekiston ichida)', 'wz:scope:local')],
     [Markup.button.callback('🌍 Xorijiy (Qozog\'iston)', 'wz:scope:intl')],
-    [Markup.button.callback('❌ Bekor qilish', 'm:home')],
+    [cancelButton('❌ Bekor qilish')],
   ]);
 }
 
@@ -81,7 +85,7 @@ export function intlStationGrid(prefix, stations) {
   for (let i = 0; i < stations.length; i += 2) {
     rows.push(stations.slice(i, i + 2).map((station) => Markup.button.callback(`${flag(station)} ${station.nameUz}`, `${prefix}:${station.code}`)));
   }
-  rows.push([Markup.button.callback('⬅️ Orqaga', 'wz:back'), Markup.button.callback('❌ Bekor', 'm:home')]);
+  rows.push([Markup.button.callback('⬅️ Orqaga', 'wz:back'), cancelButton()]);
   return Markup.inlineKeyboard(rows);
 }
 
@@ -124,7 +128,7 @@ export function dateGrid(offset = 0, maxDaysAhead = 60) {
   if (start + DATE_WINDOW <= maxDaysAhead) nav.push(Markup.button.callback('Keyingi ➡️', `wz:dp:${start + DATE_WINDOW}`));
   if (nav.length) rows.push(nav);
 
-  rows.push([Markup.button.callback('❌ Bekor qilish', 'm:home')]);
+  rows.push([cancelButton('❌ Bekor qilish')]);
   return Markup.inlineKeyboard(rows);
 }
 
@@ -156,8 +160,8 @@ export function carKeyboard(selected = [], prices = {}, { showAll = false, curre
     rows.push([Markup.button.callback(`${mark}${choice.label}${price}`, `wz:c:${choice.type}`)]);
   }
   if (hidden > 0) rows.push([Markup.button.callback(`➕ Boshqa vagon turlari (${hidden})`, 'wz:call')]);
-  if (selected.length) rows.push([Markup.button.callback(`➡️ Davom etish (${selected.length} ta tanlandi)`, 'wz:cok')]);
-  rows.push([Markup.button.callback('⬅️ Orqaga', 'wz:back'), Markup.button.callback('❌ Bekor', 'm:home')]);
+  if (selected.length) rows.push([styled(Markup.button.callback(`➡️ Davom etish (${selected.length} ta tanlandi)`, 'wz:cok'), 'success')]);
+  rows.push([Markup.button.callback('⬅️ Orqaga', 'wz:back'), cancelButton()]);
   return Markup.inlineKeyboard(rows);
 }
 
@@ -167,7 +171,7 @@ export function sectionKeyboard() {
   return Markup.inlineKeyboard([
     [Markup.button.callback('🛋 To\'rttalik', 'wz:sec:compartment'), Markup.button.callback('🚪 Bokovoy', 'wz:sec:side')],
     [Markup.button.callback('✅ Farqi yo\'q', 'wz:sec:any')],
-    [Markup.button.callback('⬅️ Orqaga', 'wz:back'), Markup.button.callback('❌ Bekor', 'm:home')],
+    [Markup.button.callback('⬅️ Orqaga', 'wz:back'), cancelButton()],
   ]);
 }
 
@@ -175,7 +179,7 @@ export function berthKeyboard() {
   return Markup.inlineKeyboard([
     [Markup.button.callback('⬇️ Pastki', 'wz:brt:lower'), Markup.button.callback('⬆️ Yuqori', 'wz:brt:upper')],
     [Markup.button.callback('✅ Farqi yo\'q', 'wz:brt:any')],
-    [Markup.button.callback('⬅️ Orqaga', 'wz:back'), Markup.button.callback('❌ Bekor', 'm:home')],
+    [Markup.button.callback('⬅️ Orqaga', 'wz:back'), cancelButton()],
   ]);
 }
 
@@ -183,7 +187,7 @@ export function togetherKeyboard() {
   return Markup.inlineKeyboard([
     [Markup.button.callback('🤝 Yonma-yon (bitta joyda)', 'wz:tg:compartment')],
     [Markup.button.callback('✅ Tarqoq bo\'lsa ham', 'wz:tg:any')],
-    [Markup.button.callback('⬅️ Orqaga', 'wz:back'), Markup.button.callback('❌ Bekor', 'm:home')],
+    [Markup.button.callback('⬅️ Orqaga', 'wz:back'), cancelButton()],
   ]);
 }
 
@@ -192,7 +196,20 @@ export function togetherKeyboard() {
 export function qtyKeyboard() {
   return Markup.inlineKeyboard([
     [1, 2, 3, 4].map((n) => Markup.button.callback(String(n), `wz:q:${n}`)),
-    [Markup.button.callback('⬅️ Orqaga', 'wz:back'), Markup.button.callback('❌ Bekor', 'm:home')],
+    [Markup.button.callback('⬅️ Orqaga', 'wz:back'), cancelButton()],
+  ]);
+}
+
+/* --------------------------- Joy cheklovlari --------------------------- */
+
+/** Konduktor (kirish eshigi) tomoni va hojatxona tomonidagi joylarni chiqarib tashlash */
+export function avoidKeyboard(session = {}) {
+  const mark = (on) => (on ? '☑️ ' : '⬜ ');
+  return Markup.inlineKeyboard([
+    [Markup.button.callback(`${mark(session.noConductor)}🚪 Konduktor tomoni kerak emas`, 'wz:av:cond')],
+    [Markup.button.callback(`${mark(session.noToilet)}🚻 Hojatxona tomoni kerak emas`, 'wz:av:wc')],
+    [styled(Markup.button.callback('➡️ Davom etish', 'wz:avok'), 'success')],
+    [Markup.button.callback('⬅️ Orqaga', 'wz:back'), cancelButton()],
   ]);
 }
 
@@ -200,15 +217,17 @@ export function qtyKeyboard() {
 
 export function confirmKeyboard() {
   return Markup.inlineKeyboard([
-    [Markup.button.callback('✅ Kuzatuvni yoqish', 'wz:ok')],
-    [Markup.button.callback('⬅️ Orqaga', 'wz:back'), Markup.button.callback('❌ Bekor', 'm:home')],
+    [styled(Markup.button.callback('✅ Kuzatuvni yoqish', 'wz:ok'), 'success')],
+    [Markup.button.callback('⬅️ Orqaga', 'wz:back'), cancelButton()],
   ]);
 }
 
 /* -------------------- Kuzatuvni boshqarish tugmalari ---------------- */
 
-export function manageKeyboard(watch) {
+export function manageKeyboard(watch, { buyUrl = null } = {}) {
   const rows = [];
+  // Joy topilgan bo'lsa — sotib olish sahifasi (xorijiy yo'nalishda KTZ sayti)
+  if (buyUrl) rows.push([styled(Markup.button.url('🎫 Sotib olish sahifasini ochish', buyUrl), 'success')]);
   const top = [];
   if (watch.status === 'ACTIVE') top.push(Markup.button.callback('⏸ To\'xtatish', `g:pause:${watch.id}`));
   if (watch.status === 'PAUSED' || watch.status === 'FOUND') top.push(Markup.button.callback('▶️ Davom', `g:resume:${watch.id}`));
@@ -363,7 +382,7 @@ export function ordersKeyboard(status, accountUrl) {
 }
 
 export default {
-  WELCOME, mainMenu, backToMenuRow, stationGrid, scopeKeyboard, intlStationGrid, dateGrid, shortDate,
+  WELCOME, mainMenu, backToMenuRow, stationGrid, scopeKeyboard, intlStationGrid, avoidKeyboard, dateGrid, shortDate,
   carKeyboard, sectionKeyboard, berthKeyboard, togetherKeyboard, qtyKeyboard,
   confirmKeyboard, manageKeyboard, foundKeyboard, CAR_CHOICES,
   accountKeyboard, disconnectConfirmKeyboard, ordersKeyboard,

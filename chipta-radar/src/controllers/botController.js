@@ -139,6 +139,8 @@ function summary(session) {
   const seat = [];
   if (session.section && session.section !== 'any') seat.push(session.section === 'compartment' ? 'to\'rttalik' : 'bokovoy');
   if (session.berth && session.berth !== 'any') seat.push(session.berth === 'lower' ? 'pastki' : 'yuqori');
+  if (session.noConductor) seat.push('konduktor tomonida emas');
+  if (session.noToilet) seat.push('hojatxona yonida emas');
   if (seat.length) lines.push(`🎯 ${seat.join(', ')}`);
   if (session.quantity) lines.push(`👥 ${session.quantity} ta chipta${session.together === 'compartment' ? ' (yonma-yon)' : ''}`);
   return lines.join('\n');
@@ -208,6 +210,14 @@ function renderStep(session) {
       return { text: `${summary(session)}\n\n🛋 <b>Qaysi qism?</b>`, kb: ui.sectionKeyboard() };
     case 'berth':
       return { text: `${summary(session)}\n\n🛏 <b>Qaysi o'rin?</b>`, kb: ui.berthKeyboard() };
+    case 'avoid':
+      return {
+        text: `${summary(session)}\n\n🚪 <b>Qaysi joylar kerak emas?</b> (ixtiyoriy)\n`
+          + '• <b>Konduktor tomoni</b> — vagonning 1-bo\'limi: kirish eshigi va konduktor kabinasi yonida.\n'
+          + '• <b>Hojatxona tomoni</b> — vagonning oxirgi bo\'limi.\n'
+          + 'Belgilang yoki shunchaki «Davom etish»ni bosing.',
+        kb: ui.avoidKeyboard(session),
+      };
     case 'qty':
       return { text: `${summary(session)}\n\n👥 <b>Nechta chipta kerak?</b>`, kb: ui.qtyKeyboard() };
     case 'together':
@@ -341,9 +351,9 @@ async function onWizard(ctx, rest) {
     const single = types.length === 1 ? types[0] : null;
     // Bitta Plaskart/Kupe bo'lsa — aniq joy bosqichlari; bir nechta bo'lsa — to'g'ri soniga
     const exactSteps = session?.scope !== 'intl'; // KTZ: aniq joy raqamlari yo'q
-    const next = exactSteps && single === 'platskart' ? 'section' : exactSteps && single === 'kupe' ? 'berth' : 'qty';
+    const next = !exactSteps ? 'qty' : single === 'platskart' ? 'section' : single === 'kupe' ? 'berth' : single === 'sv' ? 'avoid' : 'qty';
     const carType = types.length ? (single || 'multi') : 'any';
-    session = wizard.patchSession(ctx.from.id, { carType, section: 'any', berth: 'any', step: next });
+    session = wizard.patchSession(ctx.from.id, { carType, section: 'any', berth: 'any', noToilet: false, noConductor: false, step: next });
     await ctx.answerCbQuery();
     return showStep(ctx, session);
   }
@@ -353,7 +363,18 @@ async function onWizard(ctx, rest) {
     return showStep(ctx, session);
   }
   if (action === 'brt') {
-    session = wizard.patchSession(ctx.from.id, { berth: value, step: 'qty' });
+    session = wizard.patchSession(ctx.from.id, { berth: value, step: 'avoid' });
+    await ctx.answerCbQuery();
+    return showStep(ctx, session);
+  }
+  if (action === 'av') { // joy cheklovi: belgilash / olib tashlash
+    const key = value === 'cond' ? 'noConductor' : 'noToilet';
+    session = wizard.patchSession(ctx.from.id, { [key]: !session[key], step: 'avoid' });
+    await ctx.answerCbQuery(session[key] ? '☑️ Belgilandi' : 'Olib tashlandi');
+    return showStep(ctx, session);
+  }
+  if (action === 'avok') {
+    session = wizard.patchSession(ctx.from.id, { step: 'qty' });
     await ctx.answerCbQuery();
     return showStep(ctx, session);
   }
@@ -388,7 +409,8 @@ async function finishWizard(ctx, user, session) {
     section: session.section || 'any',
     berth: session.berth || 'any',
     together: session.together || 'any',
-    noToilet: false,
+    noToilet: Boolean(session.noToilet),
+    noConductor: Boolean(session.noConductor),
   };
 
   try {
@@ -436,6 +458,13 @@ async function finishWizard(ctx, user, session) {
 /* ------------------------------------------------------------------ */
 /*  Kuzatuvlarim                                                        */
 /* ------------------------------------------------------------------ */
+
+/** Kuzatuv kartasi tugmalari: joy topilgan bo'lsa — sotib olish sahifasi havolasi ham */
+function manageKb(row) {
+  const watch = withLiveState(row);
+  const found = ['ACTIVE', 'FOUND'].includes(watch.status) && watch.lastResult?.found;
+  return ui.manageKeyboard(row, { buyUrl: found ? buildSearchUrl(watch, watch.lastResult?.items?.[0]?.train) : null });
+}
 
 function watchDetailText(row) {
   const watch = withLiveState(row);
@@ -489,9 +518,9 @@ async function showWatchDetail(ctx, id) {
   if (!found) return ctx.answerCbQuery('Kuzatuv topilmadi', { show_alert: true });
   await ctx.answerCbQuery().catch(() => {});
   try {
-    await ctx.editMessageText(watchDetailText(found.watch), HTML(ui.manageKeyboard(found.watch)));
+    await ctx.editMessageText(watchDetailText(found.watch), HTML(manageKb(found.watch)));
   } catch {
-    await ctx.replyWithHTML(watchDetailText(found.watch), ui.manageKeyboard(found.watch));
+    await ctx.replyWithHTML(watchDetailText(found.watch), manageKb(found.watch));
   }
 }
 
@@ -505,12 +534,12 @@ async function onManage(ctx, action, id) {
   if (action === 'pause') {
     const updated = await WatchModel.update(watch.id, { status: 'PAUSED' });
     await ctx.answerCbQuery('⏸ To\'xtatildi');
-    return ctx.editMessageReplyMarkup(ui.manageKeyboard(updated).reply_markup).catch(() => {});
+    return ctx.editMessageReplyMarkup(manageKb(updated).reply_markup).catch(() => {});
   }
   if (action === 'resume') {
     const updated = await WatchModel.update(watch.id, { status: 'ACTIVE', lastKeys: [] });
     await ctx.answerCbQuery('▶️ Davom etmoqda');
-    return ctx.editMessageReplyMarkup(ui.manageKeyboard(updated).reply_markup).catch(() => {});
+    return ctx.editMessageReplyMarkup(manageKb(updated).reply_markup).catch(() => {});
   }
   if (action === 'got') {
     await WatchModel.update(watch.id, { status: 'FOUND' });
@@ -528,7 +557,7 @@ async function onManage(ctx, action, id) {
     await ctx.answerCbQuery('🔄 Tekshirilmoqda...');
     try {
       const { watch: updated } = await checkWatchNow({ ...watch, user }, { notify: false, markNotified: true });
-      return ctx.editMessageText(watchDetailText(updated), HTML(ui.manageKeyboard(updated))).catch(() => {});
+      return ctx.editMessageText(watchDetailText(updated), HTML(manageKb(updated))).catch(() => {});
     } catch (error) {
       return ctx.answerCbQuery(`Xatolik: ${error.message}`, { show_alert: true }).catch(() => {});
     }

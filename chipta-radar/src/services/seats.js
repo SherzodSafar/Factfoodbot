@@ -98,6 +98,7 @@ export function normalizePrefs(input = {}, type) {
     berth: BERTHS.includes(input.berth) ? input.berth : 'any',
     together: TOGETHER.includes(input.together) ? input.together : 'any',
     noToilet: Boolean(input.noToilet),
+    noConductor: Boolean(input.noConductor),
     quantity: Math.min(10, Math.max(1, Math.round(Number(input.quantity) || 1))),
   };
 
@@ -108,6 +109,7 @@ export function normalizePrefs(input = {}, type) {
       prefs.section = 'any';
       prefs.berth = 'any';
       prefs.noToilet = false;
+      prefs.noConductor = false;
     } else {
       // Kupe/SV'da bokovoy yo'q — hamma joy to'rttalik (kupe) ichida
       if (!layout.side) prefs.section = 'any';
@@ -124,8 +126,9 @@ export function seatFits(type, number, prefs) {
   if (!layout) return true;
 
   const seat = describeSeat(type, number);
-  if (seat.bay === null) return prefs.section === 'any' && prefs.berth === 'any' && !prefs.noToilet;
-  if (prefs.noToilet && (seat.bay === 1 || seat.bay === layout.bays)) return false;
+  if (seat.bay === null) return prefs.section === 'any' && prefs.berth === 'any' && !prefs.noToilet && !prefs.noConductor;
+  if (prefs.noConductor && seat.bay === 1) return false; // 1-bo'lim: konduktor kabinasi va kirish eshigi yonida
+  if (prefs.noToilet && seat.bay === layout.bays) return false; // oxirgi bo'lim: hojatxona yonida
   if (prefs.section === 'compartment' && seat.section === 'side') return false;
   if (prefs.section === 'side' && seat.section !== 'side') return false;
   if (prefs.berth !== 'any' && seat.berth !== prefs.berth) return false;
