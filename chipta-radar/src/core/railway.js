@@ -291,6 +291,17 @@ function recordFailure(error, sample) {
 /**
  * JSON POST so'rov (navbat, qayta urinish va sessiya yangilash bilan).
  */
+/** Saytning texnik tanaffusi: tugash vaqtigacha (Toshkent vaqti) so'rovlar to'xtatiladi */
+function startMaintenance(body) {
+  const offset = config.timezoneOffsetMin * 60_000;
+  const day = new Date(Date.now() + offset).toISOString().slice(0, 10);
+  let end = Date.parse(`${day}T${String(body.endTime).padStart(5, '0')}:00Z`) - offset;
+  if (!Number.isFinite(end) || end < Date.now()) end = Date.now() + 5 * 60_000;
+  limits.maintenanceUntil = end + 60_000;
+  limits.maintenanceText = `Saytda texnik tanaffus${body.startTime ? ` (${body.startTime}–${body.endTime})` : ''}. Tekshiruv keyin avtomatik davom etadi.`;
+  return new RailwayError(limits.maintenanceText, { code: 'COOLDOWN' });
+}
+
 /** Kutilmagan HTTP javobini logga yozish (har bir kod uchun 10 daqiqada bir marta) */
 const httpLogged = new Map();
 function logHttpProblem(status, path, text) {
@@ -380,11 +391,15 @@ async function postJson(path, payload) {
     if (status < 200 || status >= 300) {
       // Sayt javobidagi izoh (masalan {"message": "..."}) — kuzatuv kartasida ham ko'rinadi
       let detail = '';
+      let body = null;
       try {
-        const body = JSON.parse(text);
-        detail = String(body?.message || body?.error || body?.detail || body?.title || '').trim().slice(0, 160);
+        body = JSON.parse(text);
+        const first = Array.isArray(body?.error) ? body.error[0]?.message : body?.error;
+        detail = String(body?.messageUz || body?.message || first || body?.detail || body?.title || '').trim().slice(0, 160);
       } catch { /* JSON emas */ }
       logHttpProblem(status, path, text);
+      // Har kuni tunda saytda texnik tanaffus (masalan 02:10–02:40) — tugaguncha so'rov yubormaymiz
+      if (status === 424 && body?.endTime) throw fail(startMaintenance(body), text);
       throw fail(new RailwayError(detail ? `${detail} (HTTP ${status})` : `Kutilmagan javob (HTTP ${status})`, { code: 'HTTP_ERROR', status }), text);
     }
 
@@ -405,6 +420,9 @@ async function postJson(path, payload) {
  * Foydalanuvchi hisobi so'rovlari (core/eticketAccount.js) ham shu yerdan o'tadi.
  */
 export function runQueued(task, priority = 'high') {
+  if (Date.now() < (limits.maintenanceUntil || 0)) {
+    return Promise.reject(new RailwayError(limits.maintenanceText, { code: 'COOLDOWN' }));
+  }
   if (Date.now() < limits.cooldownUntil) {
     const minutes = Math.ceil((limits.cooldownUntil - Date.now()) / 60000);
     return Promise.reject(
