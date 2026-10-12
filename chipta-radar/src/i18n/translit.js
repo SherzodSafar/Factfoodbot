@@ -7,7 +7,7 @@ const MAP = {
   n: 'н', o: 'о', p: 'п', q: 'қ', r: 'р', s: 'с', t: 'т', u: 'у', v: 'в', w: 'в', x: 'х', y: 'й', z: 'з',
 };
 const APOS = "'ʻ‘’`";
-const KEEP = new Set(['Payme', 'Click', 'Telegram', 'eticket', 'Google', 'Play', 'Protect', 'Xiaomi', 'Redmi', 'POCO', 'Android', 'Web', 'App', 'Firebase', 'Talgo', 'English', 'Radar']);
+const KEEP = new Set(['Payme', 'Click', 'Telegram', 'eticket', 'Google', 'Play', 'Protect', 'Xiaomi', 'Redmi', 'POCO', 'Android', 'Web', 'App', 'Firebase', 'Talgo', 'English']);
 
 // Ruschadan o'zlashgan oy nomlari kirillda boshqacha yoziladi
 const EXCEPT = {

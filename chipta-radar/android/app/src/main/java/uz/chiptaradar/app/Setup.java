@@ -49,28 +49,27 @@ final class Setup {
         boolean notify = Build.VERSION.SDK_INT >= 33
                 ? c.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
                 : Build.VERSION.SDK_INT < 24 || nm == null || nm.areNotificationsEnabled();
-        list.add(new Step("notify", "Bildirishnomalar", "Chipta haqidagi xabar va qo'ng'iroq oynasi ko'rinishi uchun.", false, notify));
+        list.add(new Step("notify", L.t(c, "st_notify"), L.t(c, "st_notify_h"), false, notify));
 
         if (Build.VERSION.SDK_INT >= 34 && nm != null) {
-            list.add(new Step("fullscreen", "Qo'ng'iroq oynasi (to'liq ekran)", "Qulflangan ekranda ham qo'ng'iroq oynasi ochilishi uchun. Ochilgan sahifada ruxsatni yoqing.", false, nm.canUseFullScreenIntent()));
+            list.add(new Step("fullscreen", L.t(c, "st_fullscreen"), L.t(c, "st_fullscreen_h"), false, nm.canUseFullScreenIntent()));
         }
         if (Build.VERSION.SDK_INT >= 23) {
-            list.add(new Step("overlay", "Boshqa ilovalar ustida ko'rsatish", "Telefon boshqa ilovada bo'lsa ham qo'ng'iroq oynasi chiqishi uchun. «Chipta Radar»ni yoqing.", false, Settings.canDrawOverlays(c)));
+            list.add(new Step("overlay", L.t(c, "st_overlay"), L.t(c, "st_overlay_h"), false, Settings.canDrawOverlays(c)));
             PowerManager power = (PowerManager) c.getSystemService(Context.POWER_SERVICE);
-            list.add(new Step("battery", "Batareya cheklovini olib tashlash", "Telefon uxlaganda ham tekshiruv to'xtamasligi uchun. Ro'yxatdan «Chipta Radar» → «Cheklamaslik».", false,
+            list.add(new Step("battery", L.t(c, "st_battery"), L.t(c, "st_battery_h"), false,
                     power != null && power.isIgnoringBatteryOptimizations(pkg)));
         }
         if (Build.VERSION.SDK_INT >= 31) {
             AlarmManager alarms = (AlarmManager) c.getSystemService(Context.ALARM_SERVICE);
-            list.add(new Step("alarm", "Har daqiqada tekshirish", "«Signal va eslatmalar» ruxsatini yoqing — tekshiruv har daqiqada bo'ladi.", false,
+            list.add(new Step("alarm", L.t(c, "st_alarm"), L.t(c, "st_alarm_h"), false,
                     alarms != null && alarms.canScheduleExactAlarms()));
         }
         if (isXiaomi()) {
-            list.add(new Step("autostart", "Avtomatik ishga tushirish (Xiaomi)", "Ochilgan ro'yxatda «Chipta Radar»ni yoqing, so'ng «Bajardim»ni bosing.", true, Prefs.flag(c, "autostart")));
-            list.add(new Step("miui", "Qulflangan ekran va qalqib chiquvchi oynalar (Xiaomi)",
-                    "«Qulflangan ekranda ko'rsatish» va «Fonda qalqib chiquvchi oynalarni ochish»ni yoqing, so'ng «Bajardim»ni bosing.", true, Prefs.flag(c, "miui")));
+            list.add(new Step("autostart", L.t(c, "st_autostart"), L.t(c, "st_autostart_h"), true, Prefs.flag(c, "autostart")));
+            list.add(new Step("miui", L.t(c, "st_miui"), L.t(c, "st_miui_h"), true, Prefs.flag(c, "miui")));
         }
-        list.add(new Step("test", "Sinov qo'ng'irog'i", "Qo'ng'iroq kelishi va ovoz eshitilishini tekshiring.", true, Prefs.flag(c, "test")));
+        list.add(new Step("test", L.t(c, "st_test"), L.t(c, "st_test_h"), true, Prefs.flag(c, "test")));
         return list;
     }
 

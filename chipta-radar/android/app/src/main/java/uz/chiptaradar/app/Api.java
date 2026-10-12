@@ -19,6 +19,13 @@ final class Api {
 
     private Api() {}
 
+    /** Chipta sotiladigan sayt bosh sahifasi (xorijiy — KTZ), ilova tilida */
+    static String siteUrl(android.content.Context c, boolean intl) {
+        if (intl) return "https://bilet.railways.kz/";
+        String lang = L.lang(c);
+        return "https://eticket.railway.uz/" + ("ru".equals(lang) || "en".equals(lang) ? lang : "uz") + "/home";
+    }
+
     /** JSON javob ("_status" — HTTP kodi) yoki tarmoq xatosida null */
     static JSONObject call(String method, String path, JSONObject body, String token) {
         HttpURLConnection con = null;

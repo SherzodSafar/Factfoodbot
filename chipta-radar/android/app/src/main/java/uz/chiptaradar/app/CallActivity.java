@@ -31,8 +31,6 @@ import java.util.Locale;
 
 /** Soxta kiruvchi qo'ng'iroq: jiringlaydi, ko'tarilganda ovozli xabar aytadi */
 public class CallActivity extends Activity implements TextToSpeech.OnInitListener {
-    static final String MESSAGE = "Chipta topuvchi botda siz so'ragan chipta paydo bo'ldi. Tezroq kirib sotib oling.";
-
     private final Handler handler = new Handler(Looper.getMainLooper());
     private Ringtone ringtone;
     private Vibrator vibrator;
@@ -43,6 +41,8 @@ public class CallActivity extends Activity implements TextToSpeech.OnInitListene
     private TextView status;
     private String title;
     private boolean intl;
+    private String lang;
+    private String message;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -56,6 +56,8 @@ public class CallActivity extends Activity implements TextToSpeech.OnInitListene
                 | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         title = getIntent().getStringExtra("title");
         intl = getIntent().getBooleanExtra("intl", false);
+        lang = L.lang(this);
+        message = L.t(this, "voice_msg");
         buildUi();
         startRinging();
         handler.postDelayed(this::finish, 45_000); // javob berilmasa — 45 soniyada to'xtaydi
@@ -99,7 +101,7 @@ public class CallActivity extends Activity implements TextToSpeech.OnInitListene
         root.setBackgroundColor(0xFF101418);
         root.setPadding(dp(24), dp(72), dp(24), dp(40));
 
-        root.addView(text("Kiruvchi qo'ng'iroq...", 16, 0xFFB0BEC5));
+        root.addView(text(L.t(this, "incoming"), 16, 0xFFB0BEC5));
         TextView name = text("Chipta Radar", 34, Color.WHITE);
         name.setTypeface(Typeface.DEFAULT_BOLD);
         root.addView(name);
@@ -110,8 +112,8 @@ public class CallActivity extends Activity implements TextToSpeech.OnInitListene
 
         buttons = new LinearLayout(this);
         buttons.setOrientation(LinearLayout.HORIZONTAL);
-        buttons.addView(button("Rad etish", 0xFFE53935, v -> finish()));
-        buttons.addView(button("Javob berish", 0xFF43A047, v -> answer()));
+        buttons.addView(button(L.t(this, "decline"), 0xFFE53935, v -> finish()));
+        buttons.addView(button(L.t(this, "answer"), 0xFF43A047, v -> answer()));
         root.addView(buttons, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
         setContentView(root);
     }
@@ -162,16 +164,17 @@ public class CallActivity extends Activity implements TextToSpeech.OnInitListene
     private void answer() {
         handler.removeCallbacksAndMessages(null);
         stopRinging();
-        status.setText("🔊 " + MESSAGE);
+        status.setText("🔊 " + message);
         buttons.removeAllViews();
         buttons.setOrientation(LinearLayout.VERTICAL);
-        buttons.addView(button("Telegramda ochish", 0xFF1E88E5, v -> open(Api.BOT_URL)));
-        buttons.addView(button("Sotib olish", 0xFF43A047, v -> open(intl ? "https://bilet.railways.kz/" : "https://eticket.railway.uz/uz/home")));
-        buttons.addView(button("Yopish", 0xFF546E7A, v -> finish()));
+        buttons.addView(button(L.t(this, "open_tg"), 0xFF1E88E5, v -> open(Api.BOT_URL)));
+        buttons.addView(button(L.t(this, "buy"), 0xFF43A047, v -> open(Api.siteUrl(this, intl))));
+        buttons.addView(button(L.t(this, "close"), 0xFF546E7A, v -> finish()));
         for (int i = 0; i < buttons.getChildCount(); i++) {
             buttons.getChildAt(i).setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(60)));
         }
-        if (!playRecordedVoice()) tts = new TextToSpeech(this, this); // yozib olingan ovoz bo'lmasa — telefon ovozi
+        // O'zbekcha — yozib olingan ovoz (bo'lmasa telefon ovozi); ruscha/inglizcha — telefon ovozi (bo'lmasa yozib olingan)
+        if (spokenFirst() || !playRecordedVoice()) tts = new TextToSpeech(this, this);
     }
 
     /** Ovozli xabar — ikki marta: admin yuklagan (serverdan) yoki ilovadagi standart (res/raw/voice) */
@@ -214,21 +217,34 @@ public class CallActivity extends Activity implements TextToSpeech.OnInitListene
         }
     }
 
+    private boolean spokenFirst() {
+        return "ru".equals(lang) || "en".equals(lang);
+    }
+
     @Override
     public void onInit(int result) {
-        if (result != TextToSpeech.SUCCESS || tts == null) return;
-        Locale[] candidates = {new Locale("uz", "UZ"), new Locale("tr", "TR"), new Locale("ru", "RU")};
+        if (tts == null) return;
+        if (result != TextToSpeech.SUCCESS) {
+            if (spokenFirst()) playRecordedVoice();
+            return;
+        }
+        Locale[] candidates = "ru".equals(lang) ? new Locale[] {new Locale("ru", "RU")}
+                : "en".equals(lang) ? new Locale[] {Locale.US, Locale.UK}
+                : new Locale[] {new Locale("uz", "UZ"), new Locale("tr", "TR"), new Locale("ru", "RU")};
+        boolean found = false;
         for (Locale locale : candidates) {
             if (tts.isLanguageAvailable(locale) >= TextToSpeech.LANG_AVAILABLE) {
                 tts.setLanguage(locale);
+                found = true;
                 break;
             }
         }
+        if (!found && spokenFirst() && playRecordedVoice()) return; // tilda ovoz yo'q — yozib olingan ovoz
         tts.setAudioAttributes(new AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_ALARM)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                 .build());
-        String say = MESSAGE + (title == null ? "" : " " + title.replace("→", ","));
+        String say = message + (title == null ? "" : " " + title.replace("→", ","));
         tts.speak(say, TextToSpeech.QUEUE_FLUSH, null, "msg1");
         tts.speak(say, TextToSpeech.QUEUE_ADD, null, "msg2");
     }
