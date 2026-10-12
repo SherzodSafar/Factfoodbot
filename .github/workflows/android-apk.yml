@@ -46,22 +46,28 @@ jobs:
           if [ ! -s "$RAW/voice.mp3" ]; then
             # 2) Zaxira: Meta MMS-TTS o'zbekcha (lotin) ochiq modeli
             pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
-            pip install --quiet transformers scipy
+            pip install --quiet transformers scipy lameenc
             python - <<'PY'
-          import torch, scipy.io.wavfile
+          import numpy as np, torch, scipy.io.wavfile, lameenc
           from transformers import VitsModel, AutoTokenizer
           name = "facebook/mms-tts-uzb-script_latin"
           model, tok = VitsModel.from_pretrained(name), AutoTokenizer.from_pretrained(name)
           torch.manual_seed(7)
+          rate = model.config.sampling_rate
           parts = ["assalomu alaykum!", "chipta topuvchi botda siz so'ragan chipta paydo bo'ldi.", "tezroq kirib, sotib oling!"]
           waves = []
           with torch.no_grad():
               for text in parts:
-                  waves.append(model(**tok(text, return_tensors="pt")).waveform[0])
-                  waves.append(torch.zeros(int(model.config.sampling_rate * 0.35)))
-          scipy.io.wavfile.write("/tmp/voice.wav", model.config.sampling_rate, torch.cat(waves).numpy())
+                  waves.append(model(**tok(text, return_tensors="pt")).waveform[0].numpy())
+                  waves.append(np.zeros(int(rate * 0.35), dtype=np.float32))
+          pcm = (np.clip(np.concatenate(waves), -1, 1) * 32767).astype(np.int16)
+          scipy.io.wavfile.write("/tmp/voice.wav", rate, pcm)
+          enc = lameenc.Encoder()
+          enc.set_bit_rate(64); enc.set_in_sample_rate(rate); enc.set_channels(1); enc.set_quality(2)
+          open("/tmp/voice.mp3", "wb").write(enc.encode(pcm.tobytes()) + enc.flush())
+          print("Ovoz: Meta MMS", len(pcm) / rate, "s")
           PY
-            ffmpeg -loglevel error -y -i /tmp/voice.wav -codec:a libmp3lame -qscale:a 3 "$RAW/voice.mp3" && echo "Ovoz: Meta MMS"
+            [ -s /tmp/voice.mp3 ] && cp /tmp/voice.mp3 "$RAW/voice.mp3"
           fi
           ls -la "$RAW"
 
