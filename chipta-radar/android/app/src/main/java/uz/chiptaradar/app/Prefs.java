@@ -30,6 +30,11 @@ final class Prefs {
         e.apply();
     }
 
+    /** Serverdan yuklangan ovozli xabar ("" — ilovadagi standart ovoz) */
+    static String voiceId(Context c) { return p(c).getString("voiceId", ""); }
+    static String voicePath(Context c) { return p(c).getString("voicePath", null); }
+    static void setVoice(Context c, String id, String path) { p(c).edit().putString("voiceId", id).putString("voicePath", path).apply(); }
+
     /** Telefon sozlamalarida qo'lda bajariladigan (tekshirib bo'lmaydigan) qadamlar */
     static boolean flag(Context c, String key) { return p(c).getBoolean("flag_" + key, false); }
     static void setFlag(Context c, String key) { p(c).edit().putBoolean("flag_" + key, true).apply(); }

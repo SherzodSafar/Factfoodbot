@@ -7,6 +7,8 @@ import android.content.Intent;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.File;
+
 /** Signal kelganda serverdan yangi "chipta topildi" xabarlarini so'raydi */
 public class PollReceiver extends BroadcastReceiver {
     @Override
@@ -21,6 +23,24 @@ public class PollReceiver extends BroadcastReceiver {
                 result.finish();
             }
         }).start();
+    }
+
+    /** Admin tanlagan ovozli xabarni yuklab olish (o'zgarganda) */
+    private static void syncVoice(Context c, JSONObject voice, String token) {
+        String wanted = voice == null ? "" : voice.optString("id", "");
+        if (wanted.equals(Prefs.voiceId(c))) return;
+        String old = Prefs.voicePath(c);
+        if (wanted.isEmpty()) {
+            Prefs.setVoice(c, "", null);
+        } else {
+            File target = new File(c.getFilesDir(), "voice-" + wanted);
+            if (!Api.download("/api/app/voice/" + wanted, token, target)) return; // keyingi tekshiruvda qayta urinadi
+            Prefs.setVoice(c, wanted, target.getPath());
+        }
+        if (old != null) {
+            File previous = new File(old);
+            if (!previous.getPath().equals(Prefs.voicePath(c))) previous.delete();
+        }
     }
 
     static void poll(Context c) {
@@ -46,6 +66,7 @@ public class PollReceiver extends BroadcastReceiver {
             }
         }
         Prefs.checked(c, since, lastId, null);
+        syncVoice(c, res.optJSONObject("voice"), token);
         if (fresh != null) Alerts.ticketFound(c, fresh.optString("title"), fresh.optBoolean("intl"));
     }
 }

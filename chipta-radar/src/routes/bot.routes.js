@@ -5,7 +5,7 @@
 import { message } from 'telegraf/filters';
 import { getBot } from '../core/bot.js';
 import botController from '../controllers/botController.js';
-import { adminCommand } from '../controllers/botAdmin.js';
+import { adminCommand, adminMedia } from '../controllers/botAdmin.js';
 
 /** Barcha bot handlerlarini ulash */
 export async function registerBotRoutes() {
@@ -24,6 +24,10 @@ export async function registerBotRoutes() {
   bot.command('admin', adminCommand); // admin panel (faqat adminlar)
 
   bot.on('callback_query', botController.onCallback);
+  // Admin ovozli xabar yuklaydi (ilova qo'ng'irog'i uchun)
+  bot.on(message('voice'), adminMedia);
+  bot.on(message('audio'), adminMedia);
+  bot.on(message('document'), adminMedia);
   bot.on(message('text'), botController.onText);
 
   bot.catch((error, ctx) => {

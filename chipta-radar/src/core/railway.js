@@ -291,6 +291,14 @@ function recordFailure(error, sample) {
 /**
  * JSON POST so'rov (navbat, qayta urinish va sessiya yangilash bilan).
  */
+/** Kutilmagan HTTP javobini logga yozish (har bir kod uchun 10 daqiqada bir marta) */
+const httpLogged = new Map();
+function logHttpProblem(status, path, text) {
+  if (Date.now() - (httpLogged.get(status) || 0) < 10 * 60_000) return;
+  httpLogged.set(status, Date.now());
+  console.warn(`[railway] HTTP ${status} ${path}: ${String(text || '').replace(/\s+/g, ' ').slice(0, 400)}`);
+}
+
 async function postJson(path, payload) {
   const loginConfigured = Boolean(config.railway.login && config.railway.password);
   let refreshSession = false;
@@ -370,7 +378,14 @@ async function postJson(path, payload) {
     }
 
     if (status < 200 || status >= 300) {
-      throw fail(new RailwayError(`Kutilmagan javob (HTTP ${status})`, { code: 'HTTP_ERROR', status }), text);
+      // Sayt javobidagi izoh (masalan {"message": "..."}) — kuzatuv kartasida ham ko'rinadi
+      let detail = '';
+      try {
+        const body = JSON.parse(text);
+        detail = String(body?.message || body?.error || body?.detail || body?.title || '').trim().slice(0, 160);
+      } catch { /* JSON emas */ }
+      logHttpProblem(status, path, text);
+      throw fail(new RailwayError(detail ? `${detail} (HTTP ${status})` : `Kutilmagan javob (HTTP ${status})`, { code: 'HTTP_ERROR', status }), text);
     }
 
     try {

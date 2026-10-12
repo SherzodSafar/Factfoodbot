@@ -5,6 +5,9 @@ import { Router } from 'express';
 import prisma, { isDatabaseReady } from '../database/connection.js';
 import { rateLimit } from '../middlewares/auth.middleware.js';
 import { pairDevice, deviceUserId } from '../services/appDevices.js';
+import { activeVoice, voiceFile } from '../services/appVoices.js';
+
+const tokenOf = (req) => String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
 
 const router = Router();
 const pairLimit = rateLimit({ limit: 10, windowMs: 10 * 60_000, keyFn: (req) => `pair:${req.ip}`, message: 'Juda ko\'p urinish' });
@@ -20,8 +23,7 @@ router.post('/pair', pairLimit, async (req, res) => {
 
 /** since (ms) dan keyingi "chipta topildi" xabarlari */
 router.get('/events', async (req, res) => {
-  const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
-  const userId = await deviceUserId(token);
+  const userId = await deviceUserId(tokenOf(req));
   if (!userId) return res.status(401).json({ ok: false, error: 'unpaired' });
   const since = new Date(Number(req.query.since) || Date.now() - 10 * 60_000);
   const rows = await prisma.notification.findMany({
@@ -30,9 +32,11 @@ router.get('/events', async (req, res) => {
     take: 5,
     include: { watch: { select: { fromName: true, toName: true, date: true, fromCode: true, toCode: true } } },
   });
+  const voice = await activeVoice().catch(() => null);
   res.json({
     ok: true,
     now: Date.now(),
+    voice: voice ? { id: voice.id } : null, // null — ilovadagi standart ovoz
     events: rows.map((row) => ({
       id: row.id,
       at: row.createdAt.getTime(),
@@ -41,6 +45,18 @@ router.get('/events', async (req, res) => {
       intl: Boolean(row.watch && (row.watch.fromCode.startsWith('27') || row.watch.toCode.startsWith('27'))),
     })),
   });
+});
+
+/** Faol (yoki berilgan) ovozli xabar fayli */
+router.get('/voice/:id', async (req, res) => {
+  if (!(await deviceUserId(tokenOf(req)))) return res.status(401).json({ ok: false, error: 'unpaired' });
+  try {
+    const file = await voiceFile(req.params.id);
+    if (!file) return res.status(404).json({ ok: false, error: 'Ovoz topilmadi' });
+    res.type(file.type).send(file.buffer);
+  } catch (error) {
+    res.status(502).json({ ok: false, error: error.message });
+  }
 });
 
 export default router;

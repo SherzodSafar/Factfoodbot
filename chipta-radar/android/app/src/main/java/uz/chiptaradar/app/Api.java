@@ -3,6 +3,8 @@ package uz.chiptaradar.app;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -47,6 +49,29 @@ final class Api {
             return json;
         } catch (Exception e) {
             return null;
+        } finally {
+            if (con != null) con.disconnect();
+        }
+    }
+
+    /** Faylni yuklab olish (muvaffaqiyatli bo'lsa true) */
+    static boolean download(String path, String token, File target) {
+        HttpURLConnection con = null;
+        try {
+            con = (HttpURLConnection) new URL(BASE + path).openConnection();
+            con.setConnectTimeout(8000);
+            con.setReadTimeout(15000);
+            if (token != null) con.setRequestProperty("Authorization", "Bearer " + token);
+            if (con.getResponseCode() != 200) return false;
+            File tmp = new File(target.getPath() + ".tmp");
+            try (InputStream in = con.getInputStream(); FileOutputStream out = new FileOutputStream(tmp)) {
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+            }
+            return tmp.length() > 0 && tmp.renameTo(target);
+        } catch (Exception e) {
+            return false;
         } finally {
             if (con != null) con.disconnect();
         }

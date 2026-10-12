@@ -21,6 +21,7 @@ import { getRoutePricesStatus } from '../services/routePrices.js';
 import { uzsRate } from '../services/exchangeRates.js';
 import { stationName } from '../services/stations.js';
 import { escapeHtml } from '../utils/text.js';
+import { listVoices, findVoice, addVoice, setActiveVoice, removeVoice } from '../services/appVoices.js';
 
 const KEY = 'botAdmins';
 const HTML = (kb) => ({ parse_mode: 'HTML', ...kb });
@@ -59,6 +60,7 @@ function menu() {
     kb: Markup.inlineKeyboard([
       [Markup.button.callback('📊 Statistika', 'adm:stats'), Markup.button.callback('🩺 Tizim holati', 'adm:sys')],
       [Markup.button.callback('⚙️ Sozlamalar', 'adm:set'), Markup.button.callback('📢 E\'lon yuborish', 'adm:bc')],
+      [Markup.button.callback('🔊 Ovozli xabarlar (ilova)', 'adm:voice')],
       [Markup.button.callback('🔄 Kuzatuvlarni hozir tekshirish', 'adm:run')],
       [Markup.button.callback('🏠 Asosiy menyu', 'm:home')],
     ]),
@@ -138,6 +140,28 @@ function settings() {
   return { text: '⚙️ <b>Sozlamalar</b>\n\n➖/➕ bilan o\'zgartiring — darhol kuchga kiradi.', kb: Markup.inlineKeyboard(rows) };
 }
 
+/** Ilova qo'ng'irog'idagi ovozli xabarlar: ro'yxat, faolini tanlash, eshitish, o'chirish */
+async function voices() {
+  const { activeId, items } = await listVoices();
+  const lines = [
+    '🔊 <b>Qo\'ng\'iroqdagi ovozli xabar</b>',
+    '',
+    'Ilova qo\'ng\'iroq ko\'tarilganda faol ovozni eshittiradi (✅ — faol).',
+    '',
+    `${activeId ? '▫️' : '✅'} Standart ovoz (ilovaning o'zida)`,
+    ...items.map((item, i) => `${item.id === activeId ? '✅' : '▫️'} ${i + 1}. ${escapeHtml(item.name)}${item.duration ? ` · ${item.duration} s` : ''}`),
+  ];
+  const rows = items.map((item, i) => [
+    Markup.button.callback(`${item.id === activeId ? '✅' : '☑️'} ${i + 1}-ni faol qilish`, `adm:vact:${item.id}`),
+    Markup.button.callback('▶️', `adm:vplay:${item.id}`),
+    Markup.button.callback('🗑', `adm:vdel:${item.id}`),
+  ]);
+  rows.push([Markup.button.callback(`${activeId ? '☑️' : '✅'} Standart ovozni faol qilish`, 'adm:vact:default')]);
+  rows.push([Markup.button.callback('➕ Yangi ovoz qo\'shish', 'adm:vadd')]);
+  rows.push(back());
+  return { text: lines.join('\n'), kb: Markup.inlineKeyboard(rows) };
+}
+
 async function show(ctx, screen) {
   const { text, kb } = await screen;
   if (ctx.callbackQuery) {
@@ -206,7 +230,35 @@ export async function adminCallback(ctx, [action, key, op]) {
     await ctx.answerCbQuery();
     return show(ctx, broadcastScreen());
   }
+  if (action === 'vact') {
+    await setActiveVoice(key === 'default' ? null : key);
+    await ctx.answerCbQuery('✅ Faol ovoz o\'zgardi — ilovalar bir daqiqada yangilaydi');
+    return show(ctx, voices());
+  }
+  if (action === 'vdel') {
+    await removeVoice(key);
+    await ctx.answerCbQuery('O\'chirildi');
+    return show(ctx, voices());
+  }
+  if (action === 'vplay') {
+    const item = await findVoice(key);
+    await ctx.answerCbQuery();
+    if (!item) return null;
+    return (item.kind === 'voice' ? ctx.replyWithVoice(item.fileId) : ctx.replyWithAudio(item.fileId))
+      .catch(() => ctx.replyWithDocument(item.fileId).catch(() => {}));
+  }
+  if (action === 'vadd') {
+    pending.set(String(ctx.from.id), { step: 'voice' });
+    await ctx.answerCbQuery();
+    return show(ctx, {
+      text: '🎙 <b>Yangi ovoz</b>\n\nOvozli xabar yozib yuboring yoki audio fayl (mp3) jo\'nating.\n'
+        + 'Masalan: «Assalomu alaykum! Chipta topuvchi botda siz so\'ragan chipta paydo bo\'ldi. Tezroq kirib, sotib oling!»\n\n'
+        + '<i>MP3 hamma telefonda ishlaydi; Telegram ovozli xabari — Android 10 va yangisida (eskisida standart ovoz).</i>',
+      kb: Markup.inlineKeyboard([[Markup.button.callback('⬅️ Ovozlar', 'adm:voice')]]),
+    });
+  }
   await ctx.answerCbQuery();
+  if (action === 'voice') return show(ctx, voices());
   if (action === 'stats') return show(ctx, stats());
   if (action === 'sys') return show(ctx, system());
   if (action === 'set') return show(ctx, settings());
@@ -239,4 +291,25 @@ export async function adminText(ctx, text) {
   return true;
 }
 
-export default { adminCommand, adminCallback, adminText, isBotAdmin };
+/** Admin ovoz yuklayotgan bo'lsa — ovozli xabar / audio / audio-hujjatni saqlaydi */
+export async function adminMedia(ctx) {
+  const id = String(ctx.from?.id || '');
+  if (pending.get(id)?.step !== 'voice' || !(await isBotAdmin(id))) return;
+  const { voice, audio, document } = ctx.message || {};
+  const file = voice || audio || (document?.mime_type?.startsWith('audio/') ? document : null);
+  if (!file) return ctx.reply('Ovozli xabar yoki audio fayl yuboring.');
+  pending.delete(id);
+  const item = await addVoice({
+    fileId: file.file_id,
+    kind: voice ? 'voice' : 'audio',
+    mime: file.mime_type || (voice ? 'audio/ogg' : 'audio/mpeg'),
+    duration: file.duration,
+    name: audio?.title || document?.file_name || audio?.file_name || `Ovozli xabar ${new Date().toLocaleDateString('uz-UZ')}`,
+  });
+  return ctx.replyWithHTML(`✅ <b>Ovoz saqlandi:</b> ${escapeHtml(item.name)}${item.duration ? ` · ${item.duration} s` : ''}`, Markup.inlineKeyboard([
+    [{ ...Markup.button.callback('✅ Faol qilish', `adm:vact:${item.id}`), style: 'success' }],
+    [Markup.button.callback('🔊 Ovozlar ro\'yxati', 'adm:voice')],
+  ]));
+}
+
+export default { adminCommand, adminCallback, adminText, adminMedia, isBotAdmin };

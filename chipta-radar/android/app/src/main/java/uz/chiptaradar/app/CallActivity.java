@@ -26,6 +26,7 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import java.io.File;
 import java.util.Locale;
 
 /** Soxta kiruvchi qo'ng'iroq: jiringlaydi, ko'tarilganda ovozli xabar aytadi */
@@ -116,6 +117,14 @@ public class CallActivity extends Activity implements TextToSpeech.OnInitListene
     }
 
     private void startRinging() {
+        // Telefon ovozsiz rejimda — jiringlamaydi, tebranish rejimida — faqat tebranadi (oddiy qo'ng'iroq kabi)
+        AudioManager audio = (AudioManager) getSystemService(AUDIO_SERVICE);
+        int mode = audio == null ? AudioManager.RINGER_MODE_NORMAL : audio.getRingerMode();
+        if (mode == AudioManager.RINGER_MODE_SILENT) return;
+        if (mode == AudioManager.RINGER_MODE_VIBRATE) {
+            startVibration();
+            return;
+        }
         try {
             Uri uri = RingtoneManager.getActualDefaultRingtoneUri(this, RingtoneManager.TYPE_RINGTONE);
             if (uri == null) uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
@@ -131,6 +140,10 @@ public class CallActivity extends Activity implements TextToSpeech.OnInitListene
         } catch (Exception ignored) {
             // ovozsiz bo'lsa ham tebranish ishlaydi
         }
+        startVibration();
+    }
+
+    private void startVibration() {
         vibrator = (Vibrator) getSystemService(VIBRATOR_SERVICE);
         if (vibrator != null) {
             long[] pattern = {0, 900, 700};
@@ -161,17 +174,31 @@ public class CallActivity extends Activity implements TextToSpeech.OnInitListene
         if (!playRecordedVoice()) tts = new TextToSpeech(this, this); // yozib olingan ovoz bo'lmasa — telefon ovozi
     }
 
-    /** Ilovaga joylangan tabiiy ovozli xabar (res/raw/voice.mp3) — ikki marta */
+    /** Ovozli xabar — ikki marta: admin yuklagan (serverdan) yoki ilovadagi standart (res/raw/voice) */
     private boolean playRecordedVoice() {
+        AudioAttributes attrs = new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ALARM)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                .build();
+        String custom = Prefs.voicePath(this);
+        if (custom != null && new File(custom).length() > 0) {
+            try {
+                player = new MediaPlayer();
+                player.setAudioAttributes(attrs);
+                player.setDataSource(custom);
+                player.prepare();
+            } catch (Exception e) {
+                if (player != null) player.release();
+                player = null; // fayl ochilmadi (masalan, eski Android'da ogg) — standart ovoz
+            }
+        }
         int res = getResources().getIdentifier("voice", "raw", getPackageName());
-        if (res == 0) return false;
+        if (player == null && res == 0) return false;
         try {
-            AudioAttributes attrs = new AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ALARM)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                    .build();
-            AudioManager audio = (AudioManager) getSystemService(AUDIO_SERVICE);
-            player = MediaPlayer.create(this, res, attrs, audio.generateAudioSessionId());
+            if (player == null) {
+                AudioManager audio = (AudioManager) getSystemService(AUDIO_SERVICE);
+                player = MediaPlayer.create(this, res, attrs, audio.generateAudioSessionId());
+            }
             if (player == null) return false;
             plays = 0;
             player.setOnCompletionListener(mp -> {
