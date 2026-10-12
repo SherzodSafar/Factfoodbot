@@ -1,40 +1,40 @@
-    return fn(*args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^
-  File "/home/runner/.local/lib/python3.12/site-packages/huggingface_hub/file_download.py", line 1047, in hf_hub_download
-    return _hf_hub_download_to_cache_dir(
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/runner/.local/lib/python3.12/site-packages/huggingface_hub/file_download.py", line 1194, in _hf_hub_download_to_cache_dir
-    _raise_on_head_call_error(head_call_error, force_download, local_files_only)
-  File "/home/runner/.local/lib/python3.12/site-packages/huggingface_hub/file_download.py", line 1953, in _raise_on_head_call_error
-    raise head_call_error
-huggingface_hub.errors.RepositoryNotFoundError: 401 Client Error. (Request ID: Root=1-6acd0ec6-4ff2757a2e82ee3115f66ceb;99d3e01a-1be1-4b92-bdc7-9bb2ee019c88)
-
-Repository Not Found for url: https://huggingface.co/facebook/mms-tts-uzb-script_latin/resolve/main/config.json.
-Please make sure you specified the correct `repo_id` and `repo_type`.
-If you are trying to access a private or gated repo, make sure you are authenticated and your token has the required permissions.
-For more details, see https://huggingface.co/docs/huggingface_hub/authentication
-Invalid username or password.
-
-The above exception was the direct cause of the following exception:
-
-Traceback (most recent call last):
-  File "<stdin>", line 4, in <module>
-  File "/home/runner/.local/lib/python3.12/site-packages/transformers/modeling_utils.py", line 4206, in from_pretrained
-    config, model_kwargs = config_class.from_pretrained(
-                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/runner/.local/lib/python3.12/site-packages/transformers/configuration_utils.py", line 742, in from_pretrained
-    config_dict, kwargs = cls.get_config_dict(pretrained_model_name_or_path, **kwargs)
-                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/runner/.local/lib/python3.12/site-packages/transformers/configuration_utils.py", line 792, in get_config_dict
-    config_dict, kwargs = cls._get_config_dict(pretrained_model_name_or_path, **kwargs)
-                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/runner/.local/lib/python3.12/site-packages/transformers/configuration_utils.py", line 844, in _get_config_dict
-    resolved_config_file = cached_file(
-                           ^^^^^^^^^^^^
-  File "/home/runner/.local/lib/python3.12/site-packages/transformers/utils/hub.py", line 370, in cached_file
-    file = cached_files(path_or_repo_id=path_or_repo_id, filenames=[filename], **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/runner/.local/lib/python3.12/site-packages/transformers/utils/hub.py", line 569, in cached_files
-    raise OSError(
-OSError: facebook/mms-tts-uzb-script_latin is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'
-If this is a private repository, make sure to pass a token having permission to this repo either by logging in with `hf auth login` or by passing `token=<your_token>`
+  File "/home/runner/.local/bin/edge-tts", line 8, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/home/runner/.local/lib/python3.12/site-packages/edge_tts/util.py", line 141, in main
+    asyncio.run(amain())
+  File "/usr/lib/python3.12/asyncio/runners.py", line 194, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 687, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/home/runner/.local/lib/python3.12/site-packages/edge_tts/util.py", line 136, in amain
+    await _run_tts(args)
+  File "/home/runner/.local/lib/python3.12/site-packages/edge_tts/util.py", line 73, in _run_tts
+    async for chunk in communicate.stream():
+  File "/home/runner/.local/lib/python3.12/site-packages/edge_tts/communicate.py", line 596, in stream
+    async for message in self.__stream():
+  File "/home/runner/.local/lib/python3.12/site-packages/edge_tts/communicate.py", line 461, in __stream
+    async with aiohttp.ClientSession(
+  File "/home/runner/.local/lib/python3.12/site-packages/aiohttp/client.py", line 1756, in __aenter__
+    self._resp: _RetType_co = await self._coro
+                              ^^^^^^^^^^^^^^^^
+  File "/home/runner/.local/lib/python3.12/site-packages/aiohttp/client.py", line 1329, in _ws_connect
+    raise WSServerHandshakeError(
+aiohttp.client_exceptions.WSServerHandshakeError: 403, message='Invalid response status', url='wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=6A5AA1D4EAFF4E9FB37E23D68491D6F4&ConnectionId=35d97205556648c9b5a43599a863ff9e&Sec-MS-GEC=0EF80A324FB8AF831ED05F32AC621FD0032A0AAC378623E0BC80623D87B445A9&Sec-MS-GEC-Version=1-143.0.3650.75'
+/home/runner/.local/lib/python3.12/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Topilmadi: facebook/mms-tts-uzb-script_latin facebook/mms-tts-uzb-script_latin is not a local folder and is not a valid model
+Topilmadi: facebook/mms-tts-uzn-script_latin facebook/mms-tts-uzn-script_latin is not a local folder and is not a valid model
+Loading weights:   0%|          | 0/762 [00:00<?, ?it/s]Loading weights:  70%|███████   | 537/762 [00:00<00:00, 5346.63it/s]Loading weights: 100%|██████████| 762/762 [00:00<00:00, 5246.16it/s]
+Model: facebook/mms-tts-uzb-script_cyrillic
+Ovoz: Meta MMS 8.538 s
+total 76
+drwxr-xr-x 2 runner runner  4096 Oct 12 16:53 .
+drwxr-xr-x 7 runner runner  4096 Oct 12 16:52 ..
+-rw-r--r-- 1 runner runner 69120 Oct 12 16:53 voice.mp3
