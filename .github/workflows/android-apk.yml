@@ -32,7 +32,9 @@ jobs:
       # (res/raw/voice.mp3) bo'lsa — o'sha ishlatiladi. Bo'lmasa va yaratib bo'lmasa — telefon ovozi.
       - name: Ovozli xabar
         continue-on-error: true
+        shell: bash
         run: |
+          exec > >(tee /tmp/voice-log.txt) 2>&1  # natija tekshirish uchun saqlanadi
           RAW=chipta-radar/android/app/src/main/res/raw
           mkdir -p "$RAW"
           if [ ! -s "$RAW/voice.mp3" ]; then
@@ -79,6 +81,7 @@ jobs:
           mkdir -p chipta-radar/public/app
           cp chipta-radar/android/app/build/outputs/apk/release/app-release.apk chipta-radar/public/app/chipta-radar.apk
           cp chipta-radar/android/app/src/main/res/raw/voice.mp3 chipta-radar/public/app/voice.mp3 2>/dev/null || true
+          tail -40 /tmp/voice-log.txt > chipta-radar/public/app/voice-log.txt 2>/dev/null || true
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add chipta-radar/public/app/
