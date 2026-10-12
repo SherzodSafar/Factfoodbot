@@ -128,13 +128,17 @@ public class CallActivity extends Activity implements TextToSpeech.OnInitListene
             // ovozsiz bo'lsa ham tebranish ishlaydi
         }
         vibrator = (Vibrator) getSystemService(VIBRATOR_SERVICE);
-        if (vibrator != null) vibrator.vibrate(VibrationEffect.createWaveform(new long[] {0, 900, 700}, 0));
+        if (vibrator != null) {
+            long[] pattern = {0, 900, 700};
+            if (Build.VERSION.SDK_INT >= 26) vibrator.vibrate(VibrationEffect.createWaveform(pattern, 0));
+            else vibrator.vibrate(pattern, 0);
+        }
     }
 
     private void stopRinging() {
         if (ringtone != null) ringtone.stop();
         if (vibrator != null) vibrator.cancel();
-        NotificationManager nm = getSystemService(NotificationManager.class);
+        NotificationManager nm = Compat.notifications(this);
         if (nm != null) nm.cancel(Alerts.CALL_ID);
     }
 

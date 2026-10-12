@@ -8,10 +8,10 @@ android {
 
     defaultConfig {
         applicationId 'uz.chiptaradar.app'
-        minSdk 26
+        minSdk 21
         targetSdk 33
-        versionCode 1
-        versionName '1.0'
+        versionCode 2
+        versionName '1.1'
     }
 
     // Ilova Play Market'ga emas, to'g'ridan-to'g'ri o'rnatiladi — doimiy imzo (yangilanish ustidan o'rnatiladi)

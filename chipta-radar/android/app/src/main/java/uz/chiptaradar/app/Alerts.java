@@ -7,6 +7,7 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
+import android.os.Build;
 
 /** Chipta topilganda: SMS ko'rinishidagi xabar + soxta kiruvchi qo'ng'iroq */
 final class Alerts {
@@ -18,7 +19,8 @@ final class Alerts {
     private Alerts() {}
 
     static void channels(Context c) {
-        NotificationManager nm = c.getSystemService(NotificationManager.class);
+        if (Build.VERSION.SDK_INT < 26) return; // eski Android'da kanal yo'q
+        NotificationManager nm = Compat.notifications(c);
         if (nm == null) return;
         NotificationChannel call = new NotificationChannel(CH_CALL, "Qo'ng'iroq (chipta topildi)", NotificationManager.IMPORTANCE_HIGH);
         call.setSound(null, null); // qo'ng'iroq ovozini CallActivity o'zi chaladi
@@ -33,14 +35,14 @@ final class Alerts {
 
     static void ticketFound(Context c, String title, boolean intl) {
         channels(c);
-        NotificationManager nm = c.getSystemService(NotificationManager.class);
+        NotificationManager nm = Compat.notifications(c);
         if (nm == null) return;
 
         // 1) SMS ko'rinishidagi xabar
         String body = "Chipta topuvchi botda siz so'ragan chipta paydo bo'ldi: " + title + ". Tezroq kirib sotib oling!";
         PendingIntent openBot = PendingIntent.getActivity(c, 2, new Intent(Intent.ACTION_VIEW, Uri.parse(Api.BOT_URL)),
-                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-        Notification sms = new Notification.Builder(c, CH_SMS)
+                Compat.immutable() | PendingIntent.FLAG_UPDATE_CURRENT);
+        Notification sms = Compat.builder(c, CH_SMS)
                 .setSmallIcon(R.drawable.ic_stat_train)
                 .setContentTitle("Chipta Radar")
                 .setContentText(body)
@@ -57,8 +59,8 @@ final class Alerts {
                 .putExtra("title", title)
                 .putExtra("intl", intl)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        PendingIntent full = PendingIntent.getActivity(c, 3, call, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-        Notification ring = new Notification.Builder(c, CH_CALL)
+        PendingIntent full = PendingIntent.getActivity(c, 3, call, Compat.immutable() | PendingIntent.FLAG_UPDATE_CURRENT);
+        Notification ring = Compat.builder(c, CH_CALL)
                 .setSmallIcon(R.drawable.ic_stat_train)
                 .setContentTitle("📞 Chipta Radar qo'ng'iroq qilmoqda")
                 .setContentText(title)

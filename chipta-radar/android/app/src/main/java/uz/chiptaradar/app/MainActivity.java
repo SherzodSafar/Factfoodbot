@@ -2,6 +2,7 @@ package uz.chiptaradar.app;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlarmManager;
 import android.app.NotificationManager;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -144,13 +145,20 @@ public class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             button("🔔 Bildirishnomaga ruxsat berish", 0xFFFB8C00, v -> askNotifications());
         }
-        PowerManager power = getSystemService(PowerManager.class);
-        if (power != null && !power.isIgnoringBatteryOptimizations(getPackageName())) {
+        PowerManager power = (PowerManager) getSystemService(POWER_SERVICE);
+        if (Build.VERSION.SDK_INT >= 23 && power != null && !power.isIgnoringBatteryOptimizations(getPackageName())) {
             button("🔋 Batareya cheklovini o'chirish", 0xFFFB8C00,
-                    v -> open(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + getPackageName()))));
+                    v -> open(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)));
+        }
+        if (Build.VERSION.SDK_INT >= 31) {
+            AlarmManager alarms = (AlarmManager) getSystemService(ALARM_SERVICE);
+            if (alarms != null && !alarms.canScheduleExactAlarms()) {
+                button("⏰ Har daqiqada tekshirishga ruxsat", 0xFFFB8C00,
+                        v -> open(new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:" + getPackageName()))));
+            }
         }
         if (Build.VERSION.SDK_INT >= 34) {
-            NotificationManager nm = getSystemService(NotificationManager.class);
+            NotificationManager nm = Compat.notifications(this);
             if (nm != null && !nm.canUseFullScreenIntent()) {
                 button("📲 To'liq ekran qo'ng'irog'iga ruxsat", 0xFFFB8C00,
                         v -> open(new Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:" + getPackageName()))));

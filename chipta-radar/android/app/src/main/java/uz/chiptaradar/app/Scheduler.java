@@ -14,14 +14,16 @@ final class Scheduler {
 
     private static PendingIntent intent(Context c) {
         return PendingIntent.getBroadcast(c, 1, new Intent(c, PollReceiver.class),
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+                PendingIntent.FLAG_UPDATE_CURRENT | Compat.immutable());
     }
 
     static void schedule(Context c, long delayMs) {
-        AlarmManager am = c.getSystemService(AlarmManager.class);
+        AlarmManager am = (AlarmManager) c.getSystemService(Context.ALARM_SERVICE);
         if (am == null) return;
         long at = System.currentTimeMillis() + delayMs;
-        if (Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()) {
+        if (Build.VERSION.SDK_INT < 23) {
+            am.setExact(AlarmManager.RTC_WAKEUP, at, intent(c));
+        } else if (Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()) {
             am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, intent(c));
         } else {
             am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, intent(c));
@@ -29,7 +31,7 @@ final class Scheduler {
     }
 
     static void cancel(Context c) {
-        AlarmManager am = c.getSystemService(AlarmManager.class);
+        AlarmManager am = (AlarmManager) c.getSystemService(Context.ALARM_SERVICE);
         if (am != null) am.cancel(intent(c));
     }
 }
