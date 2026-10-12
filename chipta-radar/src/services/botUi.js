@@ -18,12 +18,13 @@ export const WELCOME =
   'va topilishi bilan darrov xabar beraman.\n\n' +
   'Quyidagi menyudan tanlang 👇';
 
-export function mainMenu() {
+export function mainMenu({ admin = false } = {}) {
   return Markup.inlineKeyboard([
     [Markup.button.callback('➕ Kuzatuv qo\'shish', 'm:add')],
     [Markup.button.callback('🚆 Poyezd narxlari', 'm:prices'), Markup.button.callback('📋 Kuzatuvlarim', 'm:watches')],
     // Akkaunt/Bronlarim vaqtincha olib tashlandi (kod va handlerlar saqlanadi — keyin qaytarsa bo'ladi)
     [Markup.button.callback('👥 Do\'stlarni taklif qilish', 'm:ref'), Markup.button.callback('ℹ️ Yordam', 'm:help')],
+    ...(admin ? [[Markup.button.callback('🛠 Admin panel', 'adm:menu')]] : []),
   ]);
 }
 

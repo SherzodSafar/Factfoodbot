@@ -5,6 +5,7 @@
 import { message } from 'telegraf/filters';
 import { getBot } from '../core/bot.js';
 import botController from '../controllers/botController.js';
+import { adminCommand } from '../controllers/botAdmin.js';
 
 /** Barcha bot handlerlarini ulash */
 export async function registerBotRoutes() {
@@ -20,6 +21,7 @@ export async function registerBotRoutes() {
   bot.command('watches', botController.myWatches);
   bot.command('account', botController.myAccount);
   bot.command('orders', botController.myOrders);
+  bot.command('admin', adminCommand); // admin panel (faqat adminlar)
 
   bot.on('callback_query', botController.onCallback);
   bot.on(message('text'), botController.onText);

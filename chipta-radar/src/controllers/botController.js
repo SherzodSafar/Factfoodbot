@@ -30,6 +30,7 @@ import { todayISO } from '../utils/dates.js';
 import { getRoutePrices, getTrainPriceInfo, mergeMinPrices, knownDestinations, knownOrigins } from '../services/routePrices.js';
 import { escapeHtml, formatMoney } from '../utils/text.js';
 import ui from '../services/botUi.js';
+import { adminCallback, adminText, isBotAdmin } from './botAdmin.js';
 import wizard from '../services/botWizard.js';
 import flow from '../services/botFlow.js';
 import accountService from '../services/accountService.js';
@@ -62,19 +63,20 @@ export async function start(ctx) {
   wizard.clearSession(ctx.from.id);
   // Eski versiyadan qolgan pastki (reply) klaviaturani olib tashlaymiz — endi hammasi inline
   await ctx.reply(`Assalomu alaykum, ${user.firstName}! 👋`, Markup.removeKeyboard()).catch(() => {});
-  await ctx.replyWithHTML(ui.WELCOME, ui.mainMenu());
+  await ctx.replyWithHTML(ui.WELCOME, ui.mainMenu({ admin: await isBotAdmin(ctx.from?.id) }));
 }
 
 async function showMenu(ctx) {
+  const menu = ui.mainMenu({ admin: await isBotAdmin(ctx.from?.id) });
   if (ctx.callbackQuery) {
     try {
-      await ctx.editMessageText(ui.WELCOME, HTML(ui.mainMenu()));
+      await ctx.editMessageText(ui.WELCOME, HTML(menu));
       return;
     } catch {
       /* edit bo'lmasa — yangi xabar */
     }
   }
-  await ctx.replyWithHTML(ui.WELCOME, ui.mainMenu());
+  await ctx.replyWithHTML(ui.WELCOME, menu);
 }
 
 const HELP_TEXT =
@@ -439,7 +441,11 @@ async function finishWizard(ctx, user, session) {
       lines.push('⏳ Hozircha mos joy yo\'q — paydo bo\'lishi bilan darrov xabar beraman 🔔');
     }
 
+    const buyRow = first?.result?.items?.length
+      ? [[{ ...Markup.button.url('🎫 Sotib olish sahifasini ochish', buildSearchUrl({ fromCode: session.fromCode, toCode: session.toCode, date: session.date }, first.result.items[0]?.train)), style: 'success' }]]
+      : [];
     const keyboard = Markup.inlineKeyboard([
+      ...buyRow,
       [Markup.button.callback('➕ Yana kuzatuv', 'm:add'), Markup.button.callback('📋 Kuzatuvlarim', 'm:watches')],
       ui.backToMenuRow(),
     ]);
@@ -1065,6 +1071,7 @@ export async function onCallback(ctx) {
 
   try {
     if (prefix === 'noop') return ctx.answerCbQuery();
+    if (prefix === 'adm') return adminCallback(ctx, rest);
 
     if (prefix === 'm') {
       const section = rest[0];
@@ -1166,6 +1173,9 @@ export async function onText(ctx) {
 
   const user = await ensureUser(ctx);
   if (!user) return;
+
+  // Admin e'lon matnini yozmoqda
+  if (await adminText(ctx, text)) return;
 
   // Faol inline oqim (akkaunt ulash, yo'lovchi qo'shish, to'lov telefoni) matn kutmoqda
   const active = flow.getFlow(ctx.from.id);
