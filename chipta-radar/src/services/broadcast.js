@@ -30,7 +30,7 @@ export async function startBroadcast(text) {
 
   (async () => {
     for (const user of users) {
-      const delivered = await sendMessage(user.telegramId, text);
+      const delivered = await sendMessage(user.telegramId, text, {}, { raw: true });
       if (delivered) state.sent += 1;
       else state.failed += 1;
       await NotificationModel.create({ userId: user.id, kind: 'broadcast', text, delivered }).catch(() => {});

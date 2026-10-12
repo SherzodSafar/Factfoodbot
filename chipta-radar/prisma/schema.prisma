@@ -18,6 +18,8 @@ model User {
   lastName     String?  @map("last_name")
   username     String?
   languageCode String?  @map("language_code")
+  /// Bot va ilova tili: uz, uzc (kirill), ru, en
+  lang         String   @default("uz")
   /// Tunda (23:00–07:00) xabarlar ovozsiz keladi
   quietNight   Boolean  @default(false) @map("quiet_night")
   /// Admin tomonidan bloklangan

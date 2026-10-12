@@ -55,7 +55,7 @@ export function trainLine(train) {
 
 export function typeLine(car) {
   const price = car.minPrice ? ` · ${formatMoney(car.minPrice, car.currency)} dan${uzsHint(car.minPrice, car.currency)}` : '';
-  return `${carTypeEmoji(car.type)} ${escapeHtml(car.label || carTypeLabel(car.type))}: <b>${car.free}</b> ta joy${price}`;
+  return `${carTypeEmoji(car.type)} ${escapeHtml(car.label || carTypeLabel(car.type))}: <b>${car.free} ta joy</b>${price}`;
 }
 
 /** Joylar guruhi: "7-vagon: 9, 11 (3-bo'lim)" */
@@ -121,7 +121,7 @@ function storedPriceLine({ prices = {}, exact = true } = {}) {
   const types = Object.keys(prices).sort((a, b) => typeRank(a) - typeRank(b));
   if (!types.length) return null;
   const list = types.map((type) => `${escapeHtml(carTypeLabel(type))} ${amount(prices[type])}`).join(' · ');
-  return exact ? `  💰 ${list} so'm` : `  💰 <i>Yo'nalishda: ${list} so'm dan</i>`;
+  return exact ? `  💰 ${list} so'm` : `  💰 <i>Yo'nalishda eng arzon: ${list} so'm</i>`;
 }
 
 /**

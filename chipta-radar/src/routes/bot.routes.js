@@ -21,6 +21,7 @@ export async function registerBotRoutes() {
   bot.command('watches', botController.myWatches);
   bot.command('account', botController.myAccount);
   bot.command('orders', botController.myOrders);
+  bot.command('lang', botController.langMenu); // til · язык · language
   bot.command('admin', adminCommand); // admin panel (faqat adminlar)
 
   bot.on('callback_query', botController.onCallback);

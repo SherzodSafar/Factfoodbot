@@ -6,13 +6,18 @@ import path from 'node:path';
 import { Telegraf } from 'telegraf';
 import config, { ROOT_DIR } from '../config/default.js';
 import UserModel from '../models/User.js';
+import { installI18n, NO_I18N } from '../i18n/index.js';
+import { PROFILE } from '../i18n/texts.js';
 
 let bot = null;
 
 /** Bot nusxasini olish (bir marta yaratiladi) */
 export function getBot() {
   if (!config.bot.token) return null;
-  if (!bot) bot = new Telegraf(config.bot.token);
+  if (!bot) {
+    bot = new Telegraf(config.bot.token);
+    installI18n(bot); // chiquvchi xabarlar foydalanuvchi tilida
+  }
   return bot;
 }
 
@@ -27,7 +32,7 @@ function isNight() {
  * Foydalanuvchi botni bloklagan bo'lsa — bazada belgilanadi va keyin xabar yuborilmaydi.
  * @returns {Promise<boolean>} yetkazildimi
  */
-export async function sendMessage(telegramId, text, extra = {}, { quietNight = false } = {}) {
+export async function sendMessage(telegramId, text, extra = {}, { quietNight = false, raw = false } = {}) {
   const instance = getBot();
   if (!instance) return false;
 
@@ -37,6 +42,7 @@ export async function sendMessage(telegramId, text, extra = {}, { quietNight = f
       link_preview_options: { is_disabled: true },
       ...(quietNight && isNight() ? { disable_notification: true } : {}),
       ...extra,
+      ...(raw ? { [NO_I18N]: true } : {}), // admin e'loni — yozilganidek
     });
     return true;
   } catch (error) {
@@ -75,11 +81,7 @@ export function accountWebAppReady() {
   return accountWebAppUrl() !== '';
 }
 
-export const BOT_COMMANDS = [
-  { command: 'start', description: 'Asosiy menyu' },
-  { command: 'watches', description: 'Mening kuzatuvlarim' },
-  { command: 'help', description: 'Yordam' },
-];
+export const BOT_COMMANDS = PROFILE.uz.commands;
 
 /**
  * Telegram tomonidagi bot profilini sozlash:
@@ -105,21 +107,13 @@ export async function syncBotProfile() {
   if (!instance) return false;
 
   try {
-    await instance.telegram.setMyCommands(BOT_COMMANDS);
-    await instance.telegram
-      .callApi('setMyShortDescription', {
-        short_description: 'Poyezd chiptalari: bo\'sh joylar, kuzatuv va aniq joy buyurtmasi 🚆',
-      })
-      .catch(() => {});
-    await instance.telegram
-      .callApi('setMyDescription', {
-        description:
-          'Chipta Radar — O\'zbekiston temir yo\'llari chiptalari yordamchisi.\n\n' +
-          '🔍 Hozir qaysi poyezdda, qaysi vagonda qancha bo\'sh joy borligini ko\'rsatadi\n' +
-          '🔔 Chipta yo\'q bo\'lsa — joy chiqishi bilan xabar beradi\n' +
-          '🎯 Aniq joyni kuzatadi: kupe yoki bokovoy, pastki yoki yuqori, hammasi bitta joyda',
-      })
-      .catch(() => {});
+    // Telegram ilovasi tiliga qarab: o'zbekcha (standart), ruscha, inglizcha
+    for (const [code, profile] of Object.entries(PROFILE)) {
+      const language = code === 'uz' ? {} : { language_code: code };
+      await instance.telegram.setMyCommands(profile.commands, language).catch(() => {});
+      await instance.telegram.callApi('setMyShortDescription', { short_description: profile.short, ...language }).catch(() => {});
+      await instance.telegram.callApi('setMyDescription', { description: profile.description, ...language }).catch(() => {});
+    }
 
     // "Menu" tugmasi — buyruqlar ro'yxati (Mini App ishlatilmaydi)
     await instance.telegram.setChatMenuButton({ menuButton: { type: 'commands' } }).catch(() => {});

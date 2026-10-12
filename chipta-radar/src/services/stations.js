@@ -43,6 +43,7 @@ export function listStations() {
     code: item.station.code,
     nameUz: item.station.nameUz,
     nameRu: item.station.nameRu,
+    nameEn: item.station.nameEn,
     region: item.station.region,
     isPopular: item.station.isPopular,
     aliases: item.station.aliases || [],

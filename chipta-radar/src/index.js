@@ -19,6 +19,7 @@ import adminRoutes from './routes/admin.routes.js';
 import appRoutes from './routes/app.routes.js';
 import registerBotRoutes from './routes/bot.routes.js';
 import { getBot, syncBotProfile } from './core/bot.js';
+import { loadUserLangs } from './i18n/index.js';
 import { searchTrains, getTrainDetail, getRailwayStatus } from './core/railway.js';
 import { searchKtzTrains } from './core/ktz.js';
 import { KTZ_STATIONS } from './services/foreignStations.js';
@@ -151,6 +152,7 @@ app.use((error, req, res, next) => {
 async function onDatabaseReady() {
   await loadSettings();
   await refreshStations();
+  await loadUserLangs().catch((error) => console.warn('[til]', error.message));
   console.log('✅ Ma\'lumotlar bazasi: ulandi');
   startWatcher();
   startKeepAlive();

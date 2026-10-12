@@ -8,15 +8,13 @@ import { Markup } from 'telegraf';
 import { listStations } from './stations.js';
 import { REGIONS } from './personal.js';
 import { formatMoney } from '../utils/text.js';
-import { todayISO, addDays, isISODate, diffDays, MONTHS_UZ, WEEKDAYS_UZ } from '../utils/dates.js';
+import { todayISO, addDays, isISODate, diffDays, WEEKDAYS_UZ } from '../utils/dates.js';
+import { keepButton, LANG_LABELS } from '../i18n/index.js';
+import { TEXTS } from '../i18n/texts.js';
 
 /* --------------------------- Asosiy menyu --------------------------- */
 
-export const WELCOME =
-  '🚉 <b>Temir yo\'l chiptasi kuzatuvchi botiga xush kelibsiz!</b>\n\n' +
-  'Men siz uchun belgilangan yo\'nalishda bo\'sh joy paydo bo\'lishini doimiy kuzataman ' +
-  'va topilishi bilan darrov xabar beraman.\n\n' +
-  'Quyidagi menyudan tanlang 👇';
+export const WELCOME = TEXTS.welcome.uz;
 
 export function mainMenu({ admin = false } = {}) {
   return Markup.inlineKeyboard([
@@ -24,7 +22,7 @@ export function mainMenu({ admin = false } = {}) {
     [Markup.button.callback('🚆 Poyezd narxlari', 'm:prices'), Markup.button.callback('📋 Kuzatuvlarim', 'm:watches')],
     // Akkaunt/Bronlarim vaqtincha olib tashlandi (kod va handlerlar saqlanadi — keyin qaytarsa bo'ladi)
     [Markup.button.callback('👥 Do\'stlarni taklif qilish', 'm:ref'), Markup.button.callback('ℹ️ Yordam', 'm:help')],
-    [Markup.button.callback('📱 Qo\'ng\'iroq ilovasi', 'm:app')],
+    [Markup.button.callback('📱 Qo\'ng\'iroq ilovasi', 'm:app'), keepButton(Markup.button.callback('🌐 Til · Язык · Language', 'm:lang'))],
     ...(admin ? [[Markup.button.callback('🛠 Admin panel', 'adm:menu')]] : []),
   ]);
 }
@@ -32,6 +30,12 @@ export function mainMenu({ admin = false } = {}) {
 /** Rangli tugma (Telegram 2026-fevraldan: primary — ko'k, success — yashil, danger — qizil; eski ilovada oddiy) */
 const styled = (button, style) => ({ ...button, style });
 const cancelButton = (text = '❌ Bekor') => styled(Markup.button.callback(text, 'm:home'), 'danger');
+
+/** Til tanlash (tugmalar har doim o'z tilida) */
+export function langKeyboard() {
+  const button = (code) => keepButton(Markup.button.callback(LANG_LABELS[code], `lang:${code}`));
+  return Markup.inlineKeyboard([[button('uz'), button('uzc')], [button('ru'), button('en')]]);
+}
 
 /** Har bir ekran oxirida "asosiy menyu" tugmasi */
 export function backToMenuRow() {
@@ -95,11 +99,13 @@ export function intlStationGrid(prefix, stations) {
 
 const DATE_WINDOW = 15; // bir ekranda ko'rsatiladigan kunlar
 
-/** "5-okt, Du" */
+const MONTHS_SHORT = ['yan', 'fev', 'mar', 'apr', 'may', 'iyun', 'iyul', 'avg', 'sen', 'okt', 'noy', 'dek'];
+
+/** "5-okt, dus" */
 export function shortDate(iso) {
   if (!isISODate(iso)) return iso || '';
   const date = new Date(`${iso}T00:00:00Z`);
-  const month = MONTHS_UZ[date.getUTCMonth()].slice(0, 3);
+  const month = MONTHS_SHORT[date.getUTCMonth()];
   const weekday = WEEKDAYS_UZ[date.getUTCDay()].slice(0, 3);
   return `${date.getUTCDate()}-${month}, ${weekday}`;
 }
@@ -384,6 +390,7 @@ export function ordersKeyboard(status, accountUrl) {
 }
 
 export default {
+  langKeyboard,
   WELCOME, mainMenu, backToMenuRow, stationGrid, scopeKeyboard, intlStationGrid, avoidKeyboard, dateGrid, shortDate,
   carKeyboard, sectionKeyboard, berthKeyboard, togetherKeyboard, qtyKeyboard,
   confirmKeyboard, manageKeyboard, foundKeyboard, CAR_CHOICES,

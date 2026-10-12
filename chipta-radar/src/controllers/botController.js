@@ -36,6 +36,8 @@ import wizard from '../services/botWizard.js';
 import flow from '../services/botFlow.js';
 import accountService from '../services/accountService.js';
 import { accountWebAppUrl } from '../core/bot.js';
+import { TEXTS } from '../i18n/texts.js';
+import { saveUserLang, NO_I18N, LANGS, raw } from '../i18n/index.js';
 
 const STATUS = {
   ACTIVE: '🟢 Faol', PAUSED: '⏸ To\'xtatilgan', FOUND: '✅ Topildi',
@@ -63,7 +65,7 @@ export async function start(ctx) {
   if (!user) return;
   wizard.clearSession(ctx.from.id);
   // Eski versiyadan qolgan pastki (reply) klaviaturani olib tashlaymiz — endi hammasi inline
-  await ctx.reply(`Assalomu alaykum, ${user.firstName}! 👋`, Markup.removeKeyboard()).catch(() => {});
+  await ctx.reply(`Assalomu alaykum, ${raw(user.firstName)}! 👋`, Markup.removeKeyboard()).catch(() => {});
   await ctx.replyWithHTML(ui.WELCOME, ui.mainMenu({ admin: await isBotAdmin(ctx.from?.id) }));
 }
 
@@ -80,26 +82,7 @@ async function showMenu(ctx) {
   await ctx.replyWithHTML(ui.WELCOME, menu);
 }
 
-const HELP_TEXT =
-  '<b>ℹ️ Yordam — bot qanday ishlaydi</b>\n\n' +
-  '🔔 <b>Bot nima qiladi?</b>\n' +
-  'Kerakli poyezdga chipta qolmagan bo\'lsa — kuzatuvga qo\'yasiz. Bo\'sh joy chiqishi bilan ' +
-  'bot darhol xabar beradi.\n\n' +
-  '➕ <b>Kuzatuv qo\'shish</b> — avval <b>🇺🇿 Mahalliy</b> yoki <b>🌍 Xorijiy</b> yo\'nalishni tanlaysiz, keyin 3 qadam:\n' +
-  '1️⃣ Qayerdan → qayerga\n' +
-  '2️⃣ Sana\n' +
-  '3️⃣ Vagon turi — <b>bir nechtasini</b> belgilash mumkin, har birining yonida shu yo\'nalishdagi narx ko\'rinadi.\n' +
-  '🚃 <i>Umumiy — eng arzon vagon: o\'tirib ketiladi, choyshab berilmaydi.</i>\n' +
-  '🎯 Faqat Plaskart yoki Kupe tanlasangiz — pastki/yuqori, to\'rttalik/bokovoy joyni ham aniq kuzatish mumkin.\n' +
-  '🌍 <b>Xorijiy</b> — Qozog\'iston poyezdlari (Olmaota, Taroz, Shimkent ↔ Toshkent). Narxlar tengeda, chipta bilet.railways.kz saytida sotiladi.\n\n' +
-  '📋 <b>Kuzatuvlarim</b> — to\'xtatish, davom ettirish, darhol tekshirish yoki o\'chirish.\n' +
-  '🚆 <b>Poyezd narxlari</b> — mashhur yo\'nalishlar (borish va qaytish) bo\'yicha bugungi poyezdlar, vaqt va narxlar.\n\n' +
-  '⚡️ <b>Tezkor qidiruv</b> — shunchaki yozing:\n' +
-  '• <code>Toshkent Samarqand ertaga</code>\n' +
-  '• <code>Andijon Toshkent 25.10</code>\n\n' +
-  '🎫 <b>Chipta qanday olinadi?</b>\n' +
-  'Bot chipta sotmaydi. Joy chiqqanda xabardagi <b>«Shu yo\'nalishni ochib sotib olish»</b> tugmasini bosing — ' +
-  'rasmiy saytda yo\'lovchi ma\'lumotini kiritib to\'laysiz. Tez harakat qiling: bo\'sh joylar tez tugaydi!';
+const HELP_TEXT = TEXTS.help.uz;
 
 export async function help(ctx) {
   const keyboard = Markup.inlineKeyboard([ui.backToMenuRow()]);
@@ -115,11 +98,7 @@ export async function help(ctx) {
 async function showReferral(ctx) {
   const username = getBot()?.botInfo?.username;
   const link = username ? `https://t.me/${username}` : '';
-  const text =
-    '👥 <b>Do\'stlaringizni taklif qiling</b>\n\n' +
-    'Chipta topishda qiynalayotgan tanishlaringizga shu botni ulashing — ' +
-    'ularga ham joy chiqishi bilan xabar beraman.\n\n' +
-    (link ? `🔗 <code>${link}</code>` : '');
+  const text = TEXTS.referral.uz + (link ? `\n\n🔗 <code>${link}</code>` : '');
   const rows = [];
   if (link) rows.push([Markup.button.url('📤 Ulashish', `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent('Poyezd chiptasi kuzatuvchi bot 🚆')}`)]);
   rows.push(ui.backToMenuRow());
@@ -1038,18 +1017,34 @@ async function showAppInfo(ctx) {
   if (!user) return;
   const code = createPairCode(user.id);
   const url = `${config.bot.publicUrl}/download/chipta-radar.apk`;
-  const text = '📱 <b>Chipta Radar ilovasi</b>\n\n'
-    + 'Chipta chiqqanda telefoningizga <b>qo\'ng\'iroq</b> qiladi va SMS kabi xabar chiqaradi — Telegram yopiq bo\'lsa ham. '
-    + 'Qo\'ng\'iroqni ko\'targaningizda ovozli xabar eshitiladi.\n\n'
-    + '1️⃣ Ilovani yuklab olib o\'rnating (telefon ruxsat so\'rasa — «Ruxsat berish»).\n'
-    + `2️⃣ Ilovaga shu kodni kiriting: <code>${code}</code> (15 daqiqa amal qiladi)\n`
-    + '3️⃣ Ilovadagi ruxsatlarni yoqing va «📞 Sinov qo\'ng\'irog\'i»ni bosib tekshiring.';
+  const text = `${TEXTS.appHead.uz} <code>${code}</code> ${TEXTS.appTail.uz}`;
   const kb = Markup.inlineKeyboard([
     [Markup.button.url('⬇️ Ilovani yuklab olish', url)],
     [Markup.button.callback('🔄 Yangi kod', 'm:app'), ...ui.backToMenuRow()],
   ]);
   if (ctx.callbackQuery) { try { await ctx.editMessageText(text, HTML(kb)); return; } catch { /* yangi xabar */ } }
   await ctx.replyWithHTML(text, kb);
+}
+
+/* ------------------------------ Til ------------------------------ */
+
+const LANG_PROMPT = '🌐 <b>Tilni tanlang · Выберите язык · Choose language</b>';
+
+/** Til tanlash ekrani (/lang yoki menyudagi 🌐) — matn har doim to'rt tilda */
+export async function showLangMenu(ctx) {
+  const extra = { ...HTML(ui.langKeyboard()), [NO_I18N]: true };
+  if (ctx.callbackQuery) {
+    try { await ctx.editMessageText(LANG_PROMPT, extra); return; } catch { /* yangi xabar */ }
+  }
+  await ctx.reply(LANG_PROMPT, extra);
+}
+
+/** Tilni saqlash: bot darhol yangi tilda javob beradi, ilova keyingi so'rovda o'zi moslashadi */
+async function setLang(ctx, code) {
+  if (!(await ensureUser(ctx))) return;
+  await saveUserLang(ctx.from.id, code);
+  await ctx.answerCbQuery('✅ Til o\'zgartirildi').catch(() => {});
+  await showMenu(ctx);
 }
 
 async function showPrices(ctx) {
@@ -1109,10 +1104,12 @@ export async function onCallback(ctx) {
       if (section === 'help') { await ctx.answerCbQuery(); return help(ctx); }
       if (section === 'app') { await ctx.answerCbQuery(); return showAppInfo(ctx); }
       if (section === 'ref') { await ctx.answerCbQuery(); return showReferral(ctx); }
+      if (section === 'lang') { await ctx.answerCbQuery(); return showLangMenu(ctx); }
       return ctx.answerCbQuery();
     }
 
     if (prefix === 'wz') return onWizard(ctx, rest);
+    if (prefix === 'lang' && LANGS.includes(rest[0])) return setLang(ctx, rest[0]);
 
     if (prefix === 'acc') {
       const action = rest[0];
@@ -1255,4 +1252,4 @@ export async function onText(ctx) {
   }
 }
 
-export default { start, help, myWatches: showWatchList, myAccount: showAccount, myOrders: showOrders, onCallback, onText };
+export default { start, help, myWatches: showWatchList, myAccount: showAccount, myOrders: showOrders, langMenu: showLangMenu, onCallback, onText };

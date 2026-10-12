@@ -6,6 +6,7 @@
  * Standart parol (admin123) bilan kirish o'chirilgan.
  */
 import { Markup } from 'telegraf';
+import { raw } from '../i18n/index.js';
 import config from '../config/default.js';
 import prisma, { isDatabaseReady } from '../database/connection.js';
 import UserModel from '../models/User.js';
@@ -282,7 +283,7 @@ export async function adminText(ctx, text) {
   }
   pending.set(String(ctx.from.id), { step: 'confirm', text });
   await ctx.replyWithHTML(
-    `📢 <b>Ko'rinishi:</b>\n\n📢 ${escapeHtml(text)}\n\nBarcha foydalanuvchilarga yuborilsinmi?`,
+    `📢 <b>Ko'rinishi:</b>\n\n📢 ${raw(escapeHtml(text))}\n\nBarcha foydalanuvchilarga yuborilsinmi?`,
     Markup.inlineKeyboard([
       [{ ...Markup.button.callback('✅ Yuborish', 'adm:bcgo'), style: 'success' }],
       [{ ...Markup.button.callback('❌ Bekor', 'adm:menu'), style: 'danger' }],

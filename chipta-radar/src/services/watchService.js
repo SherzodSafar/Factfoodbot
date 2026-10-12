@@ -99,7 +99,7 @@ function confirmationText(entries) {
   for (const { watch, result, error } of entries) {
     lines.push('', `📅 <b>${dateLine(watch.date)}</b>`);
     if (error) {
-      lines.push(`⚠️ Hozir tekshirib bo'lmadi: ${escapeHtml(error)}. Kuzatuv baribir ishlaydi.`);
+      lines.push(`⚠️ Hozir tekshirib bo'lmadi: ${escapeHtml(String(error).replace(/\.$/, ''))}. Kuzatuv baribir ishlaydi.`);
     } else if (result?.items.length) {
       lines.push('✅ Hozirning o\'zida mos joylar bor:');
       for (const item of result.items.slice(0, 3)) {
