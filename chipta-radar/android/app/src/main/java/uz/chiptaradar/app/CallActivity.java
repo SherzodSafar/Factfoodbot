@@ -7,6 +7,8 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.media.AudioAttributes;
+import android.media.AudioManager;
+import android.media.MediaPlayer;
 import android.media.Ringtone;
 import android.media.RingtoneManager;
 import android.net.Uri;
@@ -34,6 +36,8 @@ public class CallActivity extends Activity implements TextToSpeech.OnInitListene
     private Ringtone ringtone;
     private Vibrator vibrator;
     private TextToSpeech tts;
+    private MediaPlayer player;
+    private int plays;
     private LinearLayout buttons;
     private TextView status;
     private String title;
@@ -154,7 +158,33 @@ public class CallActivity extends Activity implements TextToSpeech.OnInitListene
         for (int i = 0; i < buttons.getChildCount(); i++) {
             buttons.getChildAt(i).setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(60)));
         }
-        tts = new TextToSpeech(this, this);
+        if (!playRecordedVoice()) tts = new TextToSpeech(this, this); // yozib olingan ovoz bo'lmasa — telefon ovozi
+    }
+
+    /** Ilovaga joylangan tabiiy ovozli xabar (res/raw/voice.mp3) — ikki marta */
+    private boolean playRecordedVoice() {
+        int res = getResources().getIdentifier("voice", "raw", getPackageName());
+        if (res == 0) return false;
+        try {
+            AudioAttributes attrs = new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build();
+            AudioManager audio = (AudioManager) getSystemService(AUDIO_SERVICE);
+            player = MediaPlayer.create(this, res, attrs, audio.generateAudioSessionId());
+            if (player == null) return false;
+            plays = 0;
+            player.setOnCompletionListener(mp -> {
+                if (++plays < 2) {
+                    mp.seekTo(0);
+                    mp.start();
+                }
+            });
+            player.start();
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     @Override
@@ -189,6 +219,7 @@ public class CallActivity extends Activity implements TextToSpeech.OnInitListene
         handler.removeCallbacksAndMessages(null);
         stopRinging();
         if (tts != null) tts.shutdown();
+        if (player != null) player.release();
         super.onDestroy();
     }
 }

@@ -30,5 +30,9 @@ final class Prefs {
         e.apply();
     }
 
+    /** Telefon sozlamalarida qo'lda bajariladigan (tekshirib bo'lmaydigan) qadamlar */
+    static boolean flag(Context c, String key) { return p(c).getBoolean("flag_" + key, false); }
+    static void setFlag(Context c, String key) { p(c).edit().putBoolean("flag_" + key, true).apply(); }
+
     static void clear(Context c) { p(c).edit().clear().apply(); }
 }

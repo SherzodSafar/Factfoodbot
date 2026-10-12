@@ -28,6 +28,7 @@ import android.widget.Toast;
 import org.json.JSONObject;
 
 import java.util.Date;
+import java.util.List;
 
 /** Ulash (botdagi kod) va holat/ruxsatlar ekrani */
 public class MainActivity extends Activity {
@@ -37,7 +38,6 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         Alerts.channels(this);
-        askNotifications();
     }
 
     @Override
@@ -131,48 +131,69 @@ public class MainActivity extends Activity {
         }).start();
     }
 
+    /** Holat va o'rnatilgandan keyingi sozlash qadamlari (har biri kerakli sahifani ochadi) */
     private void renderStatus() {
+        List<Setup.Step> steps = Setup.steps(this);
+        int done = 0;
+        for (Setup.Step step : steps) if (step.done) done++;
+        boolean ready = done == steps.size();
+
+        if (ready) {
+            card("✅ Hammasi sozlandi!\nIlova ishlaydi — kuzatuvingizda chipta chiqsa, qo'ng'iroq qilaman.", 0xFFE8F5E9, 0xFF1B5E20);
+        } else {
+            card("⚙️ Sozlash: " + done + "/" + steps.size() + " bajarildi\nQadamlarni ketma-ket bajaring — tugma kerakli sahifani ochadi. Bajarilgach shu yerga qayting.", 0xFFFFF3E0, 0xFFE65100);
+            boolean first = true;
+            int number = 0;
+            for (Setup.Step step : steps) {
+                number++;
+                if (step.done) {
+                    para(number + ". ✅ " + step.title, 15).setTextColor(0xFF2E7D32);
+                    continue;
+                }
+                TextView text = para(number + ". " + (first ? "👉 " : "⬜ ") + step.title + "\n" + step.hint, 15);
+                if (first) text.setTypeface(Typeface.DEFAULT_BOLD);
+                if (step.key.equals("test")) {
+                    button("📞 Sinov qo'ng'irog'i", 0xFF43A047, v -> testCall());
+                } else {
+                    button(first ? "Sozlash →" : "Sozlash", first ? 0xFF1E88E5 : 0xFF90A4AE, v -> Setup.open(this, step.key));
+                    if (step.manual) button("✅ Bajardim", 0xFF607D8B, v -> {
+                        Prefs.setFlag(this, step.key);
+                        render();
+                    });
+                }
+                first = false;
+            }
+        }
+
         String name = Prefs.name(this);
-        para("✅ Ulangan" + (name.isEmpty() ? "" : " (" + name + ")") + ". Kuzatuvingizda chipta chiqsa — qo'ng'iroq qilaman.", 17);
         long last = Prefs.lastCheck(this);
         String error = Prefs.lastError(this);
-        para(last == 0
-                ? "⏳ Birinchi tekshiruv kutilmoqda..."
-                : "🕐 Oxirgi tekshiruv: " + DateFormat.getTimeFormat(this).format(new Date(last)) + (error == null ? " ✅" : "\n⚠️ " + error), 15);
-
-        button("📞 Sinov qo'ng'irog'i", 0xFF43A047, v -> Alerts.ticketFound(this, "Toshkent → Samarqand (sinov)", false));
-
-        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            button("🔔 Bildirishnomaga ruxsat berish", 0xFFFB8C00, v -> askNotifications());
-        }
-        PowerManager power = (PowerManager) getSystemService(POWER_SERVICE);
-        if (Build.VERSION.SDK_INT >= 23 && power != null && !power.isIgnoringBatteryOptimizations(getPackageName())) {
-            button("🔋 Batareya cheklovini o'chirish", 0xFFFB8C00,
-                    v -> open(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)));
-        }
-        if (Build.VERSION.SDK_INT >= 31) {
-            AlarmManager alarms = (AlarmManager) getSystemService(ALARM_SERVICE);
-            if (alarms != null && !alarms.canScheduleExactAlarms()) {
-                button("⏰ Har daqiqada tekshirishga ruxsat", 0xFFFB8C00,
-                        v -> open(new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:" + getPackageName()))));
-            }
-        }
-        if (Build.VERSION.SDK_INT >= 34) {
-            NotificationManager nm = Compat.notifications(this);
-            if (nm != null && !nm.canUseFullScreenIntent()) {
-                button("📲 To'liq ekran qo'ng'irog'iga ruxsat", 0xFFFB8C00,
-                        v -> open(new Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:" + getPackageName()))));
-            }
-        }
-        para("ℹ️ Xiaomi/Redmi/POCO: Sozlamalar → Ilovalar → Chipta Radar → «Avtomatik ishga tushirish»ni yoqing, «Batareya tejash»ni «Cheklovsiz» qiling va «Qulflangan ekranda ko'rsatish»ga ruxsat bering.", 14);
-        button("⚙️ Ilova sozlamalari", 0xFF546E7A,
-                v -> open(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()))));
+        para("🔗 Ulangan" + (name.isEmpty() ? "" : " (" + name + ")") + ". "
+                + (last == 0 ? "⏳ Birinchi tekshiruv kutilmoqda..."
+                        : "🕐 Oxirgi tekshiruv: " + DateFormat.getTimeFormat(this).format(new Date(last)) + (error == null ? " ✅" : "\n⚠️ " + error)), 14);
+        if (ready) button("📞 Sinov qo'ng'irog'i", 0xFF43A047, v -> testCall());
         button("Uzish", 0xFF9E9E9E, v -> {
             Scheduler.cancel(this);
             Prefs.clear(this);
             render();
         });
         Scheduler.schedule(this, 3_000);
+    }
+
+    private void testCall() {
+        Prefs.setFlag(this, "test");
+        Alerts.ticketFound(this, "Toshkent → Samarqand (sinov)", false);
+    }
+
+    private void card(String value, int background, int color) {
+        TextView view = para(value, 16);
+        view.setTextColor(color);
+        view.setTypeface(Typeface.DEFAULT_BOLD);
+        GradientDrawable shape = new GradientDrawable();
+        shape.setColor(background);
+        shape.setCornerRadius(dp(14));
+        view.setBackground(shape);
+        view.setPadding(dp(16), dp(14), dp(16), dp(14));
     }
 
     private void open(Intent intent) {
