@@ -25,16 +25,16 @@
                               ^^^^^^^^^^^^^^^^
   File "/home/runner/.local/lib/python3.12/site-packages/aiohttp/client.py", line 1329, in _ws_connect
     raise WSServerHandshakeError(
-aiohttp.client_exceptions.WSServerHandshakeError: 403, message='Invalid response status', url='wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=6A5AA1D4EAFF4E9FB37E23D68491D6F4&ConnectionId=446a0a766e2c4d2686f1a351e22e73f2&Sec-MS-GEC=01EA1ABF0D15589E7042DDECD2CB7BC76B6FE1A522049B81D4321DF1764F7BF2&Sec-MS-GEC-Version=1-143.0.3650.75'
+aiohttp.client_exceptions.WSServerHandshakeError: 403, message='Invalid response status', url='wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=6A5AA1D4EAFF4E9FB37E23D68491D6F4&ConnectionId=6dff25c9cd954ddcb8d1ed334ada439e&Sec-MS-GEC=15417495E3F272383E9E2B265CF6C0790C8584383372E2C4E2935FD060B890B0&Sec-MS-GEC-Version=1-143.0.3650.75'
 /home/runner/.local/lib/python3.12/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
   warnings.warn(
 Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
 Topilmadi: facebook/mms-tts-uzb-script_latin facebook/mms-tts-uzb-script_latin is not a local folder and is not a valid model
 Topilmadi: facebook/mms-tts-uzn-script_latin facebook/mms-tts-uzn-script_latin is not a local folder and is not a valid model
-Loading weights:   0%|          | 0/762 [00:00<?, ?it/s]Loading weights:  53%|█████▎    | 403/762 [00:00<00:00, 4010.44it/s]Loading weights: 100%|██████████| 762/762 [00:00<00:00, 3946.63it/s]
+Loading weights:   0%|          | 0/762 [00:00<?, ?it/s]Loading weights:  52%|█████▏    | 397/762 [00:00<00:00, 3964.92it/s]Loading weights: 100%|██████████| 762/762 [00:00<00:00, 3888.11it/s]
 Model: facebook/mms-tts-uzb-script_cyrillic
 Ovoz: Meta MMS 8.538 s
 total 76
-drwxr-xr-x 2 runner runner  4096 Oct 12 21:34 .
-drwxr-xr-x 7 runner runner  4096 Oct 12 21:33 ..
--rw-r--r-- 1 runner runner 69120 Oct 12 21:34 voice.mp3
+drwxr-xr-x 2 runner runner  4096 Oct 12 22:41 .
+drwxr-xr-x 8 runner runner  4096 Oct 12 22:40 ..
+-rw-r--r-- 1 runner runner 69120 Oct 12 22:41 voice.mp3
