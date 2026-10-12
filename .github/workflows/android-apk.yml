@@ -1,0 +1,47 @@
+# Chipta Radar Android ilovasini yig'ish: APK chipta-radar/public/app/ ga yoziladi
+# (server uni /download/chipta-radar.apk manzilida beradi).
+name: Android APK
+
+on:
+  push:
+    branches: [ccr-b950cfe7-8tk6gp]
+    paths:
+      - 'chipta-radar/android/**'
+      - '.github/workflows/android-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: APK yig'ish
+        run: gradle -p chipta-radar/android assembleRelease --no-daemon --stacktrace
+
+      - name: APK ni branchga yozish
+        run: |
+          mkdir -p chipta-radar/public/app
+          cp chipta-radar/android/app/build/outputs/apk/release/app-release.apk chipta-radar/public/app/chipta-radar.apk
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add chipta-radar/public/app/chipta-radar.apk
+          git commit -m "Android APK yig'ildi [skip ci]" || echo "O'zgarish yo'q"
+          git push
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chipta-radar-apk
+          path: chipta-radar/public/app/chipta-radar.apk

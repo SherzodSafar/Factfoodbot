@@ -16,6 +16,7 @@ import config, { missingConfig, resolveBotMode } from './config/default.js';
 import prisma, { connectDatabase, disconnectDatabase, isDatabaseReady } from './database/connection.js';
 import clientRoutes from './routes/client.routes.js';
 import adminRoutes from './routes/admin.routes.js';
+import appRoutes from './routes/app.routes.js';
 import registerBotRoutes from './routes/bot.routes.js';
 import { getBot, syncBotProfile } from './core/bot.js';
 import { searchTrains, getTrainDetail, getRailwayStatus } from './core/railway.js';
@@ -84,6 +85,15 @@ app.get('/api/health', async (req, res) => {
 
 app.use('/api/client', clientRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/app', appRoutes);
+
+// Android ilova (GitHub Actions yig'ib, public/app ga yozadi)
+app.get('/download/chipta-radar.apk', (req, res) => {
+  const file = path.join(process.cwd(), 'public', 'app', 'chipta-radar.apk');
+  if (!fs.existsSync(file)) return res.status(404).send('Ilova hali tayyor emas');
+  res.type('application/vnd.android.package-archive');
+  res.download(file, 'chipta-radar.apk');
+});
 
 /** Telegram webhook manzili (bulutda bot shu yo'l orqali xabarlarni qabul qiladi) */
 export const WEBHOOK_PATH = '/api/bot/webhook';

@@ -24,6 +24,7 @@ export function mainMenu({ admin = false } = {}) {
     [Markup.button.callback('🚆 Poyezd narxlari', 'm:prices'), Markup.button.callback('📋 Kuzatuvlarim', 'm:watches')],
     // Akkaunt/Bronlarim vaqtincha olib tashlandi (kod va handlerlar saqlanadi — keyin qaytarsa bo'ladi)
     [Markup.button.callback('👥 Do\'stlarni taklif qilish', 'm:ref'), Markup.button.callback('ℹ️ Yordam', 'm:help')],
+    [Markup.button.callback('📱 Qo\'ng\'iroq ilovasi', 'm:app')],
     ...(admin ? [[Markup.button.callback('🛠 Admin panel', 'adm:menu')]] : []),
   ]);
 }
@@ -228,7 +229,7 @@ export function confirmKeyboard() {
 export function manageKeyboard(watch, { buyUrl = null } = {}) {
   const rows = [];
   // Joy topilgan bo'lsa — sotib olish sahifasi (xorijiy yo'nalishda KTZ sayti)
-  if (buyUrl) rows.push([styled(Markup.button.url('🎫 Sotib olish sahifasini ochish', buyUrl), 'success')]);
+  if (buyUrl) rows.push([styled(Markup.button.url('🎫 Sotib olish', buyUrl), 'success')]);
   const top = [];
   if (watch.status === 'ACTIVE') top.push(Markup.button.callback('⏸ To\'xtatish', `g:pause:${watch.id}`));
   if (watch.status === 'PAUSED' || watch.status === 'FOUND') top.push(Markup.button.callback('▶️ Davom', `g:resume:${watch.id}`));
@@ -243,7 +244,7 @@ export function manageKeyboard(watch, { buyUrl = null } = {}) {
 /** Chipta topilganda xabar ostidagi tugmalar */
 export function foundKeyboard(watch, buyUrl, { accountUrl = '' } = {}) {
   // Bitta bosishda shu yo'nalish + sana tanlangan sahifa ochiladi
-  const rows = [[Markup.button.url('🎫 Shu yo\'nalishni ochib sotib olish', buyUrl)]];
+  const rows = [[styled(Markup.button.url('🎫 Sotib olish', buyUrl), 'success')]];
   if (accountUrl) rows.push([Markup.button.webApp('💳 Bron va to\'lov', accountUrl)]);
   rows.push([Markup.button.callback('✅ Chipta oldim', `g:got:${watch.id}`), Markup.button.callback('⏸ To\'xtatish', `g:pause:${watch.id}`)]);
   return Markup.inlineKeyboard(rows);

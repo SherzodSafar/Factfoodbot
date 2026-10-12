@@ -7,7 +7,6 @@ import { formatDateUz, formatDuration, relativeDayUz } from '../utils/dates.js';
 import { carTypeLabel, carTypeEmoji } from './carTypes.js';
 import { LAYOUTS } from './seats.js';
 import { isIntlRoute } from './foreignStations.js';
-import { ktzSearchUrl } from '../core/ktz.js';
 import { uzsRate } from './exchangeRates.js';
 
 /** Xorijiy narx yonida taxminiy so'm qiymati: " (≈ 237 000 so'm)" (kurs noma'lum bo'lsa — bo'sh) */
@@ -76,7 +75,9 @@ export function suggestionLine(suggestion) {
  * tanlangan sahifa). Shablon config.railway.searchUrl'dan olinadi.
  */
 export function buildSearchUrl(watch, train = null) {
-  if (isIntlRoute(watch.fromCode, watch.toCode)) return ktzSearchUrl({ from: watch.fromCode, to: watch.toCode, date: watch.date });
+  // Saytlar yo'nalish sahifasiga to'g'ridan-to'g'ri havolani qo'llamaydi — bosh sahifa
+  if (isIntlRoute(watch.fromCode, watch.toCode)) return 'https://bilet.railways.kz/';
+  if (config.railway.buyUrl) return config.railway.buyUrl;
   const tpl = config.railway.searchUrl || config.railway.buyUrl;
   return tpl
     .replace(/\{from\}/g, encodeURIComponent(watch.fromCode || ''))
@@ -105,7 +106,7 @@ export function foundMessage(watch, result) {
 
   lines.push('', '⚡️ Chiptalar tez tugaydi — hoziroq sotib oling!');
   const buyUrl = buildSearchUrl(watch, result.items[0]?.train);
-  lines.push(`🎫 <a href="${escapeHtml(buyUrl)}">Shu yo'nalishni saytda ochish →</a>`);
+  lines.push(`🎫 <a href="${escapeHtml(buyUrl)}">Sotib olish →</a>`);
   return lines.join('\n');
 }
 

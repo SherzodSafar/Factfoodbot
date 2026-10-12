@@ -31,6 +31,7 @@ import { getRoutePrices, getTrainPriceInfo, mergeMinPrices, knownDestinations, k
 import { escapeHtml, formatMoney } from '../utils/text.js';
 import ui from '../services/botUi.js';
 import { adminCallback, adminText, isBotAdmin } from './botAdmin.js';
+import { createPairCode } from '../services/appDevices.js';
 import wizard from '../services/botWizard.js';
 import flow from '../services/botFlow.js';
 import accountService from '../services/accountService.js';
@@ -442,7 +443,7 @@ async function finishWizard(ctx, user, session) {
     }
 
     const buyRow = first?.result?.items?.length
-      ? [[{ ...Markup.button.url('🎫 Sotib olish sahifasini ochish', buildSearchUrl({ fromCode: session.fromCode, toCode: session.toCode, date: session.date }, first.result.items[0]?.train)), style: 'success' }]]
+      ? [[{ ...Markup.button.url('🎫 Sotib olish', buildSearchUrl({ fromCode: session.fromCode, toCode: session.toCode, date: session.date }, first.result.items[0]?.train)), style: 'success' }]]
       : [];
     const keyboard = Markup.inlineKeyboard([
       ...buyRow,
@@ -1031,6 +1032,26 @@ function priceRoutePairs() {
   });
 }
 
+/** Android ilova: yuklab olish havolasi va bir martalik ulash kodi */
+async function showAppInfo(ctx) {
+  const user = await ensureUser(ctx);
+  if (!user) return;
+  const code = createPairCode(user.id);
+  const url = `${config.bot.publicUrl}/download/chipta-radar.apk`;
+  const text = '📱 <b>Chipta Radar ilovasi</b>\n\n'
+    + 'Chipta chiqqanda telefoningizga <b>qo\'ng\'iroq</b> qiladi va SMS kabi xabar chiqaradi — Telegram yopiq bo\'lsa ham. '
+    + 'Qo\'ng\'iroqni ko\'targaningizda ovozli xabar eshitiladi.\n\n'
+    + '1️⃣ Ilovani yuklab olib o\'rnating (telefon ruxsat so\'rasa — «Ruxsat berish»).\n'
+    + `2️⃣ Ilovaga shu kodni kiriting: <code>${code}</code> (15 daqiqa amal qiladi)\n`
+    + '3️⃣ Ilovadagi ruxsatlarni yoqing va «📞 Sinov qo\'ng\'irog\'i»ni bosib tekshiring.';
+  const kb = Markup.inlineKeyboard([
+    [Markup.button.url('⬇️ Ilovani yuklab olish', url)],
+    [Markup.button.callback('🔄 Yangi kod', 'm:app'), ...ui.backToMenuRow()],
+  ]);
+  if (ctx.callbackQuery) { try { await ctx.editMessageText(text, HTML(kb)); return; } catch { /* yangi xabar */ } }
+  await ctx.replyWithHTML(text, kb);
+}
+
 async function showPrices(ctx) {
   const rows = priceRoutePairs().map(([a, b]) => [
     Markup.button.callback(`${stationName(a)} → ${stationName(b)}`, `pr:${a}:${b}`),
@@ -1086,6 +1107,7 @@ export async function onCallback(ctx) {
       if (section === 'account') { await ctx.answerCbQuery(); return showAccount(ctx); }
       if (section === 'orders') { await ctx.answerCbQuery('Yuklanmoqda...'); return showOrders(ctx); }
       if (section === 'help') { await ctx.answerCbQuery(); return help(ctx); }
+      if (section === 'app') { await ctx.answerCbQuery(); return showAppInfo(ctx); }
       if (section === 'ref') { await ctx.answerCbQuery(); return showReferral(ctx); }
       return ctx.answerCbQuery();
     }
