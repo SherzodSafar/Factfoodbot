@@ -1,0 +1,25 @@
+// Chiziqli ikonkalar (24×24, currentColor).
+const s = (d, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" ${extra}>${d}</svg>`;
+export const I = {
+  tree: s('<path d="M12 22v-7"/><path d="M9 22h6"/><circle cx="12" cy="8" r="5"/><path d="M7.5 11.5 5 14a3 3 0 0 0 4 4l3-3 3 3a3 3 0 0 0 4-4l-2.5-2.5"/>'),
+  list: s('<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/>'),
+  chart: s('<path d="M3 3v18h18"/><path d="M7 15v3M12 10v8M17 6v12"/>'),
+  more: s('<circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/><circle cx="5" cy="12" r="1.5"/>'),
+  menu: s('<path d="M4 7h16M4 12h16M4 17h10"/>'),
+  lock: s('<rect x="4" y="11" width="16" height="10" rx="2.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>'),
+  unlock: s('<rect x="4" y="11" width="16" height="10" rx="2.5"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/>'),
+  search: s('<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>'),
+  plus: s('<path d="M12 5v14M5 12h14"/>'),
+  minus: s('<path d="M5 12h14"/>'),
+  fit: s('<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>'),
+  home: s('<path d="M12 3v4"/><circle cx="12" cy="11" r="4"/><path d="M12 15v6"/>'),
+  camera: s('<path d="M3 8a2 2 0 0 1 2-2h2l2-2h6l2 2h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/>'),
+  edit: s('<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>'),
+  trash: s('<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>'),
+  chev: s('<path d="m9 6 6 6-6 6"/>'),
+  close: s('<path d="M6 6l12 12M18 6 6 18"/>'),
+  back: s('<path d="m15 6-6 6 6 6"/>'),
+  share: s('<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/>'),
+  target: s('<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>'),
+  layers: s('<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>'),
+};
