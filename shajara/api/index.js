@@ -1,5 +1,7 @@
 // Shajara iBot — yagona API funksiyasi (Vercel Serverless).
 // Barcha /api/* so'rovlari vercel.json orqali shu yerga keladi.
+import { readFileSync } from 'node:fs';
+import crypto from 'node:crypto';
 import { verifyToken, signToken, verifyInitData, hashCode, normalizeCode, rateLimit } from '../lib/auth.js';
 import { readJson, getFile, deleteKey, listKeys } from '../lib/store.js';
 import {
@@ -346,6 +348,26 @@ async function route(req, res) {
       description: body.description || '',
       viewCode: body.viewCode,
       editCode: body.editCode,
+      persons: src.persons,
+      meta: { root_id: src.meta?.root_id || src.persons?.[0]?.id, next_id: src.meta?.next_id },
+      who: 'Import',
+    });
+    return send(res, 200, { ok: true, id: tree.id, persons: tree.persons.length });
+  }
+
+  // Ma'mur: omborda shifrlangan holda turgan shajarani (data/seed.enc) yuklash
+  if (path === 'admin/seed') {
+    if (!process.env.ADMIN_KEY || url.searchParams.get('key') !== process.env.ADMIN_KEY) throw new HttpError(401, 'Ruxsat yo‘q');
+    if (!process.env.SEED_KEY) throw new HttpError(400, 'SEED_KEY sozlanmagan');
+    const raw = Buffer.from(readFileSync(new URL('../data/seed.enc', import.meta.url), 'utf8'), 'base64');
+    const key = crypto.createHash('sha256').update(process.env.SEED_KEY).digest();
+    const d = crypto.createDecipheriv('aes-256-gcm', key, raw.subarray(0, 12));
+    d.setAuthTag(raw.subarray(12, 28));
+    const src = JSON.parse(Buffer.concat([d.update(raw.subarray(28)), d.final()]).toString('utf8'));
+    const tree = await createTree({
+      title: src.meta?.title || 'Shajara',
+      viewCode: url.searchParams.get('view'),
+      editCode: url.searchParams.get('edit'),
       persons: src.persons,
       meta: { root_id: src.meta?.root_id || src.persons?.[0]?.id, next_id: src.meta?.next_id },
       who: 'Import',
