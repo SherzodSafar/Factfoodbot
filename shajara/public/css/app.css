@@ -182,7 +182,9 @@ textarea.input { height: auto; min-height: 88px; padding: 14px 16px; resize: ver
 .dots { display: flex; gap: 8px; justify-content: center; }
 .dots i { width: 8px; height: 8px; border-radius: 8px; background: var(--line); transition: .3s; }
 .dots i.on { width: 26px; background: var(--primary); }
-.onb-skip { position: absolute; right: 16px; top: calc(14px + var(--safe-top)); z-index: 2; font-weight: 700; color: var(--muted); padding: 8px 12px; }
+.onb-top { position: absolute; left: 0; right: 0; top: calc(8px + var(--safe-top)); z-index: 2; display: flex; flex-direction: column; align-items: center; }
+.onb-top .chips { padding: 0 16px 4px; }
+.onb-skip { align-self: flex-end; margin-right: 12px; font-weight: 700; color: var(--muted); padding: 6px 10px; }
 .float { animation: float 6s ease-in-out infinite; transform-origin: center; }
 @keyframes float { 50% { transform: translateY(-8px); } }
 .grow-in { animation: growIn .9s cubic-bezier(.2, .8, .2, 1) both; }
@@ -226,7 +228,7 @@ textarea.input { height: auto; min-height: 88px; padding: 14px 16px; resize: ver
 
 .tabbar {
   position: relative; z-index: 6;
-  display: grid; grid-template-columns: repeat(4, 1fr);
+  display: grid; grid-template-columns: repeat(5, 1fr);
   padding: 6px 8px calc(6px + var(--safe-bottom));
   background: color-mix(in srgb, var(--surface) 92%, transparent);
   backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
@@ -258,7 +260,6 @@ textarea.input { height: auto; min-height: 88px; padding: 14px 16px; resize: ver
 .node.f { border-top: 4px solid var(--female); }
 .node.inlaw { border-style: dashed; border-top-style: solid; background: var(--surface-2); }
 .node.dec { opacity: .86; }
-.node.dec::after { content: ''; position: absolute; right: -1px; top: 10px; width: 18px; height: 3px; background: var(--muted); transform: rotate(45deg); border-radius: 2px; opacity: .6; }
 .node.focus { border-color: var(--gold); box-shadow: 0 0 0 4px color-mix(in srgb, var(--gold) 35%, transparent), var(--shadow-lg); }
 .node.pulse { animation: pulse 1.4s ease 2; }
 @keyframes pulse { 50% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--gold) 0%, transparent), 0 0 0 4px var(--gold); } }
@@ -410,3 +411,34 @@ textarea.input { height: auto; min-height: 88px; padding: 14px 16px; resize: ver
 .tree-search svg, .search-bar svg { z-index: 1; pointer-events: none; }
 .menu-item > svg, .recent-item > svg { width: 18px; height: 18px; flex: none; color: var(--muted); }
 .person-row > svg { width: 18px; height: 18px; flex: none; color: var(--muted); }
+
+/* ---------- v2: bildirishnoma, albom, premium ---------- */
+.bell { position: relative; }
+.bell .dot { position: absolute; top: 8px; right: 9px; width: 9px; height: 9px; border-radius: 50%; background: var(--danger); border: 2px solid var(--surface); }
+.t.danger { color: var(--danger); }
+.log-item.new { background: color-mix(in srgb, var(--gold) 10%, transparent); }
+.banner { display: flex; align-items: center; gap: 12px; margin: 0 16px 12px; padding: 12px 14px; text-align: left; width: calc(100% - 32px); border-color: color-mix(in srgb, var(--gold) 40%, var(--line)); background: linear-gradient(135deg, var(--gold-soft), var(--surface)); }
+.banner > svg { width: 18px; height: 18px; color: var(--muted); flex: none; }
+.alb-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px 8px; }
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 0 16px; }
+.tile { position: relative; aspect-ratio: 1; border-radius: 10px; overflow: hidden; background: var(--surface-2); border: 1px solid var(--line); }
+.tile img { width: 100%; height: 100%; object-fit: cover; }
+.tile-ic { position: absolute; inset: 0; display: grid; place-items: center; font-size: 30px; }
+.tile-badge { position: absolute; left: 4px; right: 4px; bottom: 4px; font-size: 10.5px; font-weight: 800; color: #fff; background: rgba(0,0,0,.55); border-radius: 6px; padding: 2px 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.fab { position: absolute; right: 16px; bottom: 16px; z-index: 5; height: 52px; padding: 0 20px 0 16px; border-radius: 26px; display: inline-flex; align-items: center; gap: 8px; font-weight: 800; color: var(--primary-ink); background: linear-gradient(135deg, var(--primary), var(--primary-2)); box-shadow: 0 10px 26px color-mix(in srgb, var(--primary) 40%, transparent); }
+.fab svg { width: 22px; height: 22px; }
+.viewer { width: 100%; max-height: 62vh; object-fit: contain; border-radius: 16px; background: #000; display: block; margin-top: 6px; }
+.viewer-ph { position: relative; border-radius: 16px; overflow: hidden; background: var(--surface-2); min-height: 200px; display: grid; place-items: center; text-align: center; padding: 20px; margin-top: 6px; }
+.viewer-ph img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .35; filter: blur(2px); }
+.viewer-ic { font-size: 54px; position: relative; }
+.viewer-ph .small { position: relative; font-weight: 700; }
+.drop { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 22px; border: 2px dashed var(--line); border-radius: 18px; text-align: center; cursor: pointer; margin-bottom: 12px; }
+.drop svg { width: 34px; height: 34px; color: var(--primary); }
+.thumbs { display: flex; gap: 6px; overflow-x: auto; margin-bottom: 12px; }
+.thumbs img { width: 64px; height: 64px; object-fit: cover; border-radius: 10px; flex: none; }
+.steps { padding-left: 20px; margin: 4px 0 14px; display: grid; gap: 10px; font-size: 14.5px; }
+.code-pill { margin-top: 6px; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); border: 1px dashed var(--gold); font: 800 15px/1.2 ui-monospace, Menlo, monospace; letter-spacing: .04em; user-select: all; }
+.premium-hero { text-align: center; padding: 6px 0 12px; display: grid; gap: 6px; }
+.perks { list-style: none; padding: 0; margin: 0 0 14px; display: grid; gap: 8px; }
+.perks li { padding: 10px 14px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); font-weight: 700; }
+.empty p { margin: 6px auto 0; max-width: 300px; }

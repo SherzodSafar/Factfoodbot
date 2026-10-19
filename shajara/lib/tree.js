@@ -62,7 +62,7 @@ function nextId(tree) {
   return 'p' + String(n).padStart(4, '0');
 }
 
-function addLog(tree, who, action, name) {
+export function addLog(tree, who, action, name) {
   tree.log = tree.log || [];
   tree.log.unshift({ at: new Date().toISOString(), who: who || 'Tahrirchi', action, name });
   if (tree.log.length > MAX_LOG) tree.log.length = MAX_LOG;
@@ -70,19 +70,48 @@ function addLog(tree, who, action, name) {
 }
 
 /** Mijozga yuboriladigan ko'rinish (maxfiy maydonlarsiz). */
-export function publicTree(tree, role, chatId) {
+export const PAYWALL = () => process.env.PAYWALL === 'on';
+export const LIMITS = { persons: Number(process.env.FREE_PERSONS || 500), album: Number(process.env.FREE_ALBUM || 150) };
+export const isPremium = (tree) => !!tree.premiumUntil && new Date(tree.premiumUntil) > new Date();
+
+/** Mijozga yuboriladigan ko'rinish (maxfiy maydonlarsiz). */
+export function publicTree(tree, role, uid) {
+  const me = uid ? tree.members?.[uid] : null;
   return {
     id: tree.id,
     title: tree.title,
     description: tree.description || '',
     role,
+    isOwner: !!uid && tree.owner === uid,
     updatedAt: tree.updatedAt,
     createdAt: tree.createdAt,
     rootId: tree.meta?.root_id || null,
     persons: tree.persons,
-    log: (tree.log || []).slice(0, 60),
-    subscribed: chatId ? (tree.subscribers || []).includes(chatId) : false,
+    log: (tree.log || []).slice(0, 80),
+    me: me ? { notify: me.notify || {}, role: me.role } : null,
+    memberCount: Object.keys(tree.members || {}).length,
+    groups: (tree.groups || []).map((g) => ({ id: g.id, title: g.title })),
+    channel: tree.channel ? { title: tree.channel.title, invite: tree.channel.invite || null } : null,
+    settings: { albumUpload: tree.settings?.albumUpload || 'members' },
+    premium: { active: isPremium(tree), until: tree.premiumUntil || null, paywall: PAYWALL(), limits: LIMITS },
   };
+}
+
+/** A'zoni ro'yxatga olish yoki yangilash. O'zgarish bo'lsa true qaytaradi. */
+export function upsertMember(tree, user, role, lang) {
+  if (!user?.id) return false;
+  tree.members = tree.members || {};
+  const id = String(user.id);
+  const name = [user.first_name, user.last_name].filter(Boolean).join(' ').slice(0, 60) || 'Telegram';
+  const cur = tree.members[id];
+  const nextRole = cur?.role === 'edit' || role === 'edit' ? 'edit' : 'view';
+  if (cur && cur.name === name && cur.role === nextRole && (!lang || cur.lang === lang)) return false;
+  tree.members[id] = {
+    name, username: user.username || null, role: nextRole, lang: lang || cur?.lang || null,
+    at: cur?.at || new Date().toISOString(), notify: cur?.notify || { tree: true, album: true, bday: true },
+  };
+  if (!tree.owner && nextRole === 'edit') tree.owner = id;
+  return true;
 }
 
 export async function findTreeByCode(code) {
@@ -119,7 +148,7 @@ async function reserveCode(code, treeId) {
   }
 }
 
-export async function createTree({ title, description, viewCode, editCode, root, persons, meta, who }) {
+export async function createTree({ title, description, viewCode, editCode, root, persons, meta, who, owner }) {
   const { v, e } = validateCodes(viewCode, editCode);
   const t = cleanText(title, 80);
   if (!t) throw new HttpError(400, 'Shajara nomini kiriting');
@@ -138,7 +167,8 @@ export async function createTree({ title, description, viewCode, editCode, root,
     meta: { root_id: null, next_id: 1, ...(meta || {}) },
     persons: [],
     log: [],
-    subscribers: [],
+    members: {},
+    owner: owner ? String(owner) : null,
   };
   if (persons?.length) {
     tree.persons = persons.map((p) => ({ photo: null, ...p }));
@@ -223,6 +253,9 @@ export function addPerson(tree, body, who) {
     if (tree.meta.root_id === of.id) tree.meta.root_id = pid;
   } else {
     throw new HttpError(400, "Qarindoshlik turi noto'g'ri");
+  }
+  if (PAYWALL() && !isPremium(tree) && tree.persons.length >= LIMITS.persons) {
+    throw new HttpError(402, `Bepul tarifda ${LIMITS.persons} kishigacha. Premium bilan cheksiz`);
   }
   tree.persons.push(p);
   if (!tree.meta.root_id) tree.meta.root_id = pid;

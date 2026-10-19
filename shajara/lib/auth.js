@@ -1,4 +1,4 @@
-// Kirish kodlari, sessiya tokenlari va Telegram imzosini tekshirish.
+// Kirish kodlari, sessiya va taklif tokenlari, Telegram imzosini tekshirish.
 import crypto from 'node:crypto';
 
 const SECRET = process.env.APP_SECRET || 'dev-secret-faqat-lokal';
@@ -12,29 +12,51 @@ export function hashCode(code) {
   return crypto.createHmac('sha256', SECRET).update('code:' + normalizeCode(code)).digest('hex');
 }
 
-function b64url(buf) {
-  return Buffer.from(buf).toString('base64url');
+const b64url = (buf) => Buffer.from(buf).toString('base64url');
+const mac = (s, len) => b64url(crypto.createHmac('sha256', SECRET).update(s).digest()).slice(0, len);
+
+function safeEqual(a, b) {
+  return a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
 }
 
-/** role: 'view' | 'edit'. ver: kodlar o'zgarsa eski tokenlar bekor bo'ladi. */
-export function signToken({ treeId, role, ver }, days = 180) {
-  const payload = b64url(JSON.stringify({ t: treeId, r: role, v: ver, e: Date.now() + days * 864e5 }));
-  const sig = b64url(crypto.createHmac('sha256', SECRET).update(payload).digest());
-  return payload + '.' + sig;
+/** Sessiya tokeni. role: 'view'|'edit'; ver: kodlar o'zgarsa eski tokenlar bekor; uid: Telegram foydalanuvchisi. */
+export function signToken({ treeId, role, ver, uid }, days = 120) {
+  const payload = b64url(JSON.stringify({ t: treeId, r: role, v: ver, u: uid || 0, e: Date.now() + days * 864e5 }));
+  return payload + '.' + mac(payload);
 }
 
 export function verifyToken(token) {
   if (!token || typeof token !== 'string' || !token.includes('.')) return null;
   const [payload, sig] = token.split('.');
-  const expect = b64url(crypto.createHmac('sha256', SECRET).update(payload).digest());
-  if (sig.length !== expect.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expect))) return null;
+  if (!safeEqual(sig, mac(payload))) return null;
   try {
     const p = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
     if (p.e < Date.now()) return null;
-    return { treeId: p.t, role: p.r, ver: p.v };
+    return { treeId: p.t, role: p.r, ver: p.v, uid: p.u || 0 };
   } catch {
     return null;
   }
+}
+
+/** Taklif havolasi uchun ixcham kod: inv_<treeId><imzo>. Kirish kodi oshkor bo'lmaydi. */
+export function signInvite(treeId, ver) {
+  return `inv_${treeId}${mac(`inv:${treeId}:${ver}`, 16)}`;
+}
+export function parseInvite(s) {
+  const m = /^inv_([a-z0-9]{12})([A-Za-z0-9_-]{16})$/.exec(String(s || ''));
+  return m ? { treeId: m[1], sig: m[2] } : null;
+}
+export function checkInvite(inv, ver) {
+  return safeEqual(inv.sig, mac(`inv:${inv.treeId}:${ver}`, 16));
+}
+
+/** Telegram faylini ko'rsatish uchun imzolangan, kunlik o'zgaradigan havola parametrlari. */
+export function signMedia(fileId) {
+  const e = Math.ceil(Date.now() / 864e5) + 1; // ertaga oxirigacha amal qiladi
+  return { e, s: mac(`m:${fileId}:${e}`, 22) };
+}
+export function verifyMedia(fileId, e, s) {
+  return Number(e) * 864e5 > Date.now() && safeEqual(String(s || ''), mac(`m:${fileId}:${e}`, 22));
 }
 
 /** Telegram WebApp initData imzosini tekshiradi va foydalanuvchini qaytaradi. */
@@ -45,16 +67,17 @@ export function verifyInitData(initData) {
   const hash = params.get('hash');
   if (!hash) return null;
   params.delete('hash');
-  params.delete('signature');
-  const check = [...params.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([k, v]) => `${k}=${v}`)
-    .join('\n');
   const secret = crypto.createHmac('sha256', 'WebAppData').update(botToken).digest();
-  const calc = crypto.createHmac('sha256', secret).update(check).digest('hex');
-  if (calc !== hash) return null;
+  const check = (p) => [...p.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${k}=${v}`).join('\n');
+  // Yangi mijozlar `signature` maydonini ham imzoga kiritadi, eskilari — yo'q.
+  const variants = [new URLSearchParams(params)];
+  const noSig = new URLSearchParams(params);
+  noSig.delete('signature');
+  variants.push(noSig);
+  const ok = variants.some((p) => safeEqual(crypto.createHmac('sha256', secret).update(check(p)).digest('hex'), hash));
+  if (!ok) return null;
   const authDate = Number(params.get('auth_date') || 0) * 1000;
-  if (Date.now() - authDate > 7 * 864e5) return null;
+  if (Date.now() - authDate > 2 * 864e5) return null;
   try {
     return JSON.parse(params.get('user') || 'null');
   } catch {
@@ -62,7 +85,7 @@ export function verifyInitData(initData) {
   }
 }
 
-// Kodni taxmin qilishga urinishlarni sekinlashtirish (har bir server nusxasi uchun).
+// Bitta server nusxasi doirasidagi tezkor cheklov (asosiy himoya — foydalanuvchi hujjatidagi hisoblagich).
 const attempts = new Map();
 export function rateLimit(key, max = 8, windowMs = 10 * 60e3) {
   const now = Date.now();
@@ -77,13 +100,15 @@ export function rateLimit(key, max = 8, windowMs = 10 * 60e3) {
 }
 
 export function randomId(len = 10) {
-  return crypto.randomBytes(len).toString('base64url').replace(/[-_]/g, '').slice(0, len).toLowerCase();
+  let s = '';
+  while (s.length < len) s += crypto.randomBytes(len).toString('base64url').replace(/[^a-z0-9]/g, '');
+  return s.slice(0, len);
 }
 
-export function randomCode() {
-  const alphabet = 'abcdefghjkmnpqrstuvwxyz23456789';
+export function randomCode(len = 8) {
+  const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  const bytes = crypto.randomBytes(len);
   let s = '';
-  const bytes = crypto.randomBytes(8);
-  for (let i = 0; i < 8; i++) s += alphabet[bytes[i] % alphabet.length];
+  for (let i = 0; i < len; i++) s += alphabet[bytes[i] % alphabet.length];
   return s;
 }

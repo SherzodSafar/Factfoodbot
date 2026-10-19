@@ -140,10 +140,10 @@ export function yearsLabel(p) {
   const b = year(p.birth);
   const d = year(p.death);
   if (b && d) return `${b} – ${d}`;
-  if (b && p.deceased) return `${b} – †`;
+  if (b && p.deceased) return `${b} – …`;
   if (b) return `${b}`;
-  if (d) return `† ${d}`;
-  return p.deceased ? '†' : '';
+  if (d) return `… – ${d}`;
+  return '';
 }
 
 /** Yaqin kunlardagi tug'ilgan kunlar (faqat hayotlar, to'liq sana bilan). */
@@ -168,38 +168,34 @@ export function initials(name) {
 }
 
 // ------------------------------------------------------- Kim kimga kim? --
-/** B shaxs A ga kim bo'ladi — o'zbekcha atama va izoh. */
-export function kinship(fam, a, b) {
-  if (a.id === b.id) return { term: 'Bu — aynan o‘sha inson', detail: '' };
-  if ((a.spouse_ids || []).includes(b.id)) {
-    return { term: b.gender === 'm' ? 'Eri (turmush o‘rtog‘i)' : 'Xotini (turmush o‘rtog‘i)', detail: '' };
-  }
-  const direct = bloodKin(fam, a, b);
+/** B shaxs A ga kim bo'ladi. tr — tarjima funksiyasi, nm — ismni ko'rsatish. */
+export function kinship(fam, a, b, tr = (s) => s, nm = (s) => s) {
+  if (a.id === b.id) return { term: tr('Bu — aynan o‘sha inson'), detail: '' };
+  if ((a.spouse_ids || []).includes(b.id)) return { term: tr(b.gender === 'm' ? 'Eri (turmush o‘rtog‘i)' : 'Xotini (turmush o‘rtog‘i)'), detail: '' };
+  const direct = bloodKin(fam, a, b, tr, nm);
   if (direct) return direct;
-
-  // Nikoh orqali: B — A ning qon qarindoshining turmush o'rtog'i
   for (const s of fam.spouses(b)) {
-    const k = bloodKin(fam, a, s);
+    const k = bloodKin(fam, a, s, tr, nm);
     if (!k) continue;
-    const t = k.key;
-    if (t === 'child') return { term: b.gender === 'f' ? 'Kelini' : 'Kuyovi', detail: `${s.name}ning turmush o‘rtog‘i` };
-    if (t === 'sibling') return { term: b.gender === 'f' ? 'Yangasi (kelinoyisi)' : 'Pochchasi (kuyov)', detail: `${s.name}ning turmush o‘rtog‘i` };
-    if (t === 'grandchild') return { term: b.gender === 'f' ? 'Nevara kelini' : 'Nevara kuyovi', detail: `${s.name}ning turmush o‘rtog‘i` };
-    return { term: `${k.term.replace(/\s*\(.*\)$/, '')}ning turmush o‘rtog‘i`, detail: `${s.name} orqali (${k.detail || 'qarindoshlik'})` };
+    const detail = tr('{name}ning turmush o‘rtog‘i', { name: nm(s.name) });
+    if (k.key === 'child') return { term: tr(b.gender === 'f' ? 'Kelini' : 'Kuyovi'), detail };
+    if (k.key === 'sibling') return { term: tr(b.gender === 'f' ? 'Yangasi (kelinoyisi)' : 'Pochchasi (kuyov)'), detail };
+    if (k.key === 'grandchild') return { term: tr(b.gender === 'f' ? 'Nevara kelini' : 'Nevara kuyovi'), detail };
+    return { term: tr('{rel} — turmush o‘rtog‘i', { rel: k.term }), detail: tr('{name} orqali', { name: nm(s.name) }) };
   }
-  // A — qon qarindoshning turmush o'rtog'i (B — A ning qaynlari va h.k.)
   for (const s of fam.spouses(a)) {
-    const k = bloodKin(fam, s, b);
+    const k = bloodKin(fam, s, b, tr, nm);
     if (!k) continue;
-    if (k.key === 'parent') return { term: b.gender === 'm' ? 'Qaynotasi' : 'Qaynonasi', detail: `${s.name}ning ${b.gender === 'm' ? 'otasi' : 'onasi'}` };
-    if (k.key === 'sibling') return { term: b.gender === 'm' ? 'Qaynisi / qaynog‘asi' : 'Qaynsinglisi / qaynopasi', detail: `${s.name}ning ${k.term.toLowerCase()}` };
-    if (k.key === 'child') return { term: b.gender === 'm' ? 'O‘gay o‘g‘li / o‘g‘li' : 'O‘gay qizi / qizi', detail: `${s.name}ning farzandi` };
-    return { term: `Turmush o‘rtog‘ining ${k.term.toLowerCase()}`, detail: `${s.name} orqali` };
+    const via = tr('{name} orqali', { name: nm(s.name) });
+    if (k.key === 'parent') return { term: tr(b.gender === 'm' ? 'Qaynotasi' : 'Qaynonasi'), detail: via };
+    if (k.key === 'sibling') return { term: tr(b.gender === 'm' ? 'Qaynisi / qaynog‘asi' : 'Qaynsinglisi / qaynopasi'), detail: via };
+    if (k.key === 'child') return { term: tr(b.gender === 'm' ? 'O‘gay o‘g‘li / o‘g‘li' : 'O‘gay qizi / qizi'), detail: via };
+    return { term: tr('Turmush o‘rtog‘ining qarindoshi: {rel}', { rel: k.term }), detail: via };
   }
-  return { term: 'Qon qarindoshlik topilmadi', detail: 'Bu ikki inson shajarada to‘g‘ridan-to‘g‘ri bog‘lanmagan yoki ma’lumot yetarli emas' };
+  return { term: tr('Qon qarindoshlik topilmadi'), detail: tr('Bu ikki inson shajarada to‘g‘ridan-to‘g‘ri bog‘lanmagan yoki ma’lumot yetarli emas') };
 }
 
-function bloodKin(fam, a, b) {
+function bloodKin(fam, a, b, tr, nm) {
   const A = fam.ancestors(a);
   const B = fam.ancestors(b);
   let best = null;
@@ -214,45 +210,36 @@ function bloodKin(fam, a, b) {
   const db = best.ib.d;
   const m = b.gender === 'm';
   const older = a.birth && b.birth ? b.birth < a.birth : null;
-  const detail = da && db ? `Umumiy ajdod: ${lca.name}` : '';
-  const viaA = best.ia.via; // A ning qaysi ota-onasi orqali
+  const detail = da && db ? tr('Umumiy ajdod: {name}', { name: nm(lca.name) }) : '';
+  const viaA = best.ia.via;
+  const r = (key, term, d = detail) => ({ key, term, detail: d });
 
   if (da === 0) {
-    const t = [null, m ? 'O‘g‘li' : 'Qizi', 'Nevarasi', 'Evarasi', 'Chevarasi', 'Duvarasi'][db] || `${db}-bo‘g‘in avlodi`;
-    return { key: db === 1 ? 'child' : db === 2 ? 'grandchild' : 'desc', term: t, detail: '' };
+    const k = [null, m ? 'O‘g‘li' : 'Qizi', 'Nevarasi', 'Evarasi', 'Chevarasi', 'Duvarasi'][db];
+    return r(db === 1 ? 'child' : db === 2 ? 'grandchild' : 'desc', k ? tr(k) : tr('{n}-bo‘g‘in avlodi', { n: db }), '');
   }
   if (db === 0) {
-    const t = [null, m ? 'Otasi' : 'Onasi', m ? 'Bobosi' : 'Buvisi', m ? 'Katta bobosi (bobokaloni)' : 'Katta buvisi', m ? 'Bobosining bobosi' : 'Buvisining buvisi'][da] || `${da}-bo‘g‘in ajdodi`;
-    return { key: da === 1 ? 'parent' : 'anc', term: t, detail: '' };
+    const k = [null, m ? 'Otasi' : 'Onasi', m ? 'Bobosi' : 'Buvisi', m ? 'Katta bobosi (bobokaloni)' : 'Katta buvisi', m ? 'Bobosining bobosi' : 'Buvisining buvisi'][da];
+    return r(da === 1 ? 'parent' : 'anc', k ? tr(k) : tr('{n}-bo‘g‘in ajdodi', { n: da }), '');
   }
   if (da === 1 && db === 1) {
     const half = a.father_id !== b.father_id || a.mother_id !== b.mother_id;
-    let t = m ? (older === null ? 'Aka-ukasi' : older ? 'Akasi' : 'Ukasi') : (older === null ? 'Opa-singlisi' : older ? 'Opasi' : 'Singlisi');
-    if (half && a.father_id && b.father_id && a.mother_id && b.mother_id) t += a.father_id === b.father_id ? ' (otasi bir)' : ' (onasi bir)';
-    return { key: 'sibling', term: t, detail };
+    let t = tr(m ? (older === null ? 'Aka-ukasi' : older ? 'Akasi' : 'Ukasi') : (older === null ? 'Opa-singlisi' : older ? 'Opasi' : 'Singlisi'));
+    if (half && a.father_id && b.father_id && a.mother_id && b.mother_id) t += ' ' + tr(a.father_id === b.father_id ? '(otasi bir)' : '(onasi bir)');
+    return r('sibling', t);
   }
-  if (da === 2 && db === 1) {
-    const paternal = viaA?.gender === 'm';
-    const t = paternal ? (m ? 'Amakisi' : 'Ammasi') : (m ? 'Tog‘asi' : 'Xolasi');
-    return { key: 'uncle', term: t, detail };
-  }
-  if (da === 1 && db === 2) return { key: 'nephew', term: m ? 'Jiyani (o‘g‘il)' : 'Jiyani (qiz)', detail };
+  if (da === 2 && db === 1) return r('uncle', tr(viaA?.gender === 'm' ? (m ? 'Amakisi' : 'Ammasi') : (m ? 'Tog‘asi' : 'Xolasi')));
+  if (da === 1 && db === 2) return r('nephew', tr(m ? 'Jiyani (o‘g‘il)' : 'Jiyani (qiz)'));
   if (da === 2 && db === 2) {
     const pa = viaA?.gender === 'm';
-    const viaB = best.ib.via;
-    const pb = viaB?.gender === 'm';
-    const t = pa && pb ? 'Amakivachchasi' : pa && !pb ? 'Ammavachchasi' : !pa && pb ? 'Tog‘avachchasi' : 'Xolavachchasi';
-    return { key: 'cousin', term: t, detail };
+    const pb = best.ib.via?.gender === 'm';
+    return r('cousin', tr(pa && pb ? 'Amakivachchasi' : pa ? 'Ammavachchasi' : pb ? 'Tog‘avachchasi' : 'Xolavachchasi'));
   }
-  if (da === 3 && db === 1) return { key: 'granduncle', term: m ? 'Katta amakisi / tog‘asi' : 'Katta ammasi / xolasi', detail: detail + ' — bobosi yoki buvisining tug‘ishgani' };
-  if (da === 1 && db === 3) return { key: 'grandnephew', term: 'Jiyanining farzandi', detail };
-  if (da === 3 && db === 2) return { key: 'parent-cousin', term: 'Ota-onasining amakivachchasi', detail };
-  if (da === 2 && db === 3) return { key: 'cousin-child', term: 'Amakivachchasining farzandi', detail };
+  if (da === 3 && db === 1) return r('granduncle', tr(m ? 'Katta amakisi / tog‘asi' : 'Katta ammasi / xolasi'));
+  if (da === 1 && db === 3) return r('grandnephew', tr('Jiyanining farzandi'));
+  if (da === 3 && db === 2) return r('parent-cousin', tr('Ota-onasining amakivachchasi'));
+  if (da === 2 && db === 3) return r('cousin-child', tr('Amakivachchasining farzandi'));
   const deg = Math.min(da, db) - 1;
   const diff = Math.abs(da - db);
-  return {
-    key: 'far',
-    term: `${deg}-darajali qarindosh${diff ? ` (${diff} avlod farq)` : ''}`,
-    detail: `${detail}. A dan ${da}, B dan ${db} bo‘g‘in yuqorida`,
-  };
+  return r('far', tr('{n}-darajali qarindosh', { n: deg }) + (diff ? ' ' + tr('({n} avlod farq)', { n: diff }) : ''));
 }

@@ -216,7 +216,7 @@ export class TreeView {
     for (let d = 0; d <= maxDepth; d++) {
       const y = PAD + d * ROW - 34;
       html.push(`<div class="gen-band" style="top:${y + 20}px;width:${width}px"></div>`);
-      html.push(`<div class="gen-label" data-gen style="top:${y + 8}px;left:16px">${d + 1}-avlod</div>`);
+      html.push(`<div class="gen-label" data-gen style="top:${y + 8}px;left:16px">${this.opts.genLabel ? this.opts.genLabel(d + 1) : d + 1}</div>`);
     }
     html.push(`<svg class="links" width="${width}" height="${height}">${links
       .map((l) => `<path d="${l.d}" class="${l.cls}"${l.child ? ` data-child="${l.child}"` : ''}/>`)
@@ -229,8 +229,8 @@ export class TreeView {
         ? `<button class="cnt ${this.collapsed.has(p.id) ? 'closed' : ''}" data-toggle="${p.id}" aria-label="Shoxni yig'ish">${this.collapsed.has(p.id) ? '+' + fam.descendantsCount(p.id) : '−'}</button>`
         : '';
       html.push(`<div class="${cls}" data-id="${p.id}" style="left:${n.x}px;top:${n.y}px">
-        <div class="avatar ${p.gender} ${p.deceased ? 'dec' : ''}">${photo ? `<img src="${photo}" alt="" loading="lazy" decoding="async">` : esc(initials(p.name))}</div>
-        <div class="nm">${esc(p.name)}</div><div class="yr">${esc(yearsLabel(p)) || '&nbsp;'}</div>${cnt}</div>`);
+        <div class="avatar ${p.gender} ${p.deceased ? 'dec' : ''}">${photo ? `<img src="${photo}" alt="" loading="lazy" decoding="async">` : esc(initials(this.opts.name ? this.opts.name(p.name) : p.name))}</div>
+        <div class="nm">${esc(this.opts.name ? this.opts.name(p.name) : p.name)}</div><div class="yr">${esc(yearsLabel(p)) || '&nbsp;'}</div>${cnt}</div>`);
     }
     this.canvas.style.width = width + 'px';
     this.canvas.style.height = height + 'px';

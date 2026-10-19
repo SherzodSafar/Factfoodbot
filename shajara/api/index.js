@@ -2,20 +2,29 @@
 // Barcha /api/* so'rovlari vercel.json orqali shu yerga keladi.
 import { readFileSync } from 'node:fs';
 import crypto from 'node:crypto';
-import { verifyToken, signToken, verifyInitData, hashCode, normalizeCode, rateLimit } from '../lib/auth.js';
-import { readJson, getFile, deleteKey, listKeys } from '../lib/store.js';
 import {
-  HttpError, findTreeByCode, loadTree, createTree, mutateTree, publicTree, addPerson, updatePerson,
-  deletePerson, savePhoto, changeSettings, todaysEvents,
+  verifyToken, signToken, verifyInitData, hashCode, normalizeCode, rateLimit, signInvite, parseInvite, checkInvite,
+  signMedia, verifyMedia, randomCode,
+} from '../lib/auth.js';
+import { readJson, writeJson, getFile, deleteKey, listKeys } from '../lib/store.js';
+import {
+  HttpError, findTreeByCode, loadTree, createTree, mutateTree, publicTree, addPerson, updatePerson, deletePerson,
+  savePhoto, changeSettings, upsertMember,
 } from '../lib/tree.js';
-import { tg, sendDocument } from '../lib/telegram.js';
-import { randomQuote } from '../lib/quotes.js';
+import { tg, tgUpload, sendDocument, sendStored, mediaOf, downloadFile } from '../lib/telegram.js';
+import { handleUpdate, setupBot, BOT, PLANS, chatKey, linkKey } from '../lib/bot.js';
+import { webhookSecret, todayText } from '../lib/events.js';
+import { notify, escapeHtml } from '../lib/notify.js';
+import { updateUser, getUser } from '../lib/users.js';
+import { loadAlbum, mutateAlbum, publicAlbum, addToAlbum, canUpload, cleanName, ensureAlbum } from '../lib/album.js';
+import { t, LANGS } from '../lib/i18n.js';
 
 const PUBLIC_URL = () => (process.env.PUBLIC_URL || '').replace(/\/$/, '');
-const BOT_USERNAME = () => process.env.BOT_USERNAME || 'Shajara_iBot';
+// Bulutda (BOT_TOKEN bor) barcha so'rovlar Telegram imzosi bilan bo'lishi shart.
+const REQUIRE_TG = () => !!process.env.BOT_TOKEN && process.env.REQUIRE_TG !== 'off';
 
 async function readBody(req) {
-  if (req.body !== undefined && req.body !== null && typeof req.body === 'object' && !Buffer.isBuffer(req.body)) return req.body;
+  if (req.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body)) return req.body;
   if (typeof req.body === 'string') return JSON.parse(req.body || '{}');
   const chunks = [];
   for await (const c of req) chunks.push(c);
@@ -28,131 +37,93 @@ function send(res, status, data, headers = {}) {
   for (const [k, v] of Object.entries(headers)) res.setHeader(k, v);
   if (Buffer.isBuffer(data)) return res.end(data);
   res.setHeader('content-type', 'application/json; charset=utf-8');
+  res.setHeader('cache-control', 'no-store');
   res.end(JSON.stringify(data));
 }
 
-function clientIp(req) {
-  return String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'x').split(',')[0].trim();
-}
+const clientIp = (req) => String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'x').split(',')[0].trim();
+const nameOf = (u) => (u ? [u.first_name, u.last_name].filter(Boolean).join(' ') || (u.username ? '@' + u.username : 'Telegram') : null);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function tgUser(req) {
-  return verifyInitData(req.headers['x-init-data']);
+  const u = verifyInitData(req.headers['x-init-data']);
+  if (!u && REQUIRE_TG()) throw new HttpError(401, 'Ilovani Telegram ichida oching');
+  return u;
 }
 
-function who(req) {
-  const u = tgUser(req);
-  if (!u) return null;
-  return [u.first_name, u.last_name].filter(Boolean).join(' ') || (u.username ? '@' + u.username : null);
+/** Kod terish urinishlari: 6 marta xato → 15 daqiqa kutish (foydalanuvchi bo'yicha, server nusxasidan qat'i nazar). */
+async function guardAttempts(user, ip) {
+  if (!rateLimit('code:' + ip, 20)) throw new HttpError(429, "Juda ko'p urinish. Birozdan so'ng qayta urinib ko'ring");
+  if (!user) return;
+  const u = await getUser(user.id);
+  if (u?.fails?.until > Date.now()) throw new HttpError(429, "Juda ko'p xato urinish. 15 daqiqadan so'ng qayta urinib ko'ring");
+}
+async function failAttempt(user) {
+  await sleep(400);
+  if (!user) return;
+  await updateUser(user.id, user, (d) => {
+    const f = d.fails && d.fails.at > Date.now() - 15 * 60e3 ? d.fails : { n: 0 };
+    f.n++;
+    f.at = Date.now();
+    if (f.n >= 6) f.until = Date.now() + 15 * 60e3;
+    d.fails = f;
+  });
 }
 
-/** Bearer token → shajara va rol. need='edit' bo'lsa tahrir huquqi talab qilinadi. */
-async function auth(req, need = 'view') {
+/** Foydalanuvchini shajara a'zosi sifatida yozib qo'yish (o'zgarish bo'lsagina saqlanadi). */
+async function remember(tree, user, role) {
+  if (!user) return tree;
+  const uid = String(user.id);
+  if ((tree.banned || []).includes(uid)) throw new HttpError(403, 'Sizga bu shajaraga kirish taqiqlangan');
+  const ud = await getUser(user.id);
+  const lang = ud?.lang || null;
+  const probe = structuredClone(tree.members?.[uid] || null);
+  const tmp = { members: { [uid]: probe }, owner: tree.owner };
+  if (!probe) delete tmp.members[uid];
+  if (upsertMember(tmp, user, role, lang) || (!tree.owner && tmp.owner)) {
+    const r = await mutateTree(tree.id, (tr) => { upsertMember(tr, user, role, lang); });
+    tree = r.data;
+  }
+  if (ud?.active !== tree.id || ud?.trees?.[tree.id] !== role) {
+    await updateUser(user.id, user, (d) => { d.active = tree.id; d.trees = { ...(d.trees || {}), [tree.id]: role }; });
+  }
+  return tree;
+}
+
+function roleOf(tree, tok, uid) {
+  if (tok.role === 'edit') return 'edit';
+  return uid && tree.members?.[uid]?.role === 'edit' ? 'edit' : 'view';
+}
+
+/** Token + Telegram foydalanuvchisi → shajara va rol. */
+async function authTree(req, need = 'view') {
   const h = String(req.headers.authorization || '');
   const tok = verifyToken(h.startsWith('Bearer ') ? h.slice(7) : '');
   if (!tok) throw new HttpError(401, 'Qaytadan kirish kodi kiriting');
-  if (need === 'edit' && tok.role !== 'edit') throw new HttpError(403, 'Tahrirlash uchun maxsus kod kerak');
-  return tok;
-}
-
-async function authTree(req, need) {
-  const tok = await auth(req, need);
+  const user = tgUser(req);
+  if (tok.uid && user && String(user.id) !== String(tok.uid)) throw new HttpError(401, 'Qaytadan kiring');
   const tree = await loadTree(tok.treeId);
   if ((tree.ver || 1) !== tok.ver) throw new HttpError(401, "Kodlar o'zgargan. Qaytadan kiring");
-  return { tok, tree };
+  const uid = user ? String(user.id) : null;
+  if (uid && (tree.banned || []).includes(uid)) throw new HttpError(403, 'Sizga bu shajaraga kirish taqiqlangan');
+  const role = roleOf(tree, tok, uid);
+  if (need === 'edit' && role !== 'edit') throw new HttpError(403, 'Tahrirlash uchun maxsus kod kerak');
+  if (need === 'owner' && !(uid && (tree.owner === uid || !tree.owner) && role === 'edit')) throw new HttpError(403, 'Bu amal faqat shajara egasi uchun');
+  return { tok, tree, user, uid, role };
 }
 
-function checkVer(tree, tok) {
+const checkVer = (tree, tok) => {
   if ((tree.ver || 1) !== tok.ver) throw new HttpError(401, "Kodlar o'zgargan. Qaytadan kiring");
+};
+
+function out(tree, role, uid) {
+  const p = publicTree(tree, role, uid ? String(uid) : null);
+  p.photoSig = signMedia('p:' + tree.id);
+  p.invite = `https://t.me/${BOT()}?start=${signInvite(tree.id, tree.ver || 1)}`;
+  return p;
 }
 
-// ---------------------------------------------------------------- Bot ----
-function appButton(extra = '') {
-  return { inline_keyboard: [[{ text: '🌳 Shajarani ochish', web_app: { url: PUBLIC_URL() + '/' + extra } }]] };
-}
-
-async function handleUpdate(update) {
-  const msg = update.message;
-  if (!msg?.text || msg.chat?.type !== 'private') return;
-  const chatId = msg.chat.id;
-  const text = msg.text.trim();
-  const name = msg.from?.first_name || 'qadrdon';
-
-  if (text.startsWith('/start')) {
-    const payload = text.split(' ')[1] || '';
-    const q = randomQuote();
-    const extra = /^[a-z0-9_-]{4,40}$/i.test(payload) ? `?code=${encodeURIComponent(payload)}` : '';
-    await tg('sendMessage', {
-      chat_id: chatId,
-      parse_mode: 'HTML',
-      text:
-        `Assalomu alaykum, <b>${escapeHtml(name)}</b>! 🌿\n\n` +
-        `<b>Shajara iBot</b> — oilangiz shajarasini qurish, saqlash va avlodlarga yetkazish uchun.\n\n` +
-        `🌳 Jonli shajara daraxti\n👥 Qarindoshlar ro'yxati va qidiruv\n📸 Har bir inson uchun surat\n🎂 Tug'ilgan kun eslatmalari\n🔐 Kirish va tahrir uchun alohida maxfiy kodlar\n\n` +
-        `<i>«${escapeHtml(q.t)}»</i>\n— ${escapeHtml(q.a)}\n\n` +
-        (extra ? 'Sizga shajara havolasi ulashildi — pastdagi tugmani bosing 👇' : 'Boshlash uchun pastdagi tugmani bosing 👇'),
-      reply_markup: appButton(extra),
-    });
-    return;
-  }
-  if (text.startsWith('/hikmat')) {
-    const q = randomQuote();
-    await tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: `📜 <i>«${escapeHtml(q.t)}»</i>\n\n— ${escapeHtml(q.a)}` });
-    return;
-  }
-  if (text.startsWith('/yordam') || text.startsWith('/help')) {
-    await tg('sendMessage', {
-      chat_id: chatId,
-      parse_mode: 'HTML',
-      text:
-        '<b>Qanday foydalaniladi?</b>\n\n' +
-        '1️⃣ Ilovani oching va <b>shajara kodini</b> kiriting — daraxt va ro‘yxatni ko‘rasiz.\n' +
-        '2️⃣ Yoki <b>yangi shajara</b> yarating: nom, kirish kodi va tahrir kodini o‘zingiz belgilaysiz.\n' +
-        '3️⃣ Tahrirlash uchun 🔒 belgisini bosib <b>tahrir kodini</b> kiriting — shunda odam qo‘shish, surat qo‘yish mumkin.\n' +
-        '4️⃣ Kirish kodini qarindoshlaringizga yuboring — ular faqat ko‘ra oladi.\n\n' +
-        'Buyruqlar: /start · /hikmat · /yordam',
-      reply_markup: appButton(),
-    });
-    return;
-  }
-  await tg('sendMessage', {
-    chat_id: chatId,
-    text: 'Shajarangiz ilovada 🌳 Pastdagi tugma orqali oching.',
-    reply_markup: appButton(),
-  });
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
-}
-
-async function setupBot() {
-  const url = PUBLIC_URL();
-  const out = {};
-  out.webhook = await tg('setWebhook', {
-    url: url + '/api/webhook',
-    secret_token: webhookSecret(),
-    allowed_updates: ['message'],
-    drop_pending_updates: true,
-  });
-  out.menu = await tg('setChatMenuButton', { menu_button: { type: 'web_app', text: 'Shajara', web_app: { url: url + '/' } } });
-  out.commands = await tg('setMyCommands', {
-    commands: [
-      { command: 'start', description: 'Shajarani ochish' },
-      { command: 'hikmat', description: 'Qondoshlik haqida hikmat' },
-      { command: 'yordam', description: 'Qanday foydalaniladi' },
-    ],
-  });
-  out.desc = await tg('setMyDescription', {
-    description:
-      'Shajara iBot — oilangiz shajarasini quring: jonli daraxt, qarindoshlar ro‘yxati, suratlar va tug‘ilgan kun eslatmalari. Ildizini bilgan — adashmas. 🌳',
-  });
-  out.short = await tg('setMyShortDescription', { short_description: 'Oila shajarasi — jonli daraxt va qarindoshlar ro‘yxati 🌳' });
-  return out;
-}
-
-function webhookSecret() {
-  return hashCode('webhook:' + (process.env.BOT_TOKEN || '')).slice(0, 48);
-}
+const session = (tree, role, uid) => ({ token: signToken({ treeId: tree.id, role, ver: tree.ver || 1, uid }), tree: out(tree, role, uid) });
 
 // ---------------------------------------------------------------- Router --
 async function route(req, res) {
@@ -164,141 +135,336 @@ async function route(req, res) {
 
   if (path === 'health') return send(res, 200, { ok: true, storage: process.env.BLOB_READ_WRITE_TOKEN ? 'blob' : 'local' });
 
-  // Kirish kodi bilan shajarani ochish
+  // ---- Kirish
   if (path === 'open' && m === 'POST') {
     const body = await readBody(req);
-    if (!rateLimit('open:' + clientIp(req), 15)) throw new HttpError(429, "Juda ko'p urinish. 10 daqiqadan so'ng qayta urinib ko'ring");
-    const tree = await findTreeByCode(body.code);
+    const user = tgUser(req);
+    await guardAttempts(user, clientIp(req));
+    let tree = await findTreeByCode(body.code);
     if (!tree) {
-      await new Promise((r) => setTimeout(r, 500));
-      throw new HttpError(404, "Bunday kodli shajara topilmadi");
+      await failAttempt(user);
+      throw new HttpError(404, 'Bunday kodli shajara topilmadi');
     }
-    const role = 'view';
-    const u = tgUser(req);
-    return send(res, 200, { token: signToken({ treeId: tree.id, role, ver: tree.ver || 1 }), tree: publicTree(tree, role, u?.id) });
+    tree = await remember(tree, user, 'view');
+    const role = roleOf(tree, { role: 'view' }, user && String(user.id));
+    return send(res, 200, session(tree, role, user?.id));
   }
-
+  if (path === 'join' && m === 'POST') {
+    const body = await readBody(req);
+    const user = tgUser(req);
+    const inv = parseInvite(body.inv);
+    const tree0 = inv && (await loadTree(inv.treeId).catch(() => null));
+    if (!tree0 || !checkInvite(inv, tree0.ver || 1)) throw new HttpError(404, 'Taklif havolasi eskirgan. Yangisini so‘rang');
+    const tree = await remember(tree0, user, 'view');
+    return send(res, 200, session(tree, roleOf(tree, { role: 'view' }, user && String(user.id)), user?.id));
+  }
   if (path === 'create' && m === 'POST') {
     const body = await readBody(req);
-    if (!rateLimit('create:' + clientIp(req), 10, 60 * 60e3)) throw new HttpError(429, "Juda ko'p shajara yaratildi. Keyinroq urinib ko'ring");
-    const tree = await createTree({ ...body, persons: null, meta: null, who: who(req) });
-    return send(res, 200, { token: signToken({ treeId: tree.id, role: 'edit', ver: tree.ver }), tree: publicTree(tree, 'edit') });
+    const user = tgUser(req);
+    if (!rateLimit('create:' + (user?.id || clientIp(req)), 5, 60 * 60e3)) throw new HttpError(429, "Juda ko'p shajara yaratildi. Keyinroq urinib ko'ring");
+    if (String(body.editCode || '').trim().length < 6) throw new HttpError(400, "Tahrir kodi kamida 6 belgi bo'lsin");
+    let tree = await createTree({ ...body, persons: null, meta: null, who: nameOf(user), owner: user?.id });
+    tree = await remember(tree, user, 'edit');
+    return send(res, 200, session(tree, 'edit', user?.id));
   }
-
   if (path === 'tree' && m === 'GET') {
-    const { tok, tree } = await authTree(req);
-    return send(res, 200, { tree: publicTree(tree, tok.role, tgUser(req)?.id) });
+    const { tree, user, role } = await authTree(req);
+    const t2 = await remember(tree, user, role);
+    return send(res, 200, { tree: out(t2, role, user && String(user.id)) });
   }
-
   if (path === 'unlock' && m === 'POST') {
     const body = await readBody(req);
-    const tok = await auth(req);
-    if (!rateLimit('unlock:' + clientIp(req), 10)) throw new HttpError(429, "Juda ko'p urinish. 10 daqiqadan so'ng qayta urinib ko'ring");
-    const tree = await loadTree(tok.treeId);
-    checkVer(tree, tok);
+    const { tree, user, tok } = await authTree(req);
+    await guardAttempts(user, clientIp(req));
     if (hashCode(normalizeCode(body.code)) !== tree.editHash) {
-      await new Promise((r) => setTimeout(r, 500));
+      await failAttempt(user);
       throw new HttpError(403, "Tahrir kodi noto'g'ri");
     }
-    return send(res, 200, { token: signToken({ treeId: tree.id, role: 'edit', ver: tree.ver || 1 }), tree: publicTree(tree, 'edit', tgUser(req)?.id) });
+    checkVer(tree, tok);
+    const t2 = await remember(tree, user, 'edit');
+    return send(res, 200, session(t2, 'edit', user?.id));
   }
 
-  // Shaxslar
+  // ---- Shaxslar
   if (parts[0] === 'person') {
-    const tok = await auth(req, 'edit');
-    const actor = who(req);
+    const { tok, user, uid, tree: t0 } = await authTree(req, 'edit');
+    const actor = nameOf(user);
+    const pid = parts[1];
+    let r;
+    let note = null;
     if (parts.length === 1 && m === 'POST') {
       const body = await readBody(req);
-      const r = await mutateTree(tok.treeId, (t) => (checkVer(t, tok), addPerson(t, body, actor)));
-      return send(res, 200, { person: r.result, tree: publicTree(r.data, 'edit', tgUser(req)?.id) });
-    }
-    const pid = parts[1];
-    if (parts.length === 2 && m === 'PATCH') {
+      r = await mutateTree(t0.id, (t) => (checkVer(t, tok), addPerson(t, body, actor)));
+      note = (lang) => t(lang, '🌱 <b>{who}</b> shajaraga yangi a’zo qo‘shdi: {name}', { who: escapeHtml(actor || ''), name: escapeHtml(r.result.name) });
+    } else if (parts.length === 2 && m === 'PATCH') {
       const body = await readBody(req);
-      const r = await mutateTree(tok.treeId, (t) => (checkVer(t, tok), updatePerson(t, pid, body, actor)));
-      return send(res, 200, { person: r.result, tree: publicTree(r.data, 'edit', tgUser(req)?.id) });
-    }
-    if (parts.length === 2 && m === 'DELETE') {
-      const r = await mutateTree(tok.treeId, (t) => (checkVer(t, tok), deletePerson(t, pid, actor)));
-      if (r.result.photo) await deleteKey(`photos/${tok.treeId}/${r.result.photo}`);
-      return send(res, 200, { tree: publicTree(r.data, 'edit', tgUser(req)?.id) });
-    }
-    if (parts[2] === 'photo' && (m === 'POST' || m === 'DELETE')) {
+      r = await mutateTree(t0.id, (t) => (checkVer(t, tok), updatePerson(t, pid, body, actor)));
+    } else if (parts.length === 2 && m === 'DELETE') {
+      r = await mutateTree(t0.id, (t) => (checkVer(t, tok), deletePerson(t, pid, actor)));
+      if (r.result.photo) await deleteKey(`photos/${t0.id}/${r.result.photo}`);
+    } else if (parts[2] === 'photo' && (m === 'POST' || m === 'DELETE')) {
       const body = m === 'POST' ? await readBody(req) : {};
-      const file = m === 'POST' ? await savePhoto(tok.treeId, pid, body.data) : null;
+      const file = m === 'POST' ? await savePhoto(t0.id, pid, body.data) : null;
       let old = null;
-      const r = await mutateTree(tok.treeId, (t) => {
+      let name = '';
+      r = await mutateTree(t0.id, (t) => {
         checkVer(t, tok);
         const p = t.persons.find((x) => x.id === pid);
         if (!p) throw new HttpError(404, 'Shaxs topilmadi');
         old = p.photo;
+        name = p.name;
         p.photo = file;
         t.updatedAt = new Date().toISOString();
         t.log = t.log || [];
         t.log.unshift({ at: t.updatedAt, who: actor || 'Tahrirchi', action: file ? 'photo' : 'photo-del', name: p.name });
       });
-      if (old && old !== file) await deleteKey(`photos/${tok.treeId}/${old}`);
-      return send(res, 200, { tree: publicTree(r.data, 'edit', tgUser(req)?.id) });
-    }
+      if (old && old !== file) await deleteKey(`photos/${t0.id}/${old}`);
+      if (file) note = (lang) => t(lang, '🖼 <b>{who}</b> {name} suratini yangiladi', { who: escapeHtml(actor || ''), name: escapeHtml(name) });
+    } else throw new HttpError(404, 'Topilmadi');
+    if (note) await notify(r.data, 'tree', note, { except: uid }).catch(() => {});
+    return send(res, 200, { person: r.result?.id ? r.result : undefined, tree: out(r.data, 'edit', uid) });
   }
 
   if (path === 'settings' && m === 'PATCH') {
-    const tok = await auth(req, 'edit');
     const body = await readBody(req);
-    const r = await mutateTree(tok.treeId, async (t) => (checkVer(t, tok), changeSettings(t, body, who(req))));
-    const token = signToken({ treeId: tok.treeId, role: 'edit', ver: r.data.ver || 1 });
-    return send(res, 200, { token, tree: publicTree(r.data, 'edit', tgUser(req)?.id) });
-  }
-
-  // Tug'ilgan kun eslatmalariga obuna
-  if (path === 'subscribe' && m === 'POST') {
-    const tok = await auth(req);
-    const body = await readBody(req);
-    const u = tgUser(req);
-    if (!u) throw new HttpError(400, 'Bu funksiya faqat Telegram ichida ishlaydi');
-    const r = await mutateTree(tok.treeId, (t) => {
+    const codes = body.viewCode || body.editCode;
+    const { tok, user, uid } = await authTree(req, codes ? 'owner' : 'edit');
+    if (body.editCode && normalizeCode(body.editCode).length < 6) throw new HttpError(400, "Tahrir kodi kamida 6 belgi bo'lsin");
+    const r = await mutateTree(tok.treeId, async (t) => {
       checkVer(t, tok);
-      const s = new Set(t.subscribers || []);
-      if (body.on) s.add(u.id);
-      else s.delete(u.id);
-      t.subscribers = [...s];
+      if (['members', 'editors'].includes(body.albumUpload)) t.settings = { ...(t.settings || {}), albumUpload: body.albumUpload };
+      return changeSettings(t, body, nameOf(user));
     });
-    if (body.on) {
-      await tg('sendMessage', {
-        chat_id: u.id,
-        parse_mode: 'HTML',
-        text: `🔔 <b>${escapeHtml(r.data.title)}</b> uchun eslatmalar yoqildi.\nQarindoshlaringizning tug‘ilgan kunlari va xotira kunlarida xabar beraman.`,
-      });
-    }
-    return send(res, 200, { subscribed: !!body.on });
+    return send(res, 200, session(r.data, 'edit', uid));
   }
 
-  // Zaxira nusxani Telegram chatga yuborish
-  if (path === 'export' && m === 'POST') {
-    const tok = await auth(req, 'edit');
-    const u = tgUser(req);
-    if (!u) throw new HttpError(400, 'Bu funksiya faqat Telegram ichida ishlaydi');
-    const tree = await loadTree(tok.treeId);
-    checkVer(tree, tok);
-    const out = { meta: { ...tree.meta, title: tree.title, updated: tree.updatedAt }, persons: tree.persons };
-    const day = new Date().toISOString().slice(0, 10);
-    const j = await sendDocument(u.id, `shajara-${day}.json`, Buffer.from(JSON.stringify(out, null, 1)),
-      `💾 <b>${escapeHtml(tree.title)}</b> — zaxira nusxa (${tree.persons.length} kishi, ${day})`);
-    if (!j.ok) throw new HttpError(500, 'Yuborib bo‘lmadi. Avval botga /start yozing');
+  // ---- A'zolar (kim kirgan, tahrirchilar, bloklash)
+  if (parts[0] === 'members') {
+    if (m === 'GET') {
+      const { tree, uid } = await authTree(req, 'edit');
+      const list = Object.entries(tree.members || {}).map(([id, x]) => ({
+        id, name: x.name, username: x.username, role: x.role, at: x.at, owner: tree.owner === id, me: id === uid,
+      }));
+      const banned = (tree.banned || []).map((id) => ({ id, name: tree.bannedNames?.[id] || id }));
+      return send(res, 200, { members: list, banned });
+    }
+    if (m === 'PATCH' && parts[1]) {
+      const body = await readBody(req);
+      const { tree, uid } = await authTree(req, 'owner');
+      const target = parts[1];
+      if (target === uid) throw new HttpError(400, 'O‘zingizni o‘zgartira olmaysiz');
+      const r = await mutateTree(tree.id, (t) => {
+        t.members = t.members || {};
+        if (body.role && t.members[target]) t.members[target].role = body.role === 'edit' ? 'edit' : 'view';
+        if (body.ban === true) {
+          t.banned = [...new Set([...(t.banned || []), target])];
+          t.bannedNames = { ...(t.bannedNames || {}), [target]: t.members[target]?.name || target };
+          delete t.members[target];
+        }
+        if (body.ban === false) t.banned = (t.banned || []).filter((x) => x !== target);
+        if (body.owner === true && t.members[target]) {
+          t.owner = target;
+          t.members[target].role = 'edit';
+        }
+      });
+      return send(res, 200, { ok: true, memberCount: Object.keys(r.data.members || {}).length });
+    }
+  }
+
+  // ---- Guruh / kanal ulash kodi
+  if (path === 'linkcode' && m === 'POST') {
+    const body = await readBody(req);
+    const { tree, user } = await authTree(req, 'edit');
+    const kind = body.kind === 'channel' ? 'channel' : 'group';
+    const code = randomCode(8);
+    const exp = Date.now() + 30 * 60e3;
+    await writeJson(linkKey(code), { treeId: tree.id, kind, exp, by: user?.id || null });
+    return send(res, 200, { code, exp, bot: BOT() });
+  }
+  if (path === 'unlink' && m === 'POST') {
+    const body = await readBody(req);
+    const { tree, uid } = await authTree(req, 'edit');
+    const id = body.id === 'channel' ? tree.channel?.id : Number(body.id);
+    if (!id) throw new HttpError(400, 'Topilmadi');
+    await deleteKey(chatKey(id));
+    const r = await mutateTree(tree.id, (t) => {
+      if (t.channel?.id === id) t.channel = null;
+      t.groups = (t.groups || []).filter((g) => g.id !== id);
+    });
+    tg('leaveChat', { chat_id: id }).catch(() => {});
+    return send(res, 200, { tree: out(r.data, 'edit', uid) });
+  }
+
+  // ---- Shaxsiy sozlamalar: til, bildirishnomalar
+  if (path === 'me' && m === 'PATCH') {
+    const body = await readBody(req);
+    const { tree, user, uid } = await authTree(req);
+    if (!user) throw new HttpError(400, 'Bu funksiya faqat Telegram ichida ishlaydi');
+    const lang = LANGS.includes(body.lang) ? body.lang : undefined;
+    if (lang) await updateUser(user.id, user, (d) => { d.lang = lang; });
+    await mutateTree(tree.id, (t) => {
+      const mem = t.members?.[uid];
+      if (!mem) return;
+      if (lang) mem.lang = lang;
+      if (body.notify && typeof body.notify === 'object') {
+        mem.notify = { ...(mem.notify || {}) };
+        for (const k of ['tree', 'album', 'bday']) if (k in body.notify) mem.notify[k] = !!body.notify[k];
+      }
+    });
     return send(res, 200, { ok: true });
   }
 
-  // Suratlar (maxfiy do'kondan proksi orqali)
+  // ---- Albom
+  if (parts[0] === 'album') {
+    const ctx = await authTree(req);
+    const { tree, uid, role, user } = ctx;
+    const by = { id: uid, name: nameOf(user) || 'Tahrirchi' };
+    const mine = (it) => role === 'edit' || (uid && it.by?.id === uid);
+    if (parts.length === 1 && m === 'GET') {
+      const doc = await loadAlbum(tree.id);
+      return send(res, 200, { ...publicAlbum(doc), canUpload: canUpload(tree, uid, role), canEdit: role === 'edit', me: uid });
+    }
+    if (parts.length === 1 && m === 'POST') {
+      if (!canUpload(tree, uid, role)) throw new HttpError(403, 'Ruxsat yo‘q');
+      const body = await readBody(req);
+      const r = await mutateAlbum(tree.id, (doc) => ensureAlbum(doc, body.name, by));
+      return send(res, 200, { album: r.result });
+    }
+    if (parts[1] === 'upload' && m === 'POST') {
+      if (!canUpload(tree, uid, role)) throw new HttpError(403, 'Ruxsat yo‘q');
+      const body = await readBody(req);
+      const mm = /^data:(image\/(jpeg|png|webp));base64,(.+)$/.exec(String(body.data || ''));
+      if (!mm) throw new HttpError(400, 'Rasm formati noto‘g‘ri');
+      const buf = Buffer.from(mm[3], 'base64');
+      if (buf.length > 3.5 * 1024 * 1024) throw new HttpError(413, 'Rasm juda katta');
+      const target = tree.channel?.id || uid;
+      if (!target) throw new HttpError(400, 'Bu funksiya faqat Telegram ichida ishlaydi');
+      const albumName = cleanName(body.albumName);
+      const doc = await loadAlbum(tree.id);
+      const aName = doc.albums.find((a) => a.id === body.album)?.name || albumName || 'Umumiy';
+      const cap = `📁 <b>${escapeHtml(aName)}</b>${body.caption ? '\n' + escapeHtml(cleanName(body.caption, 900)) : ''}\n— ${escapeHtml(by.name)}`;
+      const sent = await tgUpload('sendPhoto', { chat_id: target, caption: cap, parse_mode: 'HTML' }, 'photo', buf, 'photo.jpg', mm[1]);
+      if (!sent.ok) throw new HttpError(502, 'Telegramga yuklab bo‘lmadi');
+      const media = mediaOf(sent.result);
+      const treeNoCh = { ...tree, channel: null }; // fayl allaqachon kanalda
+      const r = await addToAlbum(treeNoCh, { albumId: body.album, albumName, caption: body.caption, media: [{ ...media }], by });
+      if (tree.channel?.id) {
+        await mutateAlbum(tree.id, (d) => {
+          const it = d.items.find((x) => x.fileId === media.fileId);
+          if (it) it.ch = { chat: tree.channel.id, msg: sent.result.message_id };
+        });
+      }
+      return send(res, 200, { ok: true, album: r.album });
+    }
+    if (parts[1] === 'a' && parts[2]) {
+      if (role !== 'edit') throw new HttpError(403, 'Faqat tahrirchilar uchun');
+      const aid = parts[2];
+      if (m === 'PATCH') {
+        const body = await readBody(req);
+        const name = cleanName(body.name);
+        if (!name) throw new HttpError(400, 'Nom kiriting');
+        await mutateAlbum(tree.id, (d) => { const a = d.albums.find((x) => x.id === aid); if (a) a.name = name; });
+        return send(res, 200, { ok: true });
+      }
+      if (m === 'DELETE') {
+        // Albom o'chsa, fayllar yo'qolmaydi — "Umumiy" albomiga o'tadi.
+        await mutateAlbum(tree.id, (d) => {
+          const left = d.items.filter((x) => x.album === aid);
+          d.albums = d.albums.filter((x) => x.id !== aid);
+          if (left.length) {
+            const g = ensureAlbum(d, 'Umumiy', by);
+            for (const it of left) it.album = g.id;
+          }
+        });
+        return send(res, 200, { ok: true });
+      }
+    }
+    if (parts[1] === 'i' && parts[2]) {
+      const iid = parts[2];
+      const doc = await loadAlbum(tree.id);
+      const it = doc.items.find((x) => x.id === iid);
+      if (!it) throw new HttpError(404, 'Fayl topilmadi');
+      if (parts[3] === 'send' && m === 'POST') {
+        if (!uid) throw new HttpError(400, 'Bu funksiya faqat Telegram ichida ishlaydi');
+        const a = doc.albums.find((x) => x.id === it.album);
+        const r = await sendStored(uid, it, `📁 <b>${escapeHtml(a?.name || '')}</b>${it.caption ? '\n' + escapeHtml(it.caption) : ''}`);
+        if (!r.ok) throw new HttpError(502, 'Yuborib bo‘lmadi. Avval botga /start yozing');
+        return send(res, 200, { ok: true });
+      }
+      if (!mine(it)) throw new HttpError(403, 'Faqat yuklagan kishi yoki tahrirchi o‘zgartira oladi');
+      if (m === 'PATCH') {
+        const body = await readBody(req);
+        await mutateAlbum(tree.id, (d) => {
+          const x = d.items.find((y) => y.id === iid);
+          if (!x) return;
+          if ('caption' in body) x.caption = cleanName(body.caption, 900);
+          if (body.album && d.albums.some((a) => a.id === body.album)) x.album = body.album;
+          if (body.albumName) x.album = ensureAlbum(d, body.albumName, by).id;
+        });
+        return send(res, 200, { ok: true });
+      }
+      if (m === 'DELETE') {
+        await mutateAlbum(tree.id, (d) => { d.items = d.items.filter((y) => y.id !== iid); });
+        if (it.ch) await tg('deleteMessage', { chat_id: it.ch.chat, message_id: it.ch.msg });
+        return send(res, 200, { ok: true });
+      }
+    }
+    throw new HttpError(404, 'Topilmadi');
+  }
+
+  // ---- Telegram fayllarini ko'rsatish (imzolangan, CDN keshlanadi)
+  if (path === 'media' && m === 'GET') {
+    const f = url.searchParams.get('f') || '';
+    if (!verifyMedia(f, url.searchParams.get('e'), url.searchParams.get('s'))) throw new HttpError(403, 'Havola eskirgan');
+    const file = await downloadFile(f);
+    if (!file) throw new HttpError(404, 'Fayl topilmadi');
+    if (file.buffer.length > 4.3 * 1024 * 1024) throw new HttpError(413, 'Fayl katta — Telegramda oching');
+    const ext = (file.path.split('.').pop() || '').toLowerCase();
+    const type = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', mp4: 'video/mp4', gif: 'image/gif', mov: 'video/quicktime' }[ext] || 'application/octet-stream';
+    return send(res, 200, file.buffer, { 'content-type': type, 'cache-control': 'public, max-age=86400, s-maxage=604800, immutable' });
+  }
+
+  // ---- Shaxs suratlari (maxfiy do'kondan, imzo bilan)
   if (parts[0] === 'photo' && parts.length === 3 && m === 'GET') {
-    const tok = verifyToken(url.searchParams.get('t'));
-    if (!tok || tok.treeId !== parts[1]) throw new HttpError(401, 'Ruxsat yo‘q');
+    if (!verifyMedia('p:' + parts[1], url.searchParams.get('e'), url.searchParams.get('s'))) throw new HttpError(401, 'Ruxsat yo‘q');
     if (!/^[a-z0-9-]+\.(jpg|png|webp)$/i.test(parts[2])) throw new HttpError(400, 'Fayl nomi noto‘g‘ri');
     const f = await getFile(`photos/${parts[1]}/${parts[2]}`);
     if (!f) throw new HttpError(404, 'Surat topilmadi');
     return send(res, 200, f.buffer, { 'content-type': f.contentType, 'cache-control': 'private, max-age=31536000, immutable' });
   }
 
-  // Telegram webhook
+  // ---- Premium (Telegram Stars)
+  if (path === 'premium' && m === 'POST') {
+    const body = await readBody(req);
+    const { tree } = await authTree(req);
+    const plan = PLANS[body.plan] ? body.plan : 'year';
+    const lang = LANGS.includes(body.lang) ? body.lang : 'uz';
+    const r = await tg('createInvoiceLink', {
+      title: `Shajara Premium — ${tree.title}`.slice(0, 32),
+      description: (lang === 'ru' ? 'Безлимитный альбом и все функции для всей семьи' : lang === 'en' ? 'Unlimited album and all features for the whole family' : 'Cheksiz albom va barcha imkoniyatlar — butun oila uchun').slice(0, 255),
+      payload: `prem:${tree.id}:${plan}`, currency: 'XTR', prices: [{ label: plan, amount: PLANS[plan].stars() }],
+    });
+    if (!r.ok) throw new HttpError(502, 'To‘lov havolasini yaratib bo‘lmadi');
+    return send(res, 200, { link: r.result });
+  }
+  if (path === 'plans' && m === 'GET') {
+    return send(res, 200, { month: PLANS.month.stars(), year: PLANS.year.stars(), paywall: process.env.PAYWALL === 'on' });
+  }
+
+  // ---- Zaxira nusxa
+  if (path === 'export' && m === 'POST') {
+    const { tree, uid } = await authTree(req, 'edit');
+    if (!uid) throw new HttpError(400, 'Bu funksiya faqat Telegram ichida ishlaydi');
+    const album = await loadAlbum(tree.id);
+    const data = { meta: { ...tree.meta, title: tree.title, updated: tree.updatedAt }, persons: tree.persons, album };
+    const day = new Date().toISOString().slice(0, 10);
+    const j = await sendDocument(uid, `shajara-${day}.json`, Buffer.from(JSON.stringify(data, null, 1)),
+      `💾 <b>${escapeHtml(tree.title)}</b> — ${tree.persons.length} · ${album.items.length} 📸 · ${day}`);
+    if (!j.ok) throw new HttpError(500, 'Yuborib bo‘lmadi. Avval botga /start yozing');
+    return send(res, 200, { ok: true });
+  }
+
+  // ---- Telegram webhook
   if (path === 'webhook' && m === 'POST') {
     if (req.headers['x-telegram-bot-api-secret-token'] !== webhookSecret()) return send(res, 401, { ok: false });
     const update = await readBody(req);
@@ -310,52 +476,21 @@ async function route(req, res) {
     return send(res, 200, { ok: true });
   }
 
-  // Har kuni: tug'ilgan kun va xotira kunlari eslatmalari
+  // ---- Har kuni 09:00 (Toshkent): tug'ilgan kun va xotira kunlari
   if (path === 'cron') {
     const secret = process.env.CRON_SECRET;
     if (!secret || req.headers.authorization !== `Bearer ${secret}`) throw new HttpError(401, 'Ruxsat yo‘q');
-    const keys = await listKeys('trees/');
     let sent = 0;
-    for (const key of keys) {
-      const t = (await readJson(key))?.data;
-      if (!t?.subscribers?.length) continue;
-      const { births, memorials } = todaysEvents(t);
-      if (!births.length && !memorials.length) continue;
-      let text = `🌳 <b>${escapeHtml(t.title)}</b>\n`;
-      if (births.length) {
-        text += '\n🎂 <b>Bugun tug‘ilgan kun:</b>\n' + births.map((b) => `• ${escapeHtml(b.name)} — ${b.age} yosh`).join('\n');
-        text += '\n\nTabriklashni unutmang — bir qo‘ng‘iroq ham qondoshlikni mustahkamlaydi. 💚';
-      }
-      if (memorials.length) {
-        text += '\n\n🕯 <b>Xotira kuni:</b>\n' + memorials.map((x) => `• ${escapeHtml(x.name)} — vafotiga ${x.years} yil`).join('\n');
-        text += '\n\nAlloh rahmatiga olgan bo‘lsin. Duo bilan yod eting.';
-      }
-      for (const chatId of t.subscribers) {
-        const j = await tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text, reply_markup: appButton() });
-        if (j.ok) sent++;
-      }
+    for (const key of await listKeys('trees/')) {
+      const tr = (await readJson(key))?.data;
+      if (!tr) continue;
+      if (!todayText(tr, 'uz')) continue;
+      sent += await notify(tr, 'bday', (lang) => todayText(tr, lang));
     }
     return send(res, 200, { ok: true, sent });
   }
 
-  // Ma'mur: tayyor JSON'dan shajara yaratish
-  if (path === 'admin/import' && m === 'POST') {
-    if (!process.env.ADMIN_KEY || req.headers['x-admin-key'] !== process.env.ADMIN_KEY) throw new HttpError(401, 'Ruxsat yo‘q');
-    const body = await readBody(req);
-    const src = body.data || {};
-    const tree = await createTree({
-      title: body.title || src.meta?.title || 'Shajara',
-      description: body.description || '',
-      viewCode: body.viewCode,
-      editCode: body.editCode,
-      persons: src.persons,
-      meta: { root_id: src.meta?.root_id || src.persons?.[0]?.id, next_id: src.meta?.next_id },
-      who: 'Import',
-    });
-    return send(res, 200, { ok: true, id: tree.id, persons: tree.persons.length });
-  }
-
-  // Ma'mur: omborda shifrlangan holda turgan shajarani (data/seed.enc) yuklash
+  // ---- Ma'mur
   if (path === 'admin/seed') {
     if (!process.env.ADMIN_KEY || url.searchParams.get('key') !== process.env.ADMIN_KEY) throw new HttpError(401, 'Ruxsat yo‘q');
     if (!process.env.SEED_KEY) throw new HttpError(400, 'SEED_KEY sozlanmagan');
@@ -365,16 +500,28 @@ async function route(req, res) {
     d.setAuthTag(raw.subarray(12, 28));
     const src = JSON.parse(Buffer.concat([d.update(raw.subarray(28)), d.final()]).toString('utf8'));
     const tree = await createTree({
-      title: src.meta?.title || 'Shajara',
-      viewCode: url.searchParams.get('view'),
-      editCode: url.searchParams.get('edit'),
-      persons: src.persons,
-      meta: { root_id: src.meta?.root_id || src.persons?.[0]?.id, next_id: src.meta?.next_id },
-      who: 'Import',
+      title: src.meta?.title || 'Shajara', viewCode: url.searchParams.get('view'), editCode: url.searchParams.get('edit'),
+      persons: src.persons, meta: { root_id: src.meta?.root_id || src.persons?.[0]?.id, next_id: src.meta?.next_id }, who: 'Import',
     });
     return send(res, 200, { ok: true, id: tree.id, persons: tree.persons.length });
   }
-
+  if (path === 'admin/migrate') {
+    // Eski shajaralar: subscribers → members (bir martalik)
+    if (!process.env.ADMIN_KEY || url.searchParams.get('key') !== process.env.ADMIN_KEY) throw new HttpError(401, 'Ruxsat yo‘q');
+    let n = 0;
+    for (const key of await listKeys('trees/')) {
+      const id = key.slice(6, -5);
+      await mutateTree(id, (tr) => {
+        tr.members = tr.members || {};
+        for (const s of tr.subscribers || []) {
+          if (!tr.members[s]) tr.members[s] = { name: 'Telegram', role: 'view', at: new Date().toISOString(), notify: { tree: true, album: true, bday: true } };
+        }
+        delete tr.subscribers;
+        n++;
+      });
+    }
+    return send(res, 200, { ok: true, trees: n });
+  }
   if (path === 'setup') {
     if (!process.env.ADMIN_KEY || url.searchParams.get('key') !== process.env.ADMIN_KEY) throw new HttpError(401, 'Ruxsat yo‘q');
     return send(res, 200, await setupBot());
@@ -393,4 +540,3 @@ export default async function handler(req, res) {
     send(res, 500, { error: 'Serverda xatolik. Birozdan so‘ng qayta urinib ko‘ring' });
   }
 }
-
