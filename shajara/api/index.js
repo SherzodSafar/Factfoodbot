@@ -9,7 +9,7 @@ import {
 import { readJson, writeJson, getFile, deleteKey, listKeys } from '../lib/store.js';
 import {
   HttpError, findTreeByCode, loadTree, createTree, mutateTree, publicTree, addPerson, updatePerson, deletePerson,
-  savePhoto, changeSettings, upsertMember,
+  savePhoto, changeSettings, upsertMember, importRows, replacePersons,
 } from '../lib/tree.js';
 import { tg, tgUpload, sendDocument, sendStored, mediaOf, downloadFile } from '../lib/telegram.js';
 import { handleUpdate, setupBot, BOT, PLANS, chatKey, linkKey } from '../lib/bot.js';
@@ -185,6 +185,15 @@ async function route(req, res) {
     return send(res, 200, session(t2, 'edit', user?.id));
   }
 
+  // ---- Fayldan import (CSV/Excel qatorlari yoki eksport qilingan JSON)
+  if (path === 'import' && m === 'POST') {
+    const body = await readBody(req);
+    const replace = body.mode === 'replace';
+    const { tok, user, uid } = await authTree(req, replace ? 'owner' : 'edit');
+    const r = await mutateTree(tok.treeId, (t) => (checkVer(t, tok), replace ? replacePersons(t, body.data, nameOf(user)) : importRows(t, body.rows, nameOf(user))));
+    return send(res, 200, { count: r.result, tree: out(r.data, 'edit', uid) });
+  }
+
   // ---- Shaxslar
   if (parts[0] === 'person') {
     const { tok, user, uid, tree: t0 } = await authTree(req, 'edit');
@@ -319,10 +328,9 @@ async function route(req, res) {
     const ctx = await authTree(req);
     const { tree, uid, role, user } = ctx;
     const by = { id: uid, name: nameOf(user) || 'Tahrirchi' };
-    const mine = (it) => role === 'edit' || (uid && it.by?.id === uid);
     if (parts.length === 1 && m === 'GET') {
       const doc = await loadAlbum(tree.id);
-      return send(res, 200, { ...publicAlbum(doc), canUpload: canUpload(tree, uid, role), canEdit: role === 'edit', me: uid });
+      return send(res, 200, { ...publicAlbum(doc, tree), hasChannel: !!tree.channel, canUpload: canUpload(tree, uid, role), canEdit: role === 'edit', me: uid });
     }
     if (parts.length === 1 && m === 'POST') {
       if (!canUpload(tree, uid, role)) throw new HttpError(403, 'Ruxsat yo‘q');
@@ -337,8 +345,8 @@ async function route(req, res) {
       if (!mm) throw new HttpError(400, 'Rasm formati noto‘g‘ri');
       const buf = Buffer.from(mm[3], 'base64');
       if (buf.length > 3.5 * 1024 * 1024) throw new HttpError(413, 'Rasm juda katta');
-      const target = tree.channel?.id || uid;
-      if (!target) throw new HttpError(400, 'Bu funksiya faqat Telegram ichida ishlaydi');
+      const target = tree.channel?.id;
+      if (!target) throw new HttpError(400, 'Avval albom kanalini ulang');
       const albumName = cleanName(body.albumName);
       const doc = await loadAlbum(tree.id);
       const aName = doc.albums.find((a) => a.id === body.album)?.name || albumName || 'Umumiy';
@@ -346,14 +354,7 @@ async function route(req, res) {
       const sent = await tgUpload('sendPhoto', { chat_id: target, caption: cap, parse_mode: 'HTML' }, 'photo', buf, 'photo.jpg', mm[1]);
       if (!sent.ok) throw new HttpError(502, 'Telegramga yuklab bo‘lmadi');
       const media = mediaOf(sent.result);
-      const treeNoCh = { ...tree, channel: null }; // fayl allaqachon kanalda
-      const r = await addToAlbum(treeNoCh, { albumId: body.album, albumName, caption: body.caption, media: [{ ...media }], by });
-      if (tree.channel?.id) {
-        await mutateAlbum(tree.id, (d) => {
-          const it = d.items.find((x) => x.fileId === media.fileId);
-          if (it) it.ch = { chat: tree.channel.id, msg: sent.result.message_id };
-        });
-      }
+      const r = await addToAlbum(tree, { inChannel: true, albumId: body.album, albumName, caption: body.caption, media: [{ ...media, ch: { chat: target, msg: sent.result.message_id } }], by });
       return send(res, 200, { ok: true, album: r.album });
     }
     if (parts[1] === 'a' && parts[2]) {
@@ -391,7 +392,7 @@ async function route(req, res) {
         if (!r.ok) throw new HttpError(502, 'Yuborib bo‘lmadi. Avval botga /start yozing');
         return send(res, 200, { ok: true });
       }
-      if (!mine(it)) throw new HttpError(403, 'Faqat yuklagan kishi yoki tahrirchi o‘zgartira oladi');
+      if (role !== 'edit') throw new HttpError(403, 'Albomni faqat tahrir rejimidagilar o‘zgartira oladi');
       if (m === 'PATCH') {
         const body = await readBody(req);
         await mutateAlbum(tree.id, (d) => {
@@ -504,6 +505,52 @@ async function route(req, res) {
       persons: src.persons, meta: { root_id: src.meta?.root_id || src.persons?.[0]?.id, next_id: src.meta?.next_id }, who: 'Import',
     });
     return send(res, 200, { ok: true, id: tree.id, persons: tree.persons.length });
+  }
+  // ---- Loyiha egasining admin paneli (x-admin-key bilan)
+  if (path.startsWith('admin/') && ['admin/overview', 'admin/premium', 'admin/broadcast'].includes(path)) {
+    const key = String(req.headers['x-admin-key'] || '');
+    const real = process.env.ADMIN_KEY || '';
+    if (!rateLimit('admin:' + clientIp(req), 30)) throw new HttpError(429, "Juda ko'p urinish");
+    if (!real || key.length !== real.length || !crypto.timingSafeEqual(Buffer.from(key), Buffer.from(real))) {
+      await sleep(600);
+      throw new HttpError(401, 'Kalit noto‘g‘ri');
+    }
+    if (path === 'admin/overview') {
+      const trees = [];
+      for (const k of await listKeys('trees/')) {
+        const tr = (await readJson(k))?.data;
+        if (!tr) continue;
+        const al = await loadAlbum(tr.id);
+        trees.push({
+          id: tr.id, title: tr.title, persons: tr.persons.length, members: Object.keys(tr.members || {}).length,
+          album: al.items.length, groups: (tr.groups || []).length, channel: tr.channel?.title || null,
+          premiumUntil: tr.premiumUntil || null, createdAt: tr.createdAt, updatedAt: tr.updatedAt,
+          owner: tr.owner ? tr.members?.[tr.owner]?.name || tr.owner : null, ownerId: tr.owner || null, stars: (tr.payments || []).reduce((a, p) => a + (p.stars || 0), 0),
+        });
+      }
+      const users = (await listKeys('users/')).length;
+      return send(res, 200, { trees, users, paywall: process.env.PAYWALL === 'on', prices: { month: PLANS.month.stars(), year: PLANS.year.stars() } });
+    }
+    const body = await readBody(req);
+    if (path === 'admin/premium') {
+      const days = Number(body.days) || 0;
+      const r = await mutateTree(String(body.treeId), (tr) => {
+        tr.premiumUntil = days > 0 ? new Date(Math.max(Date.now(), new Date(tr.premiumUntil || 0).getTime()) + days * 864e5).toISOString() : null;
+      });
+      return send(res, 200, { ok: true, premiumUntil: r.data.premiumUntil });
+    }
+    if (path === 'admin/broadcast') {
+      const text = String(body.text || '').trim().slice(0, 3500);
+      if (!text) throw new HttpError(400, 'Matn kiriting');
+      const ids = (await listKeys('users/')).map((k) => k.slice(6, -5));
+      let sent = 0;
+      for (let i = 0; i < ids.length; i += 20) {
+        const res2 = await Promise.all(ids.slice(i, i + 20).map((id) => tg('sendMessage', { chat_id: id, text, parse_mode: 'HTML', disable_web_page_preview: true })));
+        sent += res2.filter((x) => x.ok).length;
+        if (i + 20 < ids.length) await sleep(1000);
+      }
+      return send(res, 200, { ok: true, sent, total: ids.length });
+    }
   }
   if (path === 'admin/migrate') {
     // Eski shajaralar: subscribers → members (bir martalik)

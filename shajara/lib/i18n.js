@@ -58,6 +58,14 @@ const RU = {
   'Bepul tarifda albom limiti tugadi ({n} ta fayl). Premium bilan cheksiz.': 'Лимит альбома бесплатного тарифа исчерпан ({n} файлов). С Premium — без ограничений.',
 };
 
+const EXTRA = [
+  ['Albom uchun avval shajara tahrirchisi albom kanalini ulashi kerak (ilovada: Ko‘proq → Albom kanali).', 'Сначала редактор должен подключить канал альбома (в приложении: Ещё → Канал альбома).', 'An editor must connect the album channel first (in the app: More → Album channel).'],
+  ['{name} o‘g‘li', 'сын {name}', 'son of {name}'],
+  ['{name} qizi', 'дочь {name}', 'daughter of {name}'],
+  ['{n} yosh', '{n} лет', 'turns {n}'],
+];
+for (const [k, r] of EXTRA.map((x) => [x[0], x[1]])) RU[k] = r;
+
 const EN = {
   'Assalomu alaykum, <b>{name}</b>! 🌿': 'Hello, <b>{name}</b>! 🌿',
   '<b>Shajara iBot</b> — oilangiz shajarasini qurish, saqlash va avlodlarga yetkazish uchun.':
@@ -115,6 +123,8 @@ const EN = {
 
 const UZ_HELP =
   '1️⃣ Ilovani oching va <b>shajara kodini</b> kiriting — yoki yangi shajara yarating.\n2️⃣ Tahrirlash uchun 🔒 ni bosib <b>tahrir kodini</b> kiriting.\n3️⃣ <b>Albom:</b> rasm/video/faylni shu yerga yuboring — bot albom va izohni so‘raydi.\n4️⃣ <b>Guruh:</b> botni oilaviy guruhga qo‘shing va /ulash KOD yuboring. Guruhda: /shajara, /albom (faylga javoban), /tugilgan.\n5️⃣ <b>Saqlash kanali:</b> yopiq kanal oching, botni admin qiling va kanalga /ulash KOD yozing.\n\nBuyruqlar: /start · /til · /hikmat · /yordam';
+
+for (const [k, , e] of EXTRA) EN[k] = e;
 
 export function normLang(l) {
   if (LANGS.includes(l)) return l;

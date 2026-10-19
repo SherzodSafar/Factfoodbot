@@ -43,6 +43,7 @@ export function ensureAlbum(doc, name, by) {
 }
 
 export function canUpload(tree, uid, role) {
+  if (!tree.channel) return false; // albom faqat kanal ulangandan keyin
   if ((tree.banned || []).includes(String(uid))) return false;
   if (role === 'edit' || tree.members?.[uid]?.role === 'edit') return true;
   if (!tree.members?.[uid]) return false;
@@ -54,10 +55,12 @@ const mediaUrl = (fileId) => {
   return `/api/media?f=${encodeURIComponent(fileId)}&e=${e}&s=${s}`;
 };
 
-export function publicAlbum(doc) {
+export function publicAlbum(doc, tree) {
+  const users = tree?.members || {};
   return {
     albums: doc.albums,
     items: doc.items.map((it) => ({
+      byUser: it.by?.id ? users[it.by.id]?.username || null : null,
       id: it.id, album: it.album, type: it.type, caption: it.caption, name: it.name, w: it.w, h: it.h, dur: it.dur,
       size: it.size, by: it.by, at: it.at,
       thumb: it.thumbId ? mediaUrl(it.thumbId) : null,
@@ -70,8 +73,9 @@ export function publicAlbum(doc) {
  * Yuklamani albomga yozish: kanal ulangan bo'lsa avval kanalga yuboriladi (asosiy saqlash joyi).
  * media: mediaOf() natijalari ro'yxati. by: { id, name }.
  */
-export async function addToAlbum(tree, { albumId, albumName, caption, media, by }) {
+export async function addToAlbum(tree, { albumId, albumName, caption, media, by, inChannel }) {
   if (!media.length) throw new HttpError(400, 'Fayl yo‘q');
+  if (!tree.channel) throw new HttpError(400, 'Avval albom kanalini ulang');
   const doc0 = await loadAlbum(tree.id);
   if (PAYWALL() && !isPremium(tree) && doc0.items.length + media.length > LIMITS.album) {
     throw new HttpError(402, `Bepul tarifda albom limiti: ${LIMITS.album} ta fayl`);
@@ -82,7 +86,7 @@ export async function addToAlbum(tree, { albumId, albumName, caption, media, by 
   const stored = [];
   for (const m of media) {
     const item = { ...m, id: randomId(10), caption: cap, by, at: new Date().toISOString() };
-    if (tree.channel?.id) {
+    if (tree.channel?.id && !inChannel) {
       const text = `📁 <b>${escapeHtml(name)}</b>${cap ? '\n' + escapeHtml(cap) : ''}\n— ${escapeHtml(by?.name || '')}`;
       const r = await sendStored(tree.channel.id, item, text);
       if (r.ok) {

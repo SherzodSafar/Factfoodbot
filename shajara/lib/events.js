@@ -39,6 +39,11 @@ export function upcomingText(tree, lang) {
   }
   list.sort((a, b) => a.diff - b.diff);
   if (!list.length) return t(lang, 'Yaqin kunlarda tug‘ilgan kun yo‘q.');
-  return `🎂 ${t(lang, 'Yaqin tug‘ilgan kunlar (30 kun):')}\n\n` + list.slice(0, 25).map((x) =>
-    `${x.date.toISOString().slice(8, 10)}.${x.date.toISOString().slice(5, 7)} — ${t(lang, '{name} — {age} yosh', { name: escapeHtml(x.p.name), age: x.age })}`).join('\n');
+  const byId = new Map(tree.persons.map((p) => [p.id, p]));
+  return `🎂 ${t(lang, 'Yaqin tug‘ilgan kunlar (30 kun):')}\n\n` + list.slice(0, 30).map((x) => {
+    const f = byId.get(x.p.father_id) || byId.get(x.p.mother_id);
+    const rel = f ? ` (${t(lang, x.p.gender === 'f' ? '{name} qizi' : '{name} o‘g‘li', { name: escapeHtml(f.name) })})` : '';
+    const d = x.date.toISOString();
+    return `📅 ${d.slice(8, 10)}.${d.slice(5, 7)}.${x.p.birth.slice(0, 4)} — <b>${escapeHtml(x.p.name)}</b>${rel} · ${t(lang, '{n} yosh', { n: x.age })}`;
+  }).join('\n');
 }

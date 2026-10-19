@@ -357,3 +357,125 @@ export function todaysEvents(tree, date = new Date()) {
   }
   return { births, memorials };
 }
+
+// ---------------------------------------------------------------- Fayldan import --
+function flexDate(v) {
+  const s = String(v ?? '').trim();
+  if (!s) return null;
+  let m;
+  if ((m = /^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/.exec(s))) return cleanDate(`${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`);
+  if ((m = /^(\d{1,2})[./-](\d{4})$/.exec(s))) return cleanDate(`${m[2]}-${m[1].padStart(2, '0')}`);
+  return cleanDate(s);
+}
+function genderOf(v) {
+  const s = String(v ?? '').trim().toLowerCase();
+  if (/^(f|a|ayol|female|woman|ж|жен|аёл|qiz)/.test(s)) return 'f';
+  return 'm';
+}
+const yes = (v) => /^(1|ha|yes|true|\+|да|ҳа|marhum|vafot)/i.test(String(v ?? '').trim());
+
+/**
+ * Jadvaldagi (CSV/Excel) qatorlarni shajaraga qo'shadi.
+ * Ustunlar: name, gender, birth, death, deceased, father, mother, spouse, place, phone, note, code.
+ * father/mother/spouse — fayldagi yoki shajaradagi ism (yoki daftar raqami).
+ */
+export function importRows(tree, rows, who) {
+  if (!Array.isArray(rows) || !rows.length) throw new HttpError(400, 'Faylda ma’lumot topilmadi');
+  if (rows.length > 2000) throw new HttpError(400, 'Bir martada 2000 tadan ko‘p qator yuklab bo‘lmaydi');
+  if (PAYWALL() && !isPremium(tree) && tree.persons.length + rows.length > LIMITS.persons) {
+    throw new HttpError(402, `Bepul tarifda ${LIMITS.persons} kishigacha. Premium bilan cheksiz`);
+  }
+  const key = (s) => String(s ?? '').trim().toLowerCase();
+  const created = [];
+  for (const [i, r] of rows.entries()) {
+    const name = cleanText(r.name, 80);
+    if (!name) continue;
+    let birth, death;
+    try {
+      birth = flexDate(r.birth);
+      death = flexDate(r.death);
+    } catch (e) {
+      throw new HttpError(400, `${i + 2}-qator (${name}): ${e.message}`);
+    }
+    const p = {
+      id: nextId(tree), code: cleanText(r.code, 30), name, gender: genderOf(r.gender), birth, death,
+      deceased: !!death || yes(r.deceased), blood: true, generation: null, father_id: null, mother_id: null,
+      spouse_ids: [], child_order: null, note: cleanText(r.note, 1000), place: cleanText(r.place, 120),
+      phone: cleanText(r.phone, 30), source: 'import', photo: null,
+    };
+    created.push({ p, r });
+  }
+  // Ismlar bo'yicha qidiruv: avval fayldagilar, so'ng shajaradagilar (faqat bitta mos kelsa)
+  const inFile = new Map();
+  for (const { p } of created) {
+    if (!inFile.has(key(p.name))) inFile.set(key(p.name), p);
+    if (p.code) inFile.set(key(p.code), p);
+  }
+  const inTree = new Map();
+  for (const p of tree.persons) {
+    for (const k of [key(p.name), p.code && key(p.code)].filter(Boolean)) inTree.set(k, inTree.has(k) ? null : p);
+  }
+  const find = (ref) => (ref ? inFile.get(key(ref)) || inTree.get(key(ref)) || null : null);
+  for (const { p, r } of created) {
+    const f = find(r.father);
+    const m = find(r.mother);
+    if (f) p.father_id = f.id;
+    if (m) p.mother_id = m.id;
+    const s = find(r.spouse);
+    if (s && s !== p) {
+      p.spouse_ids = [...new Set([...p.spouse_ids, s.id])];
+      s.spouse_ids = [...new Set([...(s.spouse_ids || []), p.id])];
+    }
+  }
+  const all = [...tree.persons, ...created.map((c) => c.p)];
+  const byId = new Map(all.map((p) => [p.id, p]));
+  const base = Math.min(...tree.persons.map((p) => p.generation ?? 1), 1);
+  // Avlod va qon qarindoshlikni ota-ona/juft bo'yicha aniqlash (bir necha marta aylanib)
+  for (let pass = 0; pass < 12; pass++) {
+    for (const { p } of created) {
+      const par = byId.get(p.father_id) || byId.get(p.mother_id);
+      if (par && par.generation != null) {
+        p.generation = par.generation + 1;
+        p.blood = [byId.get(p.father_id), byId.get(p.mother_id)].some((x) => x?.blood);
+        continue;
+      }
+      const sp = p.spouse_ids.map((id) => byId.get(id)).find((x) => x && x.generation != null && (x.father_id || x.mother_id || x.blood));
+      if (sp && !par) {
+        p.generation = sp.generation;
+        p.blood = false;
+      } else if (!par && p.generation == null && !p.father_id && !p.mother_id) {
+        const anySp = p.spouse_ids.map((id) => byId.get(id)).find(Boolean);
+        if (!anySp || anySp.generation == null) p.generation = base;
+      }
+    }
+  }
+  const order = new Map();
+  for (const { p } of created) {
+    if (p.generation == null) p.generation = base;
+    const par = p.father_id || p.mother_id;
+    if (par) {
+      const n = (order.get(par) ?? tree.persons.filter((x) => x.father_id === par || x.mother_id === par).length) + 1;
+      order.set(par, n);
+      p.child_order = n;
+    } else p.child_order = 1;
+  }
+  tree.persons.push(...created.map((c) => c.p));
+  if (!tree.meta.root_id && tree.persons[0]) tree.meta.root_id = tree.persons[0].id;
+  addLog(tree, who, 'import', `${created.length}`);
+  return created.length;
+}
+
+/** Eksport qilingan JSON (persons[]) bilan shajarani to'liq almashtirish. */
+export function replacePersons(tree, data, who) {
+  const persons = data?.persons;
+  if (!Array.isArray(persons) || !persons.length) throw new HttpError(400, 'Faylda ma’lumot topilmadi');
+  for (const p of persons) {
+    if (!p.id || !p.name) throw new HttpError(400, 'Fayl formati noto‘g‘ri');
+  }
+  tree.persons = persons.map((p) => ({ photo: null, spouse_ids: [], ...p }));
+  const nums = persons.map((p) => Number(String(p.id).replace(/\D/g, '')) || 0);
+  tree.meta.next_id = Math.max(data.meta?.next_id || 0, ...nums) + 1;
+  tree.meta.root_id = data.meta?.root_id && persons.some((p) => p.id === data.meta.root_id) ? data.meta.root_id : persons[0].id;
+  addLog(tree, who, 'import', `${persons.length}`);
+  return persons.length;
+}

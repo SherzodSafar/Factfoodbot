@@ -61,6 +61,9 @@ async function onPrivate(msg) {
       t(lang, extra ? 'Sizni shajaraga taklif qilishdi — pastdagi tugmani bosing 👇' : 'Boshlash uchun pastdagi tugmani bosing 👇'),
       { reply_markup: appButton(lang, extra) });
   }
+  if (cmd === '/admin' && String(process.env.ADMIN_IDS || '').split(',').map((x) => x.trim()).includes(String(from.id))) {
+    return send(from.id, '🛠 Admin panel', { reply_markup: { inline_keyboard: [[{ text: '🛠 Admin', web_app: { url: `${URL_()}/admin.html` } }]] } });
+  }
   if (cmd === '/til' || cmd === '/lang' || cmd === '/language') return send(from.id, t(lang, 'Tilni tanlang:'), { reply_markup: LANG_KB });
   if (cmd === '/hikmat') {
     const q = randomQuote();
@@ -137,6 +140,7 @@ async function startUpload({ from, chatId, lang, msg, media, tree, replyTo }) {
   if (!treeId) return send(chatId, t(lang, 'Avval ilovada shajarangizni oching — so‘ng fayllarni shu yerga yuboring.'), { reply_markup: chatId > 0 ? appButton(lang) : undefined });
   tree = tree || (await loadTree(treeId).catch(() => null));
   if (!tree) return;
+  if (!tree.channel) return send(chatId, t(lang, 'Albom uchun avval shajara tahrirchisi albom kanalini ulashi kerak (ilovada: Ko‘proq → Albom kanali).'), { reply_to_message_id: replyTo });
   if (!canUpload(tree, String(from.id), null)) return send(chatId, t(lang, 'Bu shajara albomiga fayl qo‘shishga ruxsatingiz yo‘q.'), { reply_to_message_id: replyTo });
 
   const group = msg.media_group_id || null;
@@ -285,13 +289,11 @@ async function onChannelPost(post) {
   if (!tree) return;
   const cap = post.caption || '';
   const tag = /#([\p{L}\p{N}_]+)/u.exec(cap);
-  const savedChannel = tree.channel;
-  tree.channel = null; // qayta kanalga yubormaslik uchun
   await addToAlbum(tree, {
+    inChannel: true,
     albumName: tag ? tag[1].replace(/_/g, ' ') : 'Kanal', caption: cap.replace(/#[\p{L}\p{N}_]+/gu, '').trim() || null,
-    media: [{ ...media }], by: { id: null, name: post.author_signature || post.chat.title || '' },
+    media: [{ ...media, ch: { chat: post.chat.id, msg: post.message_id } }], by: { id: null, name: post.author_signature || post.chat.title || '' },
   }).catch(() => {});
-  tree.channel = savedChannel;
 }
 
 async function onMembership(cm) {
