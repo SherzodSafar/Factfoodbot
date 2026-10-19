@@ -28,16 +28,18 @@ async function streamToBuffer(stream) {
 }
 
 /** @returns {Promise<{data:any, etag:string}|null>} */
-export async function readJson(key) {
+export async function readJson(key, forWrite = false) {
   if (useBlob) {
-    const { get } = await blob();
+    const { get, head } = await blob();
+    // get() qaytaradigan ETag CDN formatida bo'ladi; shartli yozish uchun API ETag'i (head) kerak.
+    const meta = forWrite ? await head(key).catch(() => null) : null;
     const r = await get(key, { access: 'private', useCache: false }).catch((e) => {
       if (e?.name === 'BlobNotFoundError') return null;
       throw e;
     });
     if (!r || r.statusCode !== 200) return null;
     const buf = await streamToBuffer(r.stream);
-    return { data: JSON.parse(buf.toString('utf8')), etag: r.blob.etag };
+    return { data: JSON.parse(buf.toString('utf8')), etag: meta?.etag || r.blob.etag };
   }
   try {
     const buf = await fs.readFile(path.join(DATA_DIR, key));
@@ -65,7 +67,7 @@ export async function writeJson(key, data, etag) {
         ...(etag ? { ifMatch: etag } : {}),
       });
     } catch (e) {
-      if (e?.name === 'BlobPreconditionFailedError' || /already exists/i.test(e?.message || '')) {
+      if (e?.name === 'BlobPreconditionFailedError' || e?.constructor?.name === 'BlobPreconditionFailedError' || /precondition|already exists/i.test(e?.message || '')) {
         throw new ConflictError('conflict');
       }
       throw e;
@@ -149,7 +151,7 @@ export async function listKeys(prefix) {
 /** JSON hujjatni o'qib-o'zgartirib qayta yozish (ziddiyatda 4 marta qayta urinadi). */
 export async function updateJson(key, mutate) {
   for (let i = 0; i < 4; i++) {
-    const cur = await readJson(key);
+    const cur = await readJson(key, true);
     if (!cur) return null;
     const result = await mutate(cur.data);
     try {

@@ -343,6 +343,7 @@ export async function setupBot() {
   const url = URL_();
   const out = {};
   const { webhookSecret } = await import('./events.js');
+  await tg('deleteWebhook', { drop_pending_updates: false });
   out.webhook = await tg('setWebhook', {
     url: url + '/api/webhook', secret_token: webhookSecret(), drop_pending_updates: false,
     allowed_updates: ['message', 'callback_query', 'channel_post', 'my_chat_member', 'pre_checkout_query'],
