@@ -77,7 +77,7 @@ export function publicAlbum(doc, tree, uid) {
         byUser: it.by?.id ? users[it.by.id]?.username || null : null,
         id: it.id, album: it.album, type: it.type, kind, mime: it.mime || null, caption: it.caption, name: it.name, w: it.w, h: it.h, dur: it.dur,
         size: it.size, by: it.by, at: it.at,
-        views: (it.seen || []).length, likes: (it.likes || []).length, liked: !!uid && (it.likes || []).includes(String(uid)),
+        views: it.views || (it.seen || []).length, sends: it.sends || 0, likes: (it.likes || []).length, liked: !!uid && (it.likes || []).includes(String(uid)),
         thumb: it.thumbId ? mediaUrl(it.thumbId) : null,
         src: ok ? mediaUrl(it.fileId, EXT[it.mime] || (it.type === 'voice' ? 'ogg' : it.type === 'photo' ? 'jpg' : '')) : null,
       };

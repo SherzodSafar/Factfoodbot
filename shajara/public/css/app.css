@@ -495,6 +495,9 @@ video.lb-media { width: 100%; }
 .rv-b svg { width: 24px; height: 24px; }
 .rv-b span { font-size: 11px; font-weight: 800; }
 .rv-b.like.on { color: #ff3b5c; }
+.rv-b.spd b { width: 30px; height: 24px; display: grid; place-items: center; font-size: 12px; font-weight: 800; border: 1.8px solid #fff; border-radius: 7px; }
+.rv-full { position: absolute; z-index: 3; top: calc(56px + var(--safe-top)); right: 10px; width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; background: rgba(0,0,0,.35); color: #fff; }
+.rv-full svg { width: 18px; height: 18px; }
 .rv-b.like.on svg { animation: pop .3s ease; }
 @keyframes pop { 50% { transform: scale(1.3); } }
 .rv-info { position: absolute; left: 0; right: 52px; bottom: 0; z-index: 2; padding: 30px 14px calc(14px + var(--safe-bottom)); background: linear-gradient(transparent, rgba(0,0,0,.7)); }
@@ -539,3 +542,21 @@ video.lb-media { width: 100%; }
 .rv-file .nm { font-weight: 800; font-size: 17px; word-break: break-word; }
 .rv-file .meta { font-size: 13px; font-weight: 700; opacity: .7; }
 .rv-file .hint { font-size: 12.5px; opacity: .6; margin-bottom: 8px; }
+
+/* ---------- Haqiqiy daraxt ---------- */
+.rt-svg { position: absolute; left: 0; top: 0; overflow: visible; }
+.rt-svg .br, .rt-svg .root { fill: none; stroke: #7a5434; stroke-linecap: round; }
+.rt-svg .trunk { fill: #6e4a2c; }
+.rt-svg .lf { fill: #4f9a5b; opacity: .75; }
+.rt-svg .ground { fill: color-mix(in srgb, #6b8f4e 22%, transparent); }
+.node.rt { width: 96px; height: auto; padding: 0; gap: 3px; background: none; border: 0 !important; box-shadow: none !important; }
+.node.rt.sp { width: 74px; }
+.node.rt .avatar { --s: 60px; box-shadow: 0 0 0 4px #5aa865, 0 4px 12px rgba(0,0,0,.25); }
+.node.rt.sp .avatar { --s: 42px; box-shadow: 0 0 0 3px #c9a24a, 0 3px 8px rgba(0,0,0,.2); }
+.node.rt.closed .avatar { box-shadow: 0 0 0 4px var(--gold), 0 0 0 9px color-mix(in srgb, var(--gold) 30%, transparent), 0 4px 12px rgba(0,0,0,.25); }
+.node.rt.open .avatar { box-shadow: 0 0 0 4px var(--primary), 0 4px 12px rgba(0,0,0,.25); }
+.node.rt .nm { font-size: 12px; background: color-mix(in srgb, var(--surface) 88%, transparent); padding: 1px 6px; border-radius: 8px; }
+.node.rt.sp .nm { font-size: 10.5px; }
+.node.rt .yr { font-size: 10px; }
+.node.rt .cnt { bottom: auto; top: -14px; }
+.node.rt.focus .avatar { box-shadow: 0 0 0 4px var(--gold), 0 0 0 10px color-mix(in srgb, var(--gold) 35%, transparent); }

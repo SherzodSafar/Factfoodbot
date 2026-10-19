@@ -391,20 +391,21 @@ async function route(req, res) {
         const a = doc.albums.find((x) => x.id === it.album);
         const r = await sendStored(uid, it, `📁 <b>${escapeHtml(a?.name || '')}</b>${it.caption ? '\n' + escapeHtml(it.caption) : ''}`);
         if (!r.ok) throw new HttpError(502, 'Yuborib bo‘lmadi. Avval botga /start yozing');
-        return send(res, 200, { ok: true });
+        const u = await mutateAlbum(tree.id, (d) => { const x = d.items.find((y) => y.id === iid); if (x) x.sends = (x.sends || 0) + 1; return x?.sends; }).catch(() => null);
+        return send(res, 200, { ok: true, sends: u?.result });
       }
       if ((parts[3] === 'view' || parts[3] === 'like') && m === 'POST') {
-        if (!uid) return send(res, 200, { ok: true });
-        const k = parts[3] === 'view' ? 'seen' : 'likes';
-        if (k === 'seen' && (it.seen || []).includes(uid)) return send(res, 200, { ok: true });
+        if (parts[3] === 'like' && !uid) return send(res, 200, { ok: true });
         const r = await mutateAlbum(tree.id, (d) => {
           const x = d.items.find((y) => y.id === iid);
           if (!x) return null;
-          const arr = (x[k] ||= []);
-          const i = arr.indexOf(uid);
-          if (k === 'seen') { if (i < 0) arr.push(uid); if (arr.length > 1000) arr.shift(); }
-          else if (i < 0) arr.push(uid); else arr.splice(i, 1);
-          return { views: (x.seen || []).length, likes: (x.likes || []).length, liked: (x.likes || []).includes(uid) };
+          if (parts[3] === 'view') x.views = (x.views || (x.seen || []).length) + 1;
+          else {
+            const arr = (x.likes ||= []);
+            const i = arr.indexOf(uid);
+            if (i < 0) arr.push(uid); else arr.splice(i, 1);
+          }
+          return { views: x.views || 0, likes: (x.likes || []).length, liked: (x.likes || []).includes(uid) };
         });
         return send(res, 200, r.result || {});
       }

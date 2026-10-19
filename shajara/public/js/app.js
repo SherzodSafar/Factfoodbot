@@ -1,7 +1,8 @@
 // Shajara iBot — Mini App
 import { I } from './icons.js';
 import { quoteOfDay, randomQuote } from './quotes.js';
-import { TreeView, esc } from './tree-view.js?v=4';
+import { TreeView, esc } from './tree-view.js?v=5';
+import { RealTreeView } from './real-tree.js?v=5';
 import { defaultAvatar } from './avatars.js';
 import { Family, yearsLabel, age, initials, parseDateInput, dateToInput, upcomingBirthdays, kinship } from './family.js';
 import { t, nm, LANG, setLang, LANG_NAMES, fmtDate, monthShort, fmtNum } from './i18n.js';
@@ -463,10 +464,12 @@ function renderTreeTab(el) {
       <button class="icon-btn" data-z="fit">${I.fit}</button>
       <button class="icon-btn" data-z="root">${I.target}</button>
       <button class="icon-btn" data-z="fold">${I.layers}</button>
+      <button class="icon-btn" data-z="mode" style="font-size:20px">${store.get('sh_tv') === 'real' ? '▦' : '🌳'}</button>
     </div>
     <div class="card legend"><span><i style="background:var(--male)"></i>${t('Erkak')}</span><span><i style="background:var(--female)"></i>${t('Ayol')}</span><span><i style="border:1.5px dashed var(--muted)"></i>${t('Kelin/kuyov')}</span></div>
     <div class="tree-hint">👆 ${t('Ochish uchun ismni bosing')}</div>`;
-  const tv = new TreeView(el.querySelector('.tree-host'), { onOpen: (id) => personSheet(id), photoUrl, name: nm, genLabel: (n) => t('{n}-avlod', { n }) });
+  const TV = store.get('sh_tv') === 'real' ? RealTreeView : TreeView;
+  const tv = new TV(el.querySelector('.tree-host'), { onOpen: (id) => personSheet(id), photoUrl, name: nm, genLabel: (n) => t('{n}-avlod', { n }) });
   S.treeView = tv;
   tv.setData(S.fam, S.tree.rootId);
   requestAnimationFrame(() => tv.showRoot());
@@ -477,6 +480,11 @@ function renderTreeTab(el) {
     if (z === 'out') tv.zoom(1 / 1.35);
     if (z === 'fit') tv.fit();
     if (z === 'root') tv.showRoot();
+    if (z === 'mode') {
+      store.set('sh_tv', store.get('sh_tv') === 'real' ? 'cards' : 'real');
+      S.treeView = null;
+      return renderTreeTab(el);
+    }
     if (z === 'fold') {
       const open = !tv.collapsed.size;
       if (open) tv.collapseAll(); else tv.expandAll();
@@ -761,7 +769,6 @@ const VI = {
 const FILE_IC = { pdf: '📕', doc: '📘', docx: '📘', xls: '📗', xlsx: '📗', ppt: '📙', pptx: '📙', zip: '🗜', rar: '🗜', '7z': '🗜', txt: '📝', apk: '📱' };
 const fmtT = (s) => (isFinite(s) ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}` : '0:00');
 const fmtN = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : String(n || 0));
-const viewedNow = new Set();
 
 function openViewer(ids, index) {
   const A = S.album;
@@ -829,9 +836,10 @@ function openViewer(ids, index) {
         <button class="rv-b like ${it.liked ? 'on' : ''}" data-act="like">${VI.heart(it.liked)}<span>${fmtN(it.likes)}</span></button>
         <div class="rv-b">${VI.eye}<span class="vw">${fmtN(it.views)}</span></div>
         ${it.kind === 'video' && it.type !== 'animation' ? `<button class="rv-b" data-act="mute">${VI.mute(false)}</button>` : ''}
-        ${land ? `<button class="rv-b" data-act="full">${VI.full}</button>` : ''}
-        ${inTelegram ? `<button class="rv-b" data-act="send">${VI.send}</button>` : ''}
+        ${it.kind === 'video' && it.src ? `<button class="rv-b spd" data-act="spd"><b>1×</b></button>` : ''}
+        ${inTelegram ? `<button class="rv-b" data-act="send">${VI.send}<span class="sn">${fmtN(it.sends)}</span></button>` : ''}
       </div>
+      ${land ? `<button class="rv-full rv-ui" data-act="full">${VI.full}</button>` : ''}
       <div class="rv-info rv-ui">
         <div class="rv-meta">📁 ${esc(nm(a?.name || ''))} · ${fmtDate(it.at.slice(0, 10))}</div>
         ${it.by?.name ? `<button class="rv-by" data-act="by">👤 ${esc(it.by.name)}</button>` : ''}
@@ -858,8 +866,19 @@ function openViewer(ids, index) {
     }
     if (k === 'send') {
       b.disabled = true;
-      try { await api(`album/i/${it.id}/send`, { method: 'POST' }); toast(t('Chatga yuborildi 📩')); } catch (err) { toast(err.message, true); }
+      try {
+        const r = await api(`album/i/${it.id}/send`, { method: 'POST' });
+        toast(t('Chatga yuborildi 📩'));
+        it.sends = r.sends ?? (it.sends || 0) + 1;
+        sl.querySelectorAll('.sn').forEach((x) => (x.textContent = fmtN(it.sends)));
+      } catch (err) { toast(err.message, true); }
       b.disabled = false;
+    }
+    if (k === 'spd') {
+      const v = sl.querySelector('video');
+      const sp = [1, 1.25, 1.5, 2, 0.5];
+      v.playbackRate = sp[(sp.indexOf(v.playbackRate) + 1) % sp.length];
+      b.innerHTML = `<b>${v.playbackRate}×</b>`;
     }
     if (k === 'by') openProfile(it);
     if (k === 'full') {
@@ -972,10 +991,9 @@ function openViewer(ids, index) {
       if (j !== i && sl.classList.contains('land')) { sl.classList.remove('land'); feed.style.overflowY = ''; }
     });
     const it = items[i];
-    if (!viewedNow.has(it.id)) {
-      viewedNow.add(it.id);
+    {
       api(`album/i/${it.id}/view`, { method: 'POST' }).then((r) => {
-        if (r?.views != null && r.views !== it.views) { it.views = r.views; const el = slides[i].querySelector('.vw'); if (el) el.textContent = fmtN(r.views); }
+        if (r?.views != null) { it.views = r.views; const el = slides[i].querySelector('.vw'); if (el) el.textContent = fmtN(r.views); }
       }).catch(() => {});
     }
   }
