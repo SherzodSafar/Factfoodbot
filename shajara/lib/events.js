@@ -25,7 +25,7 @@ export function todayText(tree, lang) {
 }
 
 /** Keyingi 30 kundagi tug'ilgan kunlar (guruhdagi /tugilgan uchun). */
-export function upcomingText(tree, lang) {
+export function upcomingText(tree, lang, linkFor) {
   const now = new Date(Date.now() + 5 * 3600e3);
   const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   const list = [];
@@ -44,6 +44,6 @@ export function upcomingText(tree, lang) {
     const f = byId.get(x.p.father_id) || byId.get(x.p.mother_id);
     const rel = f ? ` (${t(lang, x.p.gender === 'f' ? '{name} qizi' : '{name} o‘g‘li', { name: escapeHtml(f.name) })})` : '';
     const d = x.date.toISOString();
-    return `📅 ${d.slice(8, 10)}.${d.slice(5, 7)}.${x.p.birth.slice(0, 4)} — <b>${escapeHtml(x.p.name)}</b>${rel} · ${t(lang, '{n} yosh', { n: x.age })}`;
+    return `📅 ${d.slice(8, 10)}.${d.slice(5, 7)}.${x.p.birth.slice(0, 4)} — <b>${linkFor ? `<a href="${linkFor(x.p.id)}">${escapeHtml(x.p.name)}</a>` : escapeHtml(x.p.name)}</b>${rel} · ${t(lang, '{n} yosh', { n: x.age })}`;
   }).join('\n');
 }

@@ -11,7 +11,8 @@ import {
   HttpError, findTreeByCode, loadTree, createTree, mutateTree, publicTree, addPerson, updatePerson, deletePerson,
   savePhoto, changeSettings, upsertMember, importRows, replacePersons,
 } from '../lib/tree.js';
-import { tg, tgUpload, sendDocument, sendStored, mediaOf, downloadFile } from '../lib/telegram.js';
+import { tg, tgUpload, sendDocument, sendStored, mediaOf, downloadFile, fetchFilePart } from '../lib/telegram.js';
+const MIME = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', heic: 'image/heic', mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', mkv: 'video/x-matroska', m4v: 'video/mp4', mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac', ogg: 'audio/ogg', oga: 'audio/ogg', opus: 'audio/ogg', wav: 'audio/wav', flac: 'audio/flac', pdf: 'application/pdf' };
 import { handleUpdate, setupBot, BOT, PLANS, chatKey, linkKey } from '../lib/bot.js';
 import { webhookSecret, todayText } from '../lib/events.js';
 import { notify, escapeHtml } from '../lib/notify.js';
@@ -330,7 +331,7 @@ async function route(req, res) {
     const by = { id: uid, name: nameOf(user) || 'Tahrirchi' };
     if (parts.length === 1 && m === 'GET') {
       const doc = await loadAlbum(tree.id);
-      return send(res, 200, { ...publicAlbum(doc, tree), hasChannel: !!tree.channel, canUpload: canUpload(tree, uid, role), canEdit: role === 'edit', me: uid });
+      return send(res, 200, { ...publicAlbum(doc, tree, uid), hasChannel: !!tree.channel, canUpload: canUpload(tree, uid, role), canEdit: role === 'edit', me: uid });
     }
     if (parts.length === 1 && m === 'POST') {
       if (!canUpload(tree, uid, role)) throw new HttpError(403, 'Ruxsat yo‘q');
@@ -392,6 +393,21 @@ async function route(req, res) {
         if (!r.ok) throw new HttpError(502, 'Yuborib bo‘lmadi. Avval botga /start yozing');
         return send(res, 200, { ok: true });
       }
+      if ((parts[3] === 'view' || parts[3] === 'like') && m === 'POST') {
+        if (!uid) return send(res, 200, { ok: true });
+        const k = parts[3] === 'view' ? 'seen' : 'likes';
+        if (k === 'seen' && (it.seen || []).includes(uid)) return send(res, 200, { ok: true });
+        const r = await mutateAlbum(tree.id, (d) => {
+          const x = d.items.find((y) => y.id === iid);
+          if (!x) return null;
+          const arr = (x[k] ||= []);
+          const i = arr.indexOf(uid);
+          if (k === 'seen') { if (i < 0) arr.push(uid); if (arr.length > 1000) arr.shift(); }
+          else if (i < 0) arr.push(uid); else arr.splice(i, 1);
+          return { views: (x.seen || []).length, likes: (x.likes || []).length, liked: (x.likes || []).includes(uid) };
+        });
+        return send(res, 200, r.result || {});
+      }
       if (role !== 'edit') throw new HttpError(403, 'Albomni faqat tahrir rejimidagilar o‘zgartira oladi');
       if (m === 'PATCH') {
         const body = await readBody(req);
@@ -417,12 +433,21 @@ async function route(req, res) {
   if (path === 'media' && m === 'GET') {
     const f = url.searchParams.get('f') || '';
     if (!verifyMedia(f, url.searchParams.get('e'), url.searchParams.get('s'))) throw new HttpError(403, 'Havola eskirgan');
-    const file = await downloadFile(f);
+    const CH = 4 * 1024 * 1024 - 1;
+    const rg = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range || ''));
+    const start = rg && rg[1] ? Number(rg[1]) : 0;
+    const end = rg && rg[2] ? Math.min(Number(rg[2]), start + CH) : start + CH;
+    const file = await fetchFilePart(f, start, end);
     if (!file) throw new HttpError(404, 'Fayl topilmadi');
-    if (file.buffer.length > 4.3 * 1024 * 1024) throw new HttpError(413, 'Fayl katta — Telegramda oching');
-    const ext = (file.path.split('.').pop() || '').toLowerCase();
-    const type = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', mp4: 'video/mp4', gif: 'image/gif', mov: 'video/quicktime' }[ext] || 'application/octet-stream';
-    return send(res, 200, file.buffer, { 'content-type': type, 'cache-control': 'public, max-age=86400, s-maxage=604800, immutable' });
+    const ext = (url.searchParams.get('x') || file.path.split('.').pop() || '').toLowerCase();
+    const type = MIME[ext] || 'application/octet-stream';
+    const whole = start === 0 && file.buffer.length >= file.total;
+    if (!rg && whole) return send(res, 200, file.buffer, { 'content-type': type, 'accept-ranges': 'bytes', 'cache-control': 'public, max-age=86400, s-maxage=604800, immutable' });
+    if (!rg && file.total > file.buffer.length && !/^(video|audio)/.test(type)) throw new HttpError(413, 'Fayl katta — Telegramda oching');
+    return send(res, 206, file.buffer, {
+      'content-type': type, 'accept-ranges': 'bytes', 'cache-control': 'private, max-age=86400',
+      'content-range': `bytes ${start}-${start + file.buffer.length - 1}/${file.total}`,
+    });
   }
 
   // ---- Shaxs suratlari (maxfiy do'kondan, imzo bilan)

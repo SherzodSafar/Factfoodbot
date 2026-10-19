@@ -75,3 +75,34 @@ export async function downloadFile(fileId) {
   if (!r.ok) return null;
   return { buffer: Buffer.from(await r.arrayBuffer()), path: j.result.file_path };
 }
+
+// file_path ~1 soat amal qiladi — har so'rovda getFile chaqirmaslik uchun xotirada saqlaymiz
+const pathCache = new Map();
+async function filePath(fileId) {
+  const c = pathCache.get(fileId);
+  if (c && c.until > Date.now()) return c.path;
+  const j = await tg('getFile', { file_id: fileId });
+  if (!j.ok) return null;
+  if (pathCache.size > 500) pathCache.clear();
+  pathCache.set(fileId, { path: j.result.file_path, size: j.result.file_size, until: Date.now() + 50 * 60e3 });
+  return j.result.file_path;
+}
+
+/** Faylning bir qismini (Range) olish — video/audio uchun. Javob 4 MB dan oshmaydi. */
+export async function fetchFilePart(fileId, start, end) {
+  const path = await filePath(fileId);
+  if (!path) return null;
+  const url = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${path}`;
+  const r = await fetch(url, { headers: { range: `bytes=${start}-${end}` } });
+  if (!r.ok) return null;
+  let buf = Buffer.from(await r.arrayBuffer());
+  let total = pathCache.get(fileId)?.size || null;
+  if (r.status === 206) {
+    const m = /\/(\d+)$/.exec(r.headers.get('content-range') || '');
+    if (m) total = Number(m[1]);
+  } else {
+    total = buf.length;
+    buf = buf.subarray(start, end + 1);
+  }
+  return { buffer: buf, path, total };
+}

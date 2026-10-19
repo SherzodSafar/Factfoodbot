@@ -167,6 +167,7 @@ textarea.input { height: auto; min-height: 88px; padding: 14px 16px; resize: ver
 }
 .avatar.f { background: linear-gradient(135deg, #d77ea3, #a24670); }
 .avatar img { width: 100%; height: 100%; object-fit: cover; }
+.avatar svg.ph { width: 100%; height: 100%; display: block; }
 .avatar.dec { filter: grayscale(.7); }
 .avatar.ring { box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px var(--gold); }
 
@@ -272,7 +273,14 @@ textarea.input { height: auto; min-height: 88px; padding: 14px 16px; resize: ver
   background: var(--primary); color: var(--primary-ink); font-size: 11px; font-weight: 800;
   display: grid; place-items: center; border: 2px solid var(--bg); z-index: 2;
 }
-.node .cnt.closed { background: var(--gold); color: #241a05; }
+.node .cnt.closed { background: var(--gold); color: #241a05; animation: nudge 2.4s ease-in-out infinite; }
+@keyframes nudge { 0%, 80%, 100% { transform: translateX(-50%); } 90% { transform: translateX(-50%) translateY(3px); } }
+/* Yopiq shox: orqasida "to'plam" soyasi va oltin chegara — ichida yana odamlar bor */
+.node.closed { border-right-color: var(--gold); border-bottom-color: var(--gold); border-left-color: var(--gold); box-shadow: 5px 5px 0 -1px var(--surface-2), 5px 5px 0 0 var(--line), 10px 10px 0 -1px var(--surface-2), 10px 10px 0 0 var(--line), var(--shadow); }
+/* Ochilgan shox: yashil ramka */
+.node.open { border-right-color: var(--primary); border-bottom-color: var(--primary); border-left-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent), var(--shadow); }
+.node.leaf { opacity: .97; }
+.tree-hint { position: absolute; left: 50%; top: 64px; transform: translateX(-50%); z-index: 3; font-size: 12px; font-weight: 700; color: var(--muted); background: color-mix(in srgb, var(--surface) 88%, transparent); padding: 5px 12px; border-radius: 99px; pointer-events: none; white-space: nowrap; }
 
 .tree-tools { position: absolute; right: 12px; bottom: 14px; display: flex; flex-direction: column; gap: 8px; z-index: 4; }
 .tree-tools .icon-btn { width: 46px; height: 46px; box-shadow: var(--shadow); background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: blur(10px); }
@@ -467,3 +475,67 @@ video.lb-media { width: 100%; }
 .lb-bottom { padding: 10px 16px calc(14px + var(--safe-bottom)); background: linear-gradient(transparent, rgba(0,0,0,.85)); position: relative; z-index: 2; }
 .lb-cap { margin-top: 6px; font-size: 15px; white-space: pre-wrap; max-height: 30vh; overflow: auto; }
 .lb-by { color: #9fe3c4; font-weight: 800; text-decoration: underline; text-underline-offset: 3px; }
+
+/* ---------- Reels ko'rgich ---------- */
+.rv { position: fixed; inset: 0; z-index: 80; background: #000; color: #fff; animation: fadeIn .2s ease both; }
+.rv-feed { position: absolute; inset: 0; overflow-y: scroll; scroll-snap-type: y mandatory; overscroll-behavior: contain; scrollbar-width: none; }
+.rv-feed::-webkit-scrollbar { display: none; }
+.rv-slide { position: relative; height: 100%; scroll-snap-align: start; scroll-snap-stop: always; overflow: hidden; }
+.rv-media { position: absolute; inset: 0; display: grid; place-items: center; }
+.rv-img, .rv-vid { max-width: 100%; max-height: 100%; object-fit: contain; user-select: none; -webkit-user-drag: none; transform-origin: center; will-change: transform; }
+.rv-vid { width: 100%; height: 100%; }
+.rv-ui { transition: opacity .2s; }
+.rv.bare .rv-ui { opacity: 0; pointer-events: none; }
+.rv-top { position: absolute; top: 0; left: 0; right: 0; z-index: 3; display: flex; align-items: center; gap: 6px; padding: calc(8px + var(--safe-top)) 10px 18px; background: linear-gradient(rgba(0,0,0,.5), transparent); }
+.rv-x { width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; background: rgba(0,0,0,.35); color: #fff; }
+.rv-x svg { width: 18px; height: 18px; }
+.rv-count { flex: 1; text-align: center; font-size: 12.5px; font-weight: 800; opacity: .8; }
+.rv-side { position: absolute; right: 8px; bottom: calc(96px + var(--safe-bottom)); z-index: 2; display: flex; flex-direction: column; gap: 12px; align-items: center; }
+.rv-b { display: flex; flex-direction: column; align-items: center; gap: 1px; color: #fff; filter: drop-shadow(0 1px 2px rgba(0,0,0,.6)); }
+.rv-b svg { width: 24px; height: 24px; }
+.rv-b span { font-size: 11px; font-weight: 800; }
+.rv-b.like.on { color: #ff3b5c; }
+.rv-b.like.on svg { animation: pop .3s ease; }
+@keyframes pop { 50% { transform: scale(1.3); } }
+.rv-info { position: absolute; left: 0; right: 52px; bottom: 0; z-index: 2; padding: 30px 14px calc(14px + var(--safe-bottom)); background: linear-gradient(transparent, rgba(0,0,0,.7)); }
+.rv-meta { font-size: 12px; font-weight: 700; opacity: .8; }
+.rv-by { color: #fff; font-weight: 800; font-size: 13.5px; margin-top: 4px; }
+.rv-cap { margin-top: 4px; font-size: 14px; white-space: pre-wrap; max-height: 22vh; overflow: auto; }
+.rv-vbar { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.rv-vbar button { width: 28px; height: 28px; display: grid; place-items: center; color: #fff; }
+.rv-vbar button svg { width: 16px; height: 16px; }
+.rv-vt { font-size: 11px; font-weight: 700; opacity: .85; white-space: nowrap; }
+.rv-seek { flex: 1; height: 18px; display: flex; align-items: center; cursor: pointer; touch-action: none; }
+.rv-seek::before { content: ''; position: absolute; }
+.rv-seek { position: relative; background: linear-gradient(rgba(255,255,255,.3), rgba(255,255,255,.3)) center / 100% 3px no-repeat; }
+.rv-seek i { display: block; height: 3px; width: 0; background: #fff; border-radius: 2px; position: relative; }
+.rv-seek i::after { content: ''; position: absolute; right: -5px; top: -4px; width: 11px; height: 11px; border-radius: 50%; background: #fff; }
+.rv-big-play { position: absolute; width: 64px; height: 64px; border-radius: 50%; background: rgba(0,0,0,.45); display: none; place-items: center; z-index: 1; }
+.rv-big-play svg { width: 28px; height: 28px; margin-left: 3px; }
+.rv-slide.paused .rv-big-play { display: grid; }
+/* Albomli (16:9) media — ekranni yonboshlatib to'liq ko'rish */
+.rv-slide.land .rv-media { inset: auto; left: 50%; top: 50%; width: 100vh; height: 100vw; transform: translate(-50%, -50%) rotate(90deg); }
+.rv-slide.land .rv-img, .rv-slide.land .rv-vid { width: 100%; height: 100%; max-width: none; max-height: none; }
+/* Audio pleyer */
+.rv-audio { width: min(340px, 86vw); display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 22px; border-radius: 26px; background: linear-gradient(160deg, #1f3b33, #121a17); box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+.rv-disc { width: 150px; height: 150px; border-radius: 50%; display: grid; place-items: center; font-size: 56px; overflow: hidden; background: radial-gradient(circle, #2c5a4b 0 18%, #0d1513 19% 22%, #1c2a26 23%); box-shadow: 0 0 0 6px rgba(255,255,255,.06); }
+.rv-disc img { width: 100%; height: 100%; object-fit: cover; }
+.rv-slide.playing .rv-disc { animation: spin 6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.rv-a-name { font-weight: 800; text-align: center; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rv-seek.big { width: 100%; flex: none; }
+.rv-a-time { width: 100%; display: flex; justify-content: space-between; font-size: 11.5px; font-weight: 700; opacity: .7; margin-top: -6px; }
+.rv-a-ctl { display: flex; align-items: center; gap: 22px; }
+.rv-a-ctl button { width: 40px; height: 40px; display: grid; place-items: center; color: #fff; }
+.rv-a-ctl button svg { width: 26px; height: 26px; }
+.rv-a-ctl .rv-a-play { width: 60px; height: 60px; border-radius: 50%; background: #fff; color: #111; }
+.rv-a-ctl .rv-a-play svg { width: 26px; height: 26px; }
+.rv-a-spd { font-size: 12px; font-weight: 800; padding: 4px 12px; border-radius: 99px; background: rgba(255,255,255,.12); color: #fff; }
+/* Boshqa fayllar */
+.rv-file { position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 24px; text-align: center; }
+.rv-file .bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .25; filter: blur(6px); }
+.rv-file > *:not(.bg) { position: relative; }
+.rv-file .ic { font-size: 72px; }
+.rv-file .nm { font-weight: 800; font-size: 17px; word-break: break-word; }
+.rv-file .meta { font-size: 13px; font-weight: 700; opacity: .7; }
+.rv-file .hint { font-size: 12.5px; opacity: .6; margin-bottom: 8px; }

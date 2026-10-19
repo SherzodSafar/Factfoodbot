@@ -1,5 +1,6 @@
 // Jonli shajara daraxti: joylashtirish (layout), chizish, surish va kattalashtirish.
-import { yearsLabel, initials } from './family.js';
+import { yearsLabel, age } from './family.js';
+import { defaultAvatar } from './avatars.js';
 
 const W = 124;        // tugun eni
 const H = 132;        // tugun bo'yi
@@ -31,6 +32,8 @@ export class TreeView {
   setData(fam, rootId) {
     this.fam = fam;
     this.rootId = rootId;
+    // Birinchi ochilishda faqat bosh ajdodlar ko'rinadi — farzandlar bosilganda ochiladi
+    if (!this.inited) { this.inited = true; this.collapseAll(true); }
     this.render();
   }
 
@@ -224,13 +227,17 @@ export class TreeView {
     for (const n of nodes) {
       const p = n.p;
       const photo = this.opts.photoUrl(p);
-      const cls = ['node', p.gender, p.blood ? '' : 'inlaw', p.deceased ? 'dec' : ''].join(' ');
-      const cnt = n.head && n.unit.kidCount
-        ? `<button class="cnt ${this.collapsed.has(p.id) ? 'closed' : ''}" data-toggle="${p.id}" aria-label="Shoxni yig'ish">${this.collapsed.has(p.id) ? '+' + fam.descendantsCount(p.id) : '−'}</button>`
+      const u = n.unit;
+      const closed = u.kidCount && this.collapsed.has(u.head.id);
+      const state = u.kidCount ? (closed ? 'closed' : 'open') : 'leaf';
+      const cls = ['node', p.gender, p.blood ? '' : 'inlaw', p.deceased ? 'dec' : '', state].join(' ');
+      const cnt = n.head && u.kidCount
+        ? `<button class="cnt ${closed ? 'closed' : ''}" data-toggle="${p.id}" aria-label="Shox">${closed ? '▾ ' + fam.descendantsCount(p.id) : '▴'}</button>`
         : '';
-      html.push(`<div class="${cls}" data-id="${p.id}" style="left:${n.x}px;top:${n.y}px">
-        <div class="avatar ${p.gender} ${p.deceased ? 'dec' : ''}">${photo ? `<img src="${photo}" alt="" loading="lazy" decoding="async">` : esc(initials(this.opts.name ? this.opts.name(p.name) : p.name))}</div>
-        <div class="nm">${esc(this.opts.name ? this.opts.name(p.name) : p.name)}</div><div class="yr">${esc(yearsLabel(p)) || '&nbsp;'}</div>${cnt}</div>`);
+      const nm = this.opts.name ? this.opts.name(p.name) : p.name;
+      html.push(`<div class="${cls}" data-id="${p.id}" data-unit="${u.head.id}" style="left:${n.x}px;top:${n.y}px">
+        <div class="avatar ${p.gender} ${p.deceased ? 'dec' : ''}">${photo ? `<img src="${photo}" alt="" loading="lazy" decoding="async">` : defaultAvatar(p, age(p))}</div>
+        <div class="nm">${esc(nm)}</div><div class="yr">${esc(yearsLabel(p)) || '&nbsp;'}</div>${cnt}</div>`);
     }
     this.canvas.style.width = width + 'px';
     this.canvas.style.height = height + 'px';
@@ -334,6 +341,30 @@ export class TreeView {
     }
   }
 
+  collapseAll(silent) {
+    this.collapsed.clear();
+    for (const p of this.fam.persons) if (this.fam.children(p.id).length) this.collapsed.add(p.id);
+    if (!silent) this.render();
+  }
+
+  expandAll() {
+    this.collapsed.clear();
+    this.render();
+  }
+
+  /** Shoxni ochib, farzandlar ko'rinadigan qilib suradi. */
+  expand(id) {
+    this.toggle(id);
+    const at = this.pos.get(id);
+    if (!at) return;
+    const r = this.wrap.getBoundingClientRect();
+    const k = Math.max(this.view.k, 0.62);
+    this.animate(() => {
+      this.view = { k, x: r.width / 2 - (at.x + W / 2) * k, y: r.height * 0.3 - (at.y + H / 2) * k };
+      this.apply();
+    });
+  }
+
   collapseFrom(depthLimit) {
     this.collapsed.clear();
     for (const p of this.fam.persons) {
@@ -399,7 +430,9 @@ export class TreeView {
             haptic('light');
           } else if (node) {
             haptic('light');
-            this.opts.onOpen(node.dataset.id);
+            // yopiq shox — ochamiz; ochilgan yoki farzandsiz — ma'lumotini ko'rsatamiz
+            if (node.classList.contains('closed')) this.expand(node.dataset.unit);
+            else this.opts.onOpen(node.dataset.id);
           }
         }
         start = null;

@@ -51,7 +51,13 @@ async function onPrivate(msg) {
     if (!user) await updateUser(from.id, from, () => {});
     const q = randomQuote();
     let extra = '';
-    if (parseInvite(payload)) extra = `?inv=${payload}`;
+    const pinv = parseInvite(payload);
+    if (pinv?.person) {
+      const tr = await loadTree(pinv.treeId).catch(() => null);
+      const p = tr?.persons.find((x) => x.id === pinv.person);
+      if (p) return send(from.id, `👤 <b>${escapeHtml(p.name)}</b>`, { reply_markup: { inline_keyboard: [[{ text: t(lang, '🌳 Shajarani ochish'), web_app: { url: `${URL_()}/?inv=${payload}` } }]] } });
+    }
+    if (pinv) extra = `?inv=${payload}`;
     else if (/^[a-z0-9_-]{4,40}$/i.test(payload)) extra = `?code=${encodeURIComponent(payload)}`;
     return send(from.id,
       `${t(lang, 'Assalomu alaykum, <b>{name}</b>! 🌿', { name: escapeHtml(from.first_name || '') })}\n\n` +
@@ -123,7 +129,10 @@ async function onGroup(msg) {
       reply_markup: { inline_keyboard: [[{ text: t(lang, '🌳 Shajarani ochish'), url: `https://t.me/${BOT()}?start=${inv}` }]] },
     });
   }
-  if (cmd === '/tugilgan') return send(msg.chat.id, upcomingText(tree, lang));
+  if (cmd === '/tugilgan') {
+    const inv = signInvite(tree.id, tree.ver || 1);
+    return send(msg.chat.id, upcomingText(tree, lang, (pid) => `https://t.me/${BOT()}?start=${inv}_${pid}`));
+  }
   if (cmd === '/albom') {
     const src = msg.reply_to_message;
     const media = src && mediaOf(src);

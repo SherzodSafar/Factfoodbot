@@ -1,7 +1,8 @@
 // Shajara iBot — Mini App
 import { I } from './icons.js';
 import { quoteOfDay, randomQuote } from './quotes.js';
-import { TreeView, esc } from './tree-view.js';
+import { TreeView, esc } from './tree-view.js?v=4';
+import { defaultAvatar } from './avatars.js';
 import { Family, yearsLabel, age, initials, parseDateInput, dateToInput, upcomingBirthdays, kinship } from './family.js';
 import { t, nm, LANG, setLang, LANG_NAMES, fmtDate, monthShort, fmtNum } from './i18n.js';
 
@@ -384,8 +385,11 @@ function renderMain() {
   $app.querySelectorAll('.tab').forEach((b) => (b.onclick = () => switchTab(b.dataset.tab)));
   S.treeView = null;
   refreshChrome();
-  switchTab(S.tab || 'tree', true);
+  const go = S.goPerson && S.fam.get(S.goPerson) ? S.goPerson : null;
+  S.goPerson = null;
+  switchTab(go ? 'tree' : S.tab || 'tree', true);
   updateBackButton();
+  if (go) setTimeout(() => { S.treeView?.focus(go, { k: 1 }); personSheet(go); }, 250);
 }
 
 function unreadCount() {
@@ -460,12 +464,12 @@ function renderTreeTab(el) {
       <button class="icon-btn" data-z="root">${I.target}</button>
       <button class="icon-btn" data-z="fold">${I.layers}</button>
     </div>
-    <div class="card legend"><span><i style="background:var(--male)"></i>${t('Erkak')}</span><span><i style="background:var(--female)"></i>${t('Ayol')}</span><span><i style="border:1.5px dashed var(--muted)"></i>${t('Kelin/kuyov')}</span></div>`;
+    <div class="card legend"><span><i style="background:var(--male)"></i>${t('Erkak')}</span><span><i style="background:var(--female)"></i>${t('Ayol')}</span><span><i style="border:1.5px dashed var(--muted)"></i>${t('Kelin/kuyov')}</span></div>
+    <div class="tree-hint">👆 ${t('Ochish uchun ismni bosing')}</div>`;
   const tv = new TreeView(el.querySelector('.tree-host'), { onOpen: (id) => personSheet(id), photoUrl, name: nm, genLabel: (n) => t('{n}-avlod', { n }) });
   S.treeView = tv;
   tv.setData(S.fam, S.tree.rootId);
   requestAnimationFrame(() => tv.showRoot());
-  let folded = false;
   el.querySelectorAll('[data-z]').forEach((b) => (b.onclick = () => {
     haptic('light');
     const z = b.dataset.z;
@@ -474,11 +478,10 @@ function renderTreeTab(el) {
     if (z === 'fit') tv.fit();
     if (z === 'root') tv.showRoot();
     if (z === 'fold') {
-      folded = !folded;
-      if (folded) tv.collapseFrom(Math.max(2, Math.min(4, S.fam.maxGen - S.fam.minGen)));
-      else { tv.collapsed.clear(); tv.render(); }
+      const open = !tv.collapsed.size;
+      if (open) tv.collapseAll(); else tv.expandAll();
       tv.showRoot();
-      toast(folded ? t('Shoxlar yig‘ildi — ochish uchun raqamni bosing') : t('Barcha shoxlar ochildi'));
+      toast(open ? t('Shoxlar yig‘ildi — ochish uchun raqamni bosing') : t('Barcha shoxlar ochildi'));
     }
   }));
   const input = el.querySelector('#ts');
@@ -574,7 +577,7 @@ function subline(p) {
 
 function avatar(p, size = 48, extra = '') {
   const url = photoUrl(p);
-  return `<div class="avatar ${p.gender} ${p.deceased ? 'dec' : ''} ${extra}" style="--s:${size}px">${url ? `<img src="${url}" alt="" loading="lazy">` : esc(initials(nm(p.name)))}</div>`;
+  return `<div class="avatar ${p.gender} ${p.deceased ? 'dec' : ''} ${extra}" style="--s:${size}px">${url ? `<img src="${url}" alt="" loading="lazy">` : defaultAvatar(p, age(p))}</div>`;
 }
 
 // ------------------------------------------------------------ Odam qo'shish: bittalab yoki fayldan
@@ -742,116 +745,246 @@ function tile(it) {
   return `<button class="tile" data-item="${it.id}">${img}${badge}</button>`;
 }
 
-// To'liq ekranli ko'rgich: barmoq bilan kattalashtirish, surish, oldingi/keyingi
+// Reels uslubidagi ko'rgich: tepaga/pastga surib almashtirish, bir bosish — yozuvlarni yashirish
+const SV = (d, f = 'none') => `<svg viewBox="0 0 24 24" fill="${f}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const VI = {
+  heart: (on) => SV('<path d="M12 21s-7.5-4.6-9.5-9.2C1 8.4 3.2 5 6.6 5c2 0 3.4 1.1 4.4 2.5C12 6.1 13.4 5 15.4 5 18.8 5 21 8.4 21.5 11.8 19.5 16.4 12 21 12 21z"/>', on ? 'currentColor' : 'none'),
+  eye: SV('<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
+  send: SV('<path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/>'),
+  full: SV('<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>'),
+  play: SV('<path d="M7 4.5v15l12.5-7.5z"/>', 'currentColor'),
+  pause: SV('<rect x="6" y="4.5" width="4" height="15" rx="1"/><rect x="14" y="4.5" width="4" height="15" rx="1"/>', 'currentColor'),
+  mute: (m) => SV(m ? '<path d="M11 5 6 9H2v6h4l5 4zM23 9l-6 6M17 9l6 6"/>' : '<path d="M11 5 6 9H2v6h4l5 4zM15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/>'),
+  back10: SV('<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><text x="12" y="15.5" font-size="7" text-anchor="middle" fill="currentColor" stroke="none" font-weight="700">10</text>'),
+  fwd10: SV('<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/><text x="12" y="15.5" font-size="7" text-anchor="middle" fill="currentColor" stroke="none" font-weight="700">10</text>'),
+};
+const FILE_IC = { pdf: '📕', doc: '📘', docx: '📘', xls: '📗', xlsx: '📗', ppt: '📙', pptx: '📙', zip: '🗜', rar: '🗜', '7z': '🗜', txt: '📝', apk: '📱' };
+const fmtT = (s) => (isFinite(s) ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}` : '0:00');
+const fmtN = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : String(n || 0));
+const viewedNow = new Set();
+
 function openViewer(ids, index) {
   const A = S.album;
-  let i = Math.max(0, index);
+  const items = ids.map((id) => A.items.find((x) => x.id === id)).filter(Boolean);
+  if (!items.length) return;
+  let cur = -1;
   const box = document.createElement('div');
-  box.className = 'lb';
+  box.className = 'rv';
+  box.innerHTML = `<div class="rv-feed">${items.map((it, i) => `<section class="rv-slide" data-i="${i}"></section>`).join('')}</div>
+    <div class="rv-top rv-ui"><button class="rv-x" id="rv-x">${I.close}</button><div class="rv-count"></div>
+      ${isEdit() ? `<button class="rv-x" id="rv-ed">${I.edit}</button><button class="rv-x" id="rv-dl">${I.trash}</button>` : ''}</div>`;
   document.body.append(box);
-  const st = { k: 1, x: 0, y: 0 };
-  const close = () => { box.remove(); document.removeEventListener('keydown', onKey); viewerOpen = null; updateBackButton(); };
+  const feed = box.querySelector('.rv-feed');
+  const slides = [...feed.children];
+  const close = () => { io.disconnect(); box.querySelectorAll('video,audio').forEach((m) => m.pause()); box.remove(); viewerOpen = null; updateBackButton(); };
   viewerOpen = close;
-  const onKey = (e) => { if (e.key === 'ArrowLeft') go(-1); if (e.key === 'ArrowRight') go(1); if (e.key === 'Escape') close(); };
-  document.addEventListener('keydown', onKey);
-  const apply = () => { const m = box.querySelector('.lb-media'); if (m) m.style.transform = `translate(${st.x}px, ${st.y}px) scale(${st.k})`; };
-  const go = (d) => {
-    const n = i + d;
-    if (n < 0 || n >= ids.length) return;
-    i = n;
-    haptic('light');
-    draw();
-  };
-  function draw() {
-    const it = A.items.find((x) => x.id === ids[i]);
-    if (!it) return close();
-    Object.assign(st, { k: 1, x: 0, y: 0 });
+  box.querySelector('#rv-x').onclick = close;
+  box.querySelector('#rv-ed')?.addEventListener('click', () => { const it = items[cur]; close(); itemEditSheet(it); });
+  box.querySelector('#rv-dl')?.addEventListener('click', async () => {
+    const it = items[cur];
+    if (!(await confirmBox(t('Bu fayl albomdan o‘chirilsinmi?')))) return;
+    try { await api(`album/i/${it.id}`, { method: 'DELETE' }); close(); await refreshAlbum(); toast(t('O‘chirildi')); } catch (err) { toast(err.message, true); }
+  });
+
+  // Bir bosish — barcha yozuv va tugmalarni yashirish/ko'rsatish; ikki bosish — rasmni kattalashtirish
+  let tapT = null;
+  feed.addEventListener('click', (e) => {
+    if (e.target.closest('button, input, .rv-seek, .rv-audio')) return;
+    const img = e.target.closest('.rv-slide')?.querySelector('img.rv-img');
+    if (tapT) {
+      clearTimeout(tapT); tapT = null;
+      if (img) zoomToggle(img);
+      return;
+    }
+    tapT = setTimeout(() => { tapT = null; box.classList.toggle('bare'); }, 240);
+  });
+
+  function hydrate(i) {
+    const sl = slides[i];
+    if (!sl || sl.dataset.ready) return;
+    sl.dataset.ready = 1;
+    const it = items[i];
     const a = A.albums.find((x) => x.id === it.album);
+    const land = it.w && it.h && it.w > it.h * 1.15 && (it.kind === 'image' || it.kind === 'video');
     let media;
-    if (it.type === 'photo' && it.src) media = `<img class="lb-media" src="${it.src}" alt="" draggable="false">`;
-    else if (it.src && (it.type === 'video' || it.type === 'animation')) media = `<video class="lb-media" src="${it.src}" controls playsinline ${it.type === 'animation' ? 'autoplay loop muted' : ''} poster="${it.thumb || ''}"></video>`;
-    else media = `<div class="lb-ph">${it.thumb ? `<img src="${it.thumb}" alt="">` : ''}<div class="viewer-ic">${TYPE_ICON[it.type] || '📄'}</div><div class="small">${esc(it.name || '')} ${fmtSize(it.size)} ${fmtDur(it.dur)}</div></div>`;
-    const by = it.by?.name ? `<button class="lb-by" id="lb-by">👤 ${esc(it.by.name)}</button>` : '';
-    box.innerHTML = `<div class="lb-top"><button class="lb-btn" id="lb-x">${I.close}</button><div class="lb-count">${i + 1} / ${ids.length}</div>
-        ${isEdit() ? `<button class="lb-btn" id="lb-ed">${I.edit}</button><button class="lb-btn" id="lb-dl">${I.trash}</button>` : ''}</div>
-      <div class="lb-stage">${media}</div>
-      ${i > 0 ? `<button class="lb-nav prev" id="lb-prev">${I.back}</button>` : ''}${i < ids.length - 1 ? `<button class="lb-nav next" id="lb-next">${I.chev}</button>` : ''}
-      <div class="lb-bottom"><div class="small" style="opacity:.8;font-weight:700">📁 ${esc(nm(a?.name || ''))} · ${fmtDate(it.at.slice(0, 10))}</div>
-        ${it.caption ? `<div class="lb-cap">${esc(it.caption)}</div>` : ''}
-        <div class="row" style="margin-top:8px;gap:8px">${by}<div class="grow"></div>${inTelegram ? `<button class="btn btn-soft btn-sm" id="lb-snd">📩 ${t('Chatga yuborish')}</button>` : ''}</div></div>`;
-    box.querySelector('#lb-x').onclick = close;
-    box.querySelector('#lb-prev')?.addEventListener('click', () => go(-1));
-    box.querySelector('#lb-next')?.addEventListener('click', () => go(1));
-    box.querySelector('#lb-by')?.addEventListener('click', () => openProfile(it));
-    box.querySelector('#lb-snd')?.addEventListener('click', async (e) => {
-      const b = e.currentTarget;
+    if (it.kind === 'image' && it.src) media = `<img class="rv-img" src="${it.src}" alt="" draggable="false">`;
+    else if (it.kind === 'video' && it.src) {
+      media = `<video class="rv-vid" src="${it.src}" playsinline preload="metadata" ${it.type === 'animation' ? 'loop muted' : 'loop'} poster="${it.thumb || ''}"></video>
+        <div class="rv-big-play">${VI.play}</div>`;
+    } else if (it.kind === 'audio' && it.src) {
+      media = `<div class="rv-audio"><div class="rv-disc">${it.thumb ? `<img src="${it.thumb}" alt="">` : '🎵'}</div>
+        <div class="rv-a-name">${esc(it.name || t('Audio'))}</div>
+        <div class="rv-seek big"><i></i></div><div class="rv-a-time"><span class="c">0:00</span><span class="d">${fmtDur(it.dur) || '0:00'}</span></div>
+        <div class="rv-a-ctl"><button data-a="-10">${VI.back10}</button><button class="rv-a-play" data-a="play">${VI.play}</button><button data-a="10">${VI.fwd10}</button></div>
+        <button class="rv-a-spd" data-a="spd">1×</button><audio preload="metadata" src="${it.src}"></audio></div>`;
+    } else {
+      const ext = (it.name || '').split('.').pop().toLowerCase();
+      media = `<div class="rv-file">${it.thumb ? `<img class="bg" src="${it.thumb}" alt="">` : ''}<div class="ic">${it.kind === 'file' ? FILE_IC[ext] || '📄' : TYPE_ICON[it.type] || '📄'}</div>
+        <div class="nm">${esc(it.name || t('Fayl'))}</div><div class="meta">${[ext && ext.length < 6 ? ext.toUpperCase() : '', fmtSize(it.size), fmtDur(it.dur)].filter(Boolean).join(' · ')}</div>
+        <div class="hint">${t('Bu faylni chatda ochish mumkin')}</div>
+        ${inTelegram ? `<button class="btn btn-primary" data-act="send">📩 ${t('Chatga yuborish')}</button>` : ''}</div>`;
+    }
+    sl.innerHTML = `<div class="rv-media">${media}</div>
+      <div class="rv-side rv-ui">
+        <button class="rv-b like ${it.liked ? 'on' : ''}" data-act="like">${VI.heart(it.liked)}<span>${fmtN(it.likes)}</span></button>
+        <div class="rv-b">${VI.eye}<span class="vw">${fmtN(it.views)}</span></div>
+        ${it.kind === 'video' && it.type !== 'animation' ? `<button class="rv-b" data-act="mute">${VI.mute(false)}</button>` : ''}
+        ${land ? `<button class="rv-b" data-act="full">${VI.full}</button>` : ''}
+        ${inTelegram ? `<button class="rv-b" data-act="send">${VI.send}</button>` : ''}
+      </div>
+      <div class="rv-info rv-ui">
+        <div class="rv-meta">📁 ${esc(nm(a?.name || ''))} · ${fmtDate(it.at.slice(0, 10))}</div>
+        ${it.by?.name ? `<button class="rv-by" data-act="by">👤 ${esc(it.by.name)}</button>` : ''}
+        ${it.caption ? `<div class="rv-cap">${esc(it.caption)}</div>` : ''}
+        ${it.kind === 'video' && it.src ? `<div class="rv-vbar"><button data-act="pp">${VI.pause}</button><div class="rv-seek"><i></i></div><span class="rv-vt">0:00</span></div>` : ''}
+      </div>`;
+    sl.querySelectorAll('[data-act]').forEach((b) => (b.onclick = (e) => { e.stopPropagation(); act(b.dataset.act, it, sl, b); }));
+    const v = sl.querySelector('video');
+    if (v) bindVideo(v, sl);
+    const au = sl.querySelector('audio');
+    if (au) bindAudio(au, sl);
+    const img = sl.querySelector('img.rv-img');
+    if (img) bindPinch(img);
+  }
+
+  async function act(k, it, sl, b) {
+    haptic('light');
+    if (k === 'like') {
+      it.liked = !it.liked;
+      it.likes = Math.max(0, (it.likes || 0) + (it.liked ? 1 : -1));
+      b.classList.toggle('on', it.liked);
+      b.innerHTML = `${VI.heart(it.liked)}<span>${fmtN(it.likes)}</span>`;
+      try { const r = await api(`album/i/${it.id}/like`, { method: 'POST' }); if (r.likes != null) { it.likes = r.likes; it.liked = r.liked; b.querySelector('span').textContent = fmtN(r.likes); } } catch {}
+    }
+    if (k === 'send') {
       b.disabled = true;
       try { await api(`album/i/${it.id}/send`, { method: 'POST' }); toast(t('Chatga yuborildi 📩')); } catch (err) { toast(err.message, true); }
       b.disabled = false;
-    });
-    box.querySelector('#lb-dl')?.addEventListener('click', async () => {
-      if (!(await confirmBox(t('Bu fayl albomdan o‘chirilsinmi?')))) return;
-      try { await api(`album/i/${it.id}`, { method: 'DELETE' }); close(); await refreshAlbum(); toast(t('O‘chirildi')); } catch (err) { toast(err.message, true); }
-    });
-    box.querySelector('#lb-ed')?.addEventListener('click', () => { close(); itemEditSheet(it); });
-    bindZoom(box.querySelector('.lb-stage'), box.querySelector('img.lb-media'));
+    }
+    if (k === 'by') openProfile(it);
+    if (k === 'full') {
+      const on = !sl.classList.contains('land');
+      sl.classList.toggle('land', on);
+      feed.style.overflowY = on ? 'hidden' : '';
+      try { on ? tg?.requestFullscreen?.() : tg?.exitFullscreen?.(); } catch {}
+    }
+    if (k === 'mute') {
+      const v = sl.querySelector('video');
+      v.muted = !v.muted;
+      b.innerHTML = VI.mute(v.muted);
+    }
+    if (k === 'pp') {
+      const v = sl.querySelector('video');
+      v.paused ? v.play().catch(() => {}) : v.pause();
+    }
   }
-  // Pinch-zoom, surish, ikki marta bosish, chap/o'ngga surib almashtirish
-  function bindZoom(stage, img) {
-    const pts = new Map();
-    let start = null;
-    let pinch = null;
-    let lastTap = 0;
-    stage.onpointerdown = (e) => {
-      stage.setPointerCapture(e.pointerId);
-      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (pts.size === 1) start = { x: e.clientX, y: e.clientY, sx: st.x, sy: st.y, t: Date.now() };
-      if (pts.size === 2) {
-        const [a, b] = [...pts.values()];
-        pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), k: st.k };
-      }
+
+  function seekable(bar, media) {
+    const go = (e) => {
+      const r = bar.getBoundingClientRect();
+      if (media.duration) media.currentTime = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * media.duration;
     };
-    stage.onpointermove = (e) => {
-      if (!pts.has(e.pointerId) || !img) return;
-      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (pts.size === 2 && pinch) {
-        const [a, b] = [...pts.values()];
-        st.k = Math.min(5, Math.max(1, pinch.k * (Math.hypot(a.x - b.x, a.y - b.y) / pinch.d)));
-        apply();
-      } else if (pts.size === 1 && start && st.k > 1) {
-        st.x = start.sx + e.clientX - start.x;
-        st.y = start.sy + e.clientY - start.y;
-        apply();
-      }
-    };
-    stage.onpointerup = stage.onpointercancel = (e) => {
-      pts.delete(e.pointerId);
-      if (pts.size) return;
-      pinch = null;
-      if (!start) return;
-      const dx = e.clientX - start.x;
-      const dy = e.clientY - start.y;
-      if (st.k <= 1.01) {
-        Object.assign(st, { k: 1, x: 0, y: 0 });
-        apply();
-        if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) return go(dx < 0 ? 1 : -1);
-        if (dy > 110 && Math.abs(dy) > Math.abs(dx)) return close();
-      }
-      if (Math.hypot(dx, dy) < 8 && img) {
-        const now = Date.now();
-        if (now - lastTap < 300) {
-          st.k = st.k > 1 ? 1 : 2.5;
-          if (st.k === 1) { st.x = 0; st.y = 0; }
-          img.style.transition = 'transform .25s';
-          apply();
-          setTimeout(() => (img.style.transition = ''), 260);
-        }
-        lastTap = now;
-      }
-      start = null;
-    };
+    bar.onpointerdown = (e) => { e.stopPropagation(); bar.setPointerCapture(e.pointerId); go(e); bar.onpointermove = go; };
+    bar.onpointerup = bar.onpointercancel = () => (bar.onpointermove = null);
+    bar.onclick = (e) => e.stopPropagation();
   }
-  draw();
+
+  function bindVideo(v, sl) {
+    const fill = sl.querySelector('.rv-vbar .rv-seek i');
+    const tm = sl.querySelector('.rv-vt');
+    const pp = sl.querySelector('[data-act="pp"]');
+    const sync = () => { pp.innerHTML = v.paused ? VI.play : VI.pause; sl.classList.toggle('paused', v.paused); };
+    v.addEventListener('timeupdate', () => { fill.style.width = (v.currentTime / (v.duration || 1)) * 100 + '%'; tm.textContent = `${fmtT(v.currentTime)} / ${fmtT(v.duration)}`; });
+    v.addEventListener('play', sync);
+    v.addEventListener('pause', sync);
+    v.addEventListener('volumechange', () => { const m = sl.querySelector('[data-act="mute"]'); if (m) m.innerHTML = VI.mute(v.muted); });
+    sl.querySelector('.rv-big-play').onclick = (e) => { e.stopPropagation(); v.play().catch(() => {}); };
+    seekable(sl.querySelector('.rv-vbar .rv-seek'), v);
+  }
+
+  function bindAudio(au, sl) {
+    const fill = sl.querySelector('.rv-seek i');
+    const c = sl.querySelector('.rv-a-time .c');
+    const d = sl.querySelector('.rv-a-time .d');
+    const play = sl.querySelector('.rv-a-play');
+    const sync = () => { play.innerHTML = au.paused ? VI.play : VI.pause; sl.classList.toggle('playing', !au.paused); };
+    au.addEventListener('timeupdate', () => { fill.style.width = (au.currentTime / (au.duration || 1)) * 100 + '%'; c.textContent = fmtT(au.currentTime); });
+    au.addEventListener('loadedmetadata', () => { if (isFinite(au.duration)) d.textContent = fmtT(au.duration); });
+    au.addEventListener('play', sync);
+    au.addEventListener('pause', sync);
+    au.addEventListener('error', () => { sl.querySelector('.rv-a-name').insertAdjacentHTML('afterend', `<div class="small" style="opacity:.7">${t('Bu formatni ilovada ijro etib bo‘lmadi — chatga yuboring')}</div>`); }, { once: true });
+    const speeds = [1, 1.25, 1.5, 2];
+    sl.querySelectorAll('[data-a]').forEach((b) => (b.onclick = (e) => {
+      e.stopPropagation();
+      haptic('light');
+      const k = b.dataset.a;
+      if (k === 'play') au.paused ? au.play().catch(() => {}) : au.pause();
+      else if (k === 'spd') { au.playbackRate = speeds[(speeds.indexOf(au.playbackRate) + 1) % speeds.length]; b.textContent = au.playbackRate + '×'; }
+      else au.currentTime = Math.max(0, au.currentTime + Number(k));
+    }));
+    seekable(sl.querySelector('.rv-seek'), au);
+  }
+
+  // Ikki barmoq bilan kattalashtirish; kattalashganda lenta surilmaydi, rasm suriladi
+  function zoomToggle(img, k) {
+    const z = img._z || (img._z = { k: 1, x: 0, y: 0 });
+    z.k = k ?? (z.k > 1 ? 1 : 2.5);
+    if (z.k <= 1) Object.assign(z, { k: 1, x: 0, y: 0 });
+    img.style.transition = 'transform .25s';
+    img.style.transform = `translate(${z.x}px, ${z.y}px) scale(${z.k})`;
+    setTimeout(() => (img.style.transition = ''), 260);
+    feed.style.overflowY = z.k > 1 ? 'hidden' : '';
+  }
+  function bindPinch(img) {
+    const z = img._z || (img._z = { k: 1, x: 0, y: 0 });
+    let p0 = null;
+    const host = img.parentElement;
+    const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    host.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 2) { e.preventDefault(); p0 = { d: dist(e.touches), k: z.k }; }
+      else if (z.k > 1) p0 = { x: e.touches[0].clientX, y: e.touches[0].clientY, sx: z.x, sy: z.y };
+    }, { passive: false });
+    host.addEventListener('touchmove', (e) => {
+      if (!p0) return;
+      e.preventDefault();
+      if (e.touches.length === 2 && p0.d) z.k = Math.min(5, Math.max(1, p0.k * (dist(e.touches) / p0.d)));
+      else if (e.touches.length === 1 && p0.x != null) { z.x = p0.sx + e.touches[0].clientX - p0.x; z.y = p0.sy + e.touches[0].clientY - p0.y; }
+      img.style.transform = `translate(${z.x}px, ${z.y}px) scale(${z.k})`;
+      feed.style.overflowY = 'hidden';
+    }, { passive: false });
+    host.addEventListener('touchend', (e) => {
+      if (e.touches.length) return;
+      p0 = null;
+      if (z.k <= 1.05) zoomToggle(img, 1);
+    });
+  }
+
+  function activate(i) {
+    if (i === cur) return;
+    cur = i;
+    box.querySelector('.rv-count').textContent = `${i + 1} / ${items.length}`;
+    for (const j of [i - 1, i, i + 1, i + 2]) hydrate(j);
+    slides.forEach((sl, j) => {
+      const m = sl.querySelector('video, audio');
+      if (!m) return;
+      if (j === i && m.tagName === 'VIDEO') m.play().catch(() => { m.muted = true; m.play().catch(() => {}); });
+      else if (j !== i) m.pause();
+      if (j !== i && sl.classList.contains('land')) { sl.classList.remove('land'); feed.style.overflowY = ''; }
+    });
+    const it = items[i];
+    if (!viewedNow.has(it.id)) {
+      viewedNow.add(it.id);
+      api(`album/i/${it.id}/view`, { method: 'POST' }).then((r) => {
+        if (r?.views != null && r.views !== it.views) { it.views = r.views; const el = slides[i].querySelector('.vw'); if (el) el.textContent = fmtN(r.views); }
+      }).catch(() => {});
+    }
+  }
+  const io = new IntersectionObserver((es) => es.forEach((e) => e.isIntersecting && activate(Number(e.target.dataset.i))), { root: feed, threshold: 0.6 });
+  slides.forEach((s) => io.observe(s));
+  const start = Math.max(0, Math.min(index, items.length - 1));
+  hydrate(start);
+  feed.scrollTop = start * feed.clientHeight;
+  activate(start);
   updateBackButton();
 }
 let viewerOpen = null;
@@ -1558,6 +1691,7 @@ function boot() {
   const params = new URLSearchParams(location.search);
   const sp = tg?.initDataUnsafe?.start_param || '';
   const inv = params.get('inv') || (sp.startsWith('inv_') ? sp : '');
+  S.goPerson = /_(p\d{1,8})$/.exec(inv.slice(30))?.[1] || null;
   const startCode = params.get('code') || (!inv ? sp : '');
   const afterOnb = () => {
     if (inv) return joinByInvite(inv);

@@ -8,7 +8,8 @@ import { notify, escapeHtml } from './notify.js';
 import { t } from './i18n.js';
 
 export const albumKey = (treeId) => `albums/${treeId}.json`;
-const INLINE_MAX = 4 * 1024 * 1024; // Vercel javob chegarasi — kattaroq fayllar Telegram orqali ochiladi
+const INLINE_MAX = 20 * 1024 * 1024; // Bot API yuklab olish chegarasi — kattaroqlari chat orqali ochiladi
+const IMG_MAX = 4 * 1024 * 1024; // rasm bir bo'lakda qaytadi
 
 export async function loadAlbum(treeId) {
   return (await readJson(albumKey(treeId)))?.data || { albums: [], items: [] };
@@ -50,22 +51,37 @@ export function canUpload(tree, uid, role) {
   return (tree.settings?.albumUpload || 'members') === 'members';
 }
 
-const mediaUrl = (fileId) => {
+const mediaUrl = (fileId, x) => {
   const { e, s } = signMedia(fileId);
-  return `/api/media?f=${encodeURIComponent(fileId)}&e=${e}&s=${s}`;
+  return `/api/media?f=${encodeURIComponent(fileId)}&e=${e}&s=${s}${x ? '&x=' + x : ''}`;
 };
 
-export function publicAlbum(doc, tree) {
+// Fayl turi: ilovada qanday ochiladi (image | video | audio | file)
+export function kindOf(it) {
+  const mime = it.mime || '';
+  if (it.type === 'photo' || (it.type === 'document' && /^image\/(jpeg|png|webp|gif)/.test(mime))) return 'image';
+  if (['video', 'animation', 'video_note'].includes(it.type) || /^video\//.test(mime)) return 'video';
+  if (['audio', 'voice'].includes(it.type) || /^audio\//.test(mime)) return 'audio';
+  return 'file';
+}
+const EXT = { 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/x-m4a': 'm4a', 'audio/ogg': 'ogg', 'audio/aac': 'aac', 'audio/wav': 'wav', 'audio/x-wav': 'wav', 'audio/flac': 'flac', 'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
+
+export function publicAlbum(doc, tree, uid) {
   const users = tree?.members || {};
   return {
     albums: doc.albums,
-    items: doc.items.map((it) => ({
-      byUser: it.by?.id ? users[it.by.id]?.username || null : null,
-      id: it.id, album: it.album, type: it.type, caption: it.caption, name: it.name, w: it.w, h: it.h, dur: it.dur,
-      size: it.size, by: it.by, at: it.at,
-      thumb: it.thumbId ? mediaUrl(it.thumbId) : null,
-      src: (it.type === 'photo' || ((it.type === 'video' || it.type === 'animation') && it.size && it.size <= INLINE_MAX)) ? mediaUrl(it.fileId) : null,
-    })),
+    items: doc.items.map((it) => {
+      const kind = kindOf(it);
+      const ok = kind === 'image' ? !it.size || it.size <= IMG_MAX : kind !== 'file' && (!it.size || it.size <= INLINE_MAX);
+      return {
+        byUser: it.by?.id ? users[it.by.id]?.username || null : null,
+        id: it.id, album: it.album, type: it.type, kind, mime: it.mime || null, caption: it.caption, name: it.name, w: it.w, h: it.h, dur: it.dur,
+        size: it.size, by: it.by, at: it.at,
+        views: (it.seen || []).length, likes: (it.likes || []).length, liked: !!uid && (it.likes || []).includes(String(uid)),
+        thumb: it.thumbId ? mediaUrl(it.thumbId) : null,
+        src: ok ? mediaUrl(it.fileId, EXT[it.mime] || (it.type === 'voice' ? 'ogg' : it.type === 'photo' ? 'jpg' : '')) : null,
+      };
+    }),
   };
 }
 

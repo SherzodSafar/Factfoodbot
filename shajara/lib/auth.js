@@ -43,8 +43,8 @@ export function signInvite(treeId, ver) {
   return `inv_${treeId}${mac(`inv:${treeId}:${ver}`, 16)}`;
 }
 export function parseInvite(s) {
-  const m = /^inv_([a-z0-9]{12})([A-Za-z0-9_-]{16})$/.exec(String(s || ''));
-  return m ? { treeId: m[1], sig: m[2] } : null;
+  const m = /^inv_([a-z0-9]{12})([A-Za-z0-9_-]{16})(?:_(p\d{1,8}))?$/.exec(String(s || ''));
+  return m ? { treeId: m[1], sig: m[2], person: m[3] || null } : null;
 }
 export function checkInvite(inv, ver) {
   return safeEqual(inv.sig, mac(`inv:${inv.treeId}:${ver}`, 16));
