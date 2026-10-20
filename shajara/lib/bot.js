@@ -2,7 +2,7 @@
 import { tg, tgUpload, mediaOf, downloadFile } from './telegram.js';
 import { waitUntil } from '@vercel/functions';
 const ai = () => import('./ai.js'); // og'ir SDK faqat kerak bo'lganda yuklanadi
-import { importRows } from './tree.js';
+import { importGraph, planGraph } from './tree.js';
 import { t, normLang, LANGS } from './i18n.js';
 import { randomQuote } from './quotes.js';
 import { readJson, writeJson, deleteKey } from './store.js';
@@ -162,15 +162,17 @@ async function aiImport(from, lang, msg) {
   await updateUser(from.id, from, (d) => { d.aiImport = { rows: res.rows.slice(0, 2000), at: Date.now() }; });
   const user = await getUser(from.id);
   const kb = [];
+  const notes = [];
   for (const [id, role] of Object.entries(user?.trees || {}).slice(0, 8)) {
     if (role !== 'edit') continue;
     const tr = await loadTree(id).catch(() => null);
-    if (tr && tr.members?.[String(from.id)]?.role === 'edit') kb.push([{ text: `✅ «${tr.title}» ${t(lang, 'ga qo‘shish')} (${res.rows.length})`, callback_data: `aimp:${id}` }]);
+    if (!tr || tr.members?.[String(from.id)]?.role !== 'edit') continue;
+    // shajarada borlar qayta qo'shilmaydi — tugmada faqat yangilar soni
+    const plan = planGraph(tr, res.rows);
+    if (plan.matched.size) notes.push(t(lang, '«{title}»da {m} tasi allaqachon bor — qayta qo‘shilmaydi.', { title: escapeHtml(tr.title), m: plan.matched.size }));
+    if (plan.newCount) kb.push([{ text: `✅ «${tr.title}» ${t(lang, 'ga qo‘shish')} (+${plan.newCount})`, callback_data: `aimp:${id}` }]);
   }
-  const caption = `📋 ${t(lang, '{n} kishi topildi.', { n: res.rows.length })}
-${escapeHtml(res.summary).slice(0, 700)}
-
-` +
+  const caption = `📋 ${t(lang, '{n} kishi topildi.', { n: res.rows.length })}\n${escapeHtml(res.summary).slice(0, 500)}${notes.length ? '\n' + notes.join('\n') : ''}\n\n` +
     t(lang, kb.length ? 'Faylni tekshiring. Hammasi to‘g‘ri bo‘lsa — pastdagi tugma bilan shajarangizga qo‘shing yoki ilovada «Fayldan qo‘shish» orqali yuklang.' : 'Bu faylni ilovada tahrir rejimida «+ → Fayldan qo‘shish» orqali yuklang.');
   return tgUpload('sendDocument', { chat_id: chatId, caption: caption.slice(0, 1020), parse_mode: 'HTML', reply_markup: kb.length ? { inline_keyboard: kb } : undefined }, 'document', Buffer.from((await ai()).rowsToCsv(res.rows)), 'shajara.csv', 'text/csv');
 }
@@ -335,11 +337,13 @@ async function onCallback(cq) {
     const tr = await loadTree(treeId).catch(() => null);
     if (!tr || tr.members?.[String(from.id)]?.role !== 'edit') return answer(t(lang, 'Ruxsat yo‘q'));
     try {
-      const r = await mutateTree(treeId, (x) => importRows(x, rows, from.first_name || 'AI'));
+      const r = await mutateTree(treeId, (x) => importGraph(x, rows, from.first_name || 'AI'));
       await updateUser(from.id, from, (d) => { d.aiImport = null; });
       await answer('✅');
       tg('editMessageReplyMarkup', { chat_id: cq.message.chat.id, message_id: cq.message.message_id, reply_markup: { inline_keyboard: [] } });
-      return send(cq.message.chat.id, `✅ ${t(lang, '{n} kishi «{title}» shajarasiga qo‘shildi.', { n: r.result, title: escapeHtml(tr.title) })}`, { reply_markup: appButton(lang) });
+      const { created, matched } = r.result;
+      return send(cq.message.chat.id, `✅ ${t(lang, '{n} kishi «{title}» shajarasiga qo‘shildi.', { n: created, title: escapeHtml(tr.title) })}` +
+        (matched ? `\n${t(lang, '{m} tasi allaqachon bor edi — ularga bog‘landi.', { m: matched })}` : ''), { reply_markup: appButton(lang) });
     } catch (e) {
       return answer(String(e.message || e).slice(0, 190));
     }

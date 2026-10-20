@@ -4,12 +4,12 @@ import { readFileSync } from 'node:fs';
 import crypto from 'node:crypto';
 import {
   verifyToken, signToken, verifyInitData, hashCode, normalizeCode, rateLimit, signInvite, parseInvite, checkInvite,
-  signMedia, verifyMedia, randomCode,
+  signMedia, verifyMedia, randomCode, randomId,
 } from '../lib/auth.js';
 import { readJson, writeJson, getFile, deleteKey, listKeys } from '../lib/store.js';
 import {
   HttpError, findTreeByCode, loadTree, createTree, mutateTree, publicTree, addPerson, updatePerson, deletePerson,
-  savePhoto, changeSettings, upsertMember, importRows, replacePersons,
+  savePhoto, changeSettings, upsertMember, importRows, replacePersons, importGraph, planGraph,
 } from '../lib/tree.js';
 import { tg, tgUpload, sendDocument, sendStored, mediaOf, downloadFile, fetchFilePart } from '../lib/telegram.js';
 const MIME = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', heic: 'image/heic', mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', mkv: 'video/x-matroska', m4v: 'video/mp4', mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac', ogg: 'audio/ogg', oga: 'audio/ogg', opus: 'audio/ogg', wav: 'audio/wav', flac: 'audio/flac', pdf: 'application/pdf' };
@@ -503,6 +503,64 @@ async function route(req, res) {
     return send(res, 200, { blobMs, telegramMs: Date.now() - t, region: process.env.VERCEL_REGION || null });
   }
 
+  // ---- AI: fayldan ro'yxat (Mini App). Uzoq ish — fon vazifasi, ilova holatini so'rab turadi
+  if (parts[0] === 'ai' && parts[1]) {
+    const jobKey = (id) => `aijobs/${String(id).replace(/[^a-z0-9]/gi, '')}.json`;
+    if (parts[1] === 'file' && m === 'POST') {
+      const body = await readBody(req);
+      const user = verifyInitData(req.headers['x-init-data']);
+      if (!rateLimit('aifile:' + (user?.id || clientIp(req)), 10, 60 * 60e3)) throw new HttpError(429, 'Juda ko‘p fayl. Birozdan so‘ng urinib ko‘ring');
+      const buf = Buffer.from(String(body.data || ''), 'base64');
+      if (!buf.length) throw new HttpError(400, 'Fayl bo‘sh');
+      if (buf.length > 3 * 1024 * 1024) throw new HttpError(413, 'Fayl juda katta (3 MB gacha)');
+      const ai = await import('../lib/ai.js');
+      const content = ai.fileToContent(buf, String(body.name || 'file').slice(0, 120), String(body.mime || ''));
+      if (!content) throw new HttpError(415, 'Bu formatni o‘qib bo‘lmaydi. Faylni .xlsx, .docx, .pdf, .csv, .txt yoki rasm qilib yuboring');
+      let tree = null;
+      try { tree = (await authTree(req)).tree; } catch {}
+      const id = randomId(14);
+      const lang = ['uz', 'uzc', 'ru', 'en'].includes(body.lang) ? body.lang : 'uz';
+      await writeJson(jobKey(id), { status: 'pending', at: Date.now() });
+      const job = (async () => {
+        try {
+          const r = await ai.extractFamily(content, lang);
+          const plan = tree ? planGraph(tree, r.rows) : null;
+          await writeJson(jobKey(id), { status: 'done', at: Date.now(), rows: r.rows, summary: r.summary, count: r.rows.length, matched: plan?.matched.size ?? 0, fresh: plan?.newCount ?? r.rows.length });
+        } catch (e) {
+          console.error('ai file', e);
+          await writeJson(jobKey(id), { status: 'error', at: Date.now(), error: 'AI faylni tahlil qila olmadi. Boshqa formatda yuborib ko‘ring' });
+        }
+      })();
+      try { waitUntil(job); } catch { await job; }
+      return send(res, 200, { job: id });
+    }
+    if (parts[1] === 'job' && parts[2] && m === 'GET') {
+      const d = (await readJson(jobKey(parts[2])))?.data;
+      if (!d) throw new HttpError(404, 'Topilmadi');
+      if (d.status === 'pending' && Date.now() - d.at > 6 * 60e3) return send(res, 200, { status: 'error', error: 'Vaqt tugadi. Qayta urinib ko‘ring' });
+      return send(res, 200, d);
+    }
+    if (parts[1] === 'apply' && m === 'POST') {
+      const body = await readBody(req);
+      const { tok, user, uid } = await authTree(req, 'edit');
+      const d = (await readJson(jobKey(body.job || '')))?.data;
+      if (d?.status !== 'done' || !d.rows?.length) throw new HttpError(404, 'Ma’lumot eskirgan. Faylni qayta yuboring');
+      const r = await mutateTree(tok.treeId, (t) => (checkVer(t, tok), importGraph(t, d.rows, nameOf(user) || 'AI')));
+      return send(res, 200, { ...r.result, tree: out(r.data, 'edit', uid) });
+    }
+    if (parts[1] === 'csv' && m === 'POST') {
+      const body = await readBody(req);
+      const user = verifyInitData(req.headers['x-init-data']);
+      if (!user) throw new HttpError(400, 'Bu funksiya faqat Telegram ichida ishlaydi');
+      const d = (await readJson(jobKey(body.job || '')))?.data;
+      if (d?.status !== 'done') throw new HttpError(404, 'Ma’lumot eskirgan. Faylni qayta yuboring');
+      const { rowsToCsv } = await import('../lib/ai.js');
+      const r = await tgUpload('sendDocument', { chat_id: user.id, caption: `📋 ${d.count}` }, 'document', Buffer.from(rowsToCsv(d.rows)), 'shajara.csv', 'text/csv');
+      if (!r.ok) throw new HttpError(502, 'Yuborib bo‘lmadi. Avval botga /start yozing');
+      return send(res, 200, { ok: true });
+    }
+  }
+
   // Mini App ichidagi AI yordamchi
   if (path === 'ai' && m === 'POST') {
     const body = await readBody(req);
@@ -520,6 +578,33 @@ async function route(req, res) {
       console.error('ai', e);
       throw new HttpError(503, 'AI hozir javob bera olmadi. Birozdan so‘ng qayta urinib ko‘ring');
     }
+  }
+
+  // VAQTINCHA: AI ajratishni haqiqiy fayl bilan sinash (keyin o'chiriladi)
+  if (path === 'aitest' && m === 'GET' && url.searchParams.get('k') === '352484a3f11c35fc642992e0') {
+    const zlib = await import('node:zlib');
+    const buf = zlib.gunzipSync(Buffer.from(url.searchParams.get('z') || '', 'base64url'));
+    const ai = await import('../lib/ai.js');
+    const content = ai.fileToContent(buf, 'shajara.txt', 'text/plain');
+    const id = randomId(14);
+    await writeJson(`aijobs/${id}.json`, { status: 'pending', at: Date.now() });
+    const job = (async () => {
+      const t0 = Date.now();
+      try {
+        const r = await ai.extractFamily(content, 'uz');
+        const byId = new Map(r.rows.map((x) => [x.id, x]));
+        const nmOf = (i) => byId.get(i)?.name || '';
+        const check = {};
+        for (const x of r.rows) if (['Laylo', 'Saidbek', 'Karimboy', 'Omongul', 'Doniyor', 'Yo‘ldosh', 'Irisbika', 'Zuxra', 'Hamdam'].includes(x.name)) (check[x.name] ||= []).push([x.birth, x.death, 'f:' + nmOf(x.father), 'm:' + nmOf(x.mother), 's:' + nmOf(x.spouse)].join(' '));
+        await writeJson(`aijobs/${id}.json`, { status: 'done', at: Date.now(), ms: Date.now() - t0, rounds: r.rounds, count: r.rows.length,
+          withParent: r.rows.filter((x) => x.father || x.mother).length, deadLinks: r.rows.filter((x) => [x.father, x.mother, x.spouse].some((v) => v && !byId.has(v))).length,
+          roots: r.rows.filter((x) => !x.father && !x.mother && !x.spouse).map((x) => x.name).slice(0, 30), summary: r.summary, check, last: r.rows.slice(-3) });
+      } catch (e) {
+        await writeJson(`aijobs/${id}.json`, { status: 'error', at: Date.now(), ms: Date.now() - t0, error: String(e.message).slice(0, 300) });
+      }
+    })();
+    try { waitUntil(job); } catch { await job; }
+    return send(res, 200, { job: id });
   }
 
   // AI ulanishini tekshirish (juda qisqa so'rov, cheklangan)
@@ -542,6 +627,11 @@ async function route(req, res) {
     const secret = process.env.CRON_SECRET;
     if (!secret || req.headers.authorization !== `Bearer ${secret}`) throw new HttpError(401, 'Ruxsat yo‘q');
     let sent = 0;
+    // eski AI vazifalarini tozalash (1 kundan eski)
+    for (const key of await listKeys('aijobs/')) {
+      const d = (await readJson(key).catch(() => null))?.data;
+      if (!d || Date.now() - (d.at || 0) > 864e5) await deleteKey(key).catch(() => {});
+    }
     for (const key of await listKeys('trees/')) {
       const tr = (await readJson(key))?.data;
       if (!tr) continue;

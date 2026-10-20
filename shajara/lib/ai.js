@@ -166,7 +166,12 @@ function xlsxText(buf) {
     }).join('\t')).join('\n')).join('\n\n');
 }
 
-/** Faylni Claude tushunadigan kontent bloklariga aylantirish. */
+// Matnli fayl: UTF-8 bo'lmasa (eski Windows fayllari) Windows-1251 deb o'qiymiz — aks holda ‘ va kirill harflari buziladi
+function decodeText(buf) {
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(buf); } catch { return new TextDecoder('windows-1251').decode(buf); }
+}
+
+/** Faylni AI tushunadigan kontent bloklariga aylantirish (o'qib bo'lmasa null). */
 export function fileToContent(buffer, name = '', mime = '') {
   const ext = (name.split('.').pop() || '').toLowerCase();
   if (mime === 'application/pdf' || ext === 'pdf') return [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: buffer.toString('base64') } }];
@@ -175,49 +180,98 @@ export function fileToContent(buffer, name = '', mime = '') {
   let text;
   if (ext === 'docx') text = docxText(buffer);
   else if (ext === 'xlsx') text = xlsxText(buffer);
-  else if (['doc', 'xls', 'ppt', 'pptx', 'zip', 'rar'].includes(ext)) return null;
-  else text = buffer.toString('utf8');
-  return [{ type: 'text', text: `Fayl «${name}»:\n\n${text.slice(0, 400000)}` }];
+  else if (['doc', 'xls', 'ppt', 'pptx', 'zip', 'rar', '7z', 'apk', 'exe'].includes(ext)) return null;
+  else text = decodeText(buffer);
+  return [{ type: 'text', text: `File «${name}»:\n\n${text.slice(0, 400000)}` }];
 }
 
-const PARSE_PROMPT = `Quyidagi materialdan oila shajarasi uchun odamlar ro'yxatini ajratib oling. Material har qanday ko'rinishda bo'lishi mumkin: jadval, matn, qo'lyozma rasmi, sxema.
-Har bir odam uchun maydonlar:
-name (ism, familiya bo'lsa qo'shib; bir xil ismli turli odamlarni ajratish uchun kerak bo'lsa qavsda farqlovchi belgi qo'shing, masalan «Ali (Karimning o'g'li)»),
-gender ("erkak" yoki "ayol"; ismdan aniqlang),
-birth (tug'ilgan yil yoki sana: "1958" yoki "20.03.1958"), death (vafot yili/sanasi; bo'lmasa bo'sh),
-father, mother (otasi va onasining ismi — aynan ro'yxatdagi name bilan bir xil yozing), spouse (turmush o'rtog'i, ro'yxatdagi name bilan bir xil),
-place (yashash joyi), phone, note (qo'shimcha ma'lumot).
-Noma'lum maydonlarni bo'sh qoldiring, hech narsani to'qib chiqarmang. Ota-onasi materialda bo'lmasa bo'sh qoldiring.
-Javobni FAQAT JSON ko'rinishida qaytaring: {"rows":[{...}], "summary":"foydalanuvchiga 1-2 jumlalik izoh (nechta odam, nimalarga e'tibor berish kerak)"}`;
+const PARSE_PROMPT = (lang) => `Extract EVERY person from the material above to build a family tree. The material can be in any form: a table, free text, a numbered outline (e.g. "1-2-3. Name"), a scanned or handwritten page, a chart. Spouses mentioned inline ("ayoli - X", "eri - Y", "wife", "husband") are separate people too.
+Output one array per person: [id, name, gender, birth, death, father_id, mother_id, spouse_id, note]
+- id: unique string "1", "2", ... Different people with the same name get different ids.
+- name: the name exactly as written (only fix obvious encoding garbage), without the numbering.
+- gender: "m" or "f" (infer from the name and words like o'g'li/qizi/eri/ayoli/son/daughter).
+- birth, death: "YYYY" or "DD.MM.YYYY". Source dates may be written YYYY.DD.MM or YYYY.MM.DD — a number greater than 12 is the day. If day/month is unclear, give only the year. If the person is said to be dead but no date is given, death = "+".
+- father_id, mother_id: ids of the parents from this same list. Numbering in the source may be inconsistent — resolve parents by meaning (a header like "X farzandlari:" means the children of X) and by names. A child's other parent is normally the spouse of the listed parent; when a man has several wives, give each child the right mother.
+- spouse_id: id of the husband or wife.
+- note: short extra info, or "".
+Use "" for unknown fields. Never invent data. Skip entries that have no name.
+IMPORTANT: output the COMPLETE list — every single person, to the very end. Do not summarize, shorten or stop early.
+Return ONLY JSON: {"summary":"<1-2 sentences for the user in ${LANG_NAME[lang] || LANG_NAME.uz}>","people":[[...],...]}`;
 
-const FIELDS = ['name', 'gender', 'birth', 'death', 'father', 'mother', 'spouse', 'place', 'phone', 'note'];
+const MORE_PROMPT = (n, next) => `Your list has ${n} people, but the material contains more. Continue: output ONLY the people who are not in your list yet, with new ids starting from "${next}", linking father_id/mother_id/spouse_id to ids already used. If nobody is missing, return {"people":[]}. Return ONLY JSON: {"people":[[...],...]}`;
 
-/** Materialdan shajara qatorlarini ajratish. content: Claude kontent bloklari. */
+// Javob kesilib qolsa ham to'liq qatorlarni ajratib olamiz
+const ROW_RE = /\[(?:\s*(?:"(?:[^"\\]|\\.)*"|-?\d+(?:\.\d+)?|null)\s*,){8}\s*(?:"(?:[^"\\]|\\.)*"|-?\d+(?:\.\d+)?|null)\s*\]/g;
+function parsePeople(raw) {
+  let data = null;
+  try { data = JSON.parse(raw); } catch { try { data = JSON.parse(raw.match(/[[{][\s\S]*[\]}]/)?.[0] || 'null'); } catch {} }
+  let list = Array.isArray(data) ? data : Array.isArray(data?.people) ? data.people : Array.isArray(data?.rows) ? data.rows : null;
+  if (!list) list = (raw.match(ROW_RE) || []).map((x) => { try { return JSON.parse(x); } catch { return null; } }).filter(Boolean);
+  const summary = typeof data?.summary === 'string' ? data.summary : /"summary"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(raw)?.[1] || '';
+  const str = (v) => String(v ?? '').trim();
+  const rows = list.map((x) => (Array.isArray(x)
+    ? { id: x[0], name: x[1], gender: x[2], birth: x[3], death: x[4], father: x[5], mother: x[6], spouse: x[7], note: x[8] }
+    : { id: x?.id, name: x?.name ?? x?.ism, gender: x?.gender ?? x?.jins, birth: x?.birth ?? x?.tugilgan, death: x?.death ?? x?.vafot,
+      father: x?.father_id ?? x?.father ?? x?.ota, mother: x?.mother_id ?? x?.mother ?? x?.ona, spouse: x?.spouse_id ?? x?.spouse, note: x?.note ?? x?.izoh }))
+    .map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, str(v)])))
+    .filter((r) => r.name && /\p{L}/u.test(r.name));
+  return { rows, summary };
+}
+
+// Matndagi taxminiy odamlar soni (to'liqlikni tekshirish uchun): ismli qatorlar + "eri/ayoli - Ism"
+function estimatePeople(content) {
+  const text = content.filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+  if (!text) return 0;
+  let n = 0;
+  for (const line of text.split(/\r?\n/)) {
+    if (!/\p{Lu}\p{Ll}{2,}/u.test(line) || /farzandlari\s*:?\s*$/i.test(line.trim())) continue;
+    n += 1 + (/(ayoli|eri|xotini|wife|husband)\s*[-–:]?\s*\p{Lu}\p{Ll}/iu.test(line) ? 1 : 0);
+  }
+  return n;
+}
+
+/** Materialdan shajara qatorlarini ajratish: rows[{id,name,gender,birth,death,father,mother,spouse,note}] (ota/ona/juft — id). */
 export async function extractFamily(content, lang) {
-  const r = await ask({
-    max_tokens: 32000,
-    json: true,
-    mode: 'deep',
-    output_config: { effort: 'medium' },
-    system: `Siz oila shajarasi ma'lumotlarini tartibga soluvchi yordamchisiz. summary maydonini ${LANG_NAME[lang] || LANG_NAME.uz} tilida yozing.`,
-    messages: [{ role: 'user', content: [...content, { type: 'text', text: PARSE_PROMPT }] }],
-  });
-  const raw = textOf(r);
-  // model ba'zan {rows:[...]} o'rniga to'g'ridan-to'g'ri massiv qaytaradi — ikkalasini ham qabul qilamiz
-  let data;
-  try { data = JSON.parse(raw); } catch { data = JSON.parse(raw.match(/[[{][\s\S]*[\]}]/)?.[0] || '{}'); }
-  const list = Array.isArray(data) ? data : Array.isArray(data.rows) ? data.rows : [];
-  const rows = list
-    .map((x) => Object.fromEntries(FIELDS.map((k) => [k, String(x?.[k] ?? '').trim()])))
-    .filter((x) => x.name);
-  return { rows, summary: Array.isArray(data) ? '' : String(data.summary || '') };
+  const system = 'You convert family records into structured family-tree data. Be exhaustive and precise.';
+  const base = { role: 'user', content: [...content, { type: 'text', text: PARSE_PROMPT(lang) }] };
+  const opts = { max_tokens: 60000, json: true, mode: 'deep', output_config: { effort: 'medium' }, system };
+  const r = await ask({ ...opts, messages: [base] });
+  let raw = textOf(r);
+  const { rows, summary } = parsePeople(raw);
+  const seen = new Set(rows.map((x) => x.id));
+  const sig = (x) => `${x.name.toLowerCase()}|${x.birth.slice(-4)}`;
+  const sigs = new Set(rows.map(sig));
+  // Model ro'yxatni erta to'xtatsa — yetishmaganlarini so'rab davom ettiramiz
+  const expected = estimatePeople(content);
+  const needMore = () => (expected ? rows.length < expected * 0.85 : true);
+  const turns = [base, { role: 'assistant', content: raw }];
+  let round = 0;
+  for (; round < 8 && rows.length && needMore(); round++) {
+    const next = Math.max(0, ...[...seen].map(Number).filter(Number.isFinite)) + 1;
+    turns.push({ role: 'user', content: MORE_PROMPT(rows.length, next) });
+    const more = await ask({ ...opts, messages: turns });
+    raw = textOf(more);
+    turns.push({ role: 'assistant', content: raw });
+    const add = parsePeople(raw).rows.filter((x) => !sigs.has(sig(x)));
+    if (!add.length) break;
+    for (const x of add) {
+      if (seen.has(x.id)) x.id = `x${seen.size + 1}`;
+      seen.add(x.id);
+      sigs.add(sig(x));
+      rows.push(x);
+    }
+  }
+  return { rows: rows.slice(0, 3000), summary, rounds: round };
 }
 
-/** Qatorlarni namuna.csv formatida qaytarish. */
+/** Qatorlarni namuna.csv formatida qaytarish (ota/ona/juft — ism bilan). */
 export function rowsToCsv(rows) {
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const nm = (id) => byId.get(id)?.name || '';
   const head = 'ism;jins;tugilgan;vafot;ota;ona;turmush_ortogi;joy;telefon;izoh';
-  const cell = (v) => (/[;"\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
-  return '﻿' + [head, ...rows.map((r) => FIELDS.map((k) => cell(r[k] || '')).join(';'))].join('\n');
+  const cell = (v) => (/[;"\n]/.test(v) ? `"${String(v).replace(/"/g, '""')}"` : String(v ?? ''));
+  return '﻿' + [head, ...rows.map((r) => [r.name, r.gender === 'f' ? 'ayol' : 'erkak', r.birth, r.death === '+' ? 'vafot' : r.death,
+    nm(r.father), nm(r.mother), nm(r.spouse), '', '', r.note].map(cell).join(';'))].join('\n');
 }
 
 export async function aiHealth() {

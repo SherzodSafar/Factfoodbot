@@ -153,6 +153,8 @@ for (const [k, r, e] of [
   ['Ma’lumot eskirgan. Faylni qayta yuboring.', 'Данные устарели. Отправьте файл заново.', 'Data expired. Send the file again.'],
   ['Ruxsat yo‘q', 'Нет доступа', 'No permission'],
   ['{n} kishi «{title}» shajarasiga qo‘shildi.', 'Добавлено {n} чел. в «{title}».', '{n} people added to “{title}”.'],
+  ['«{title}»da {m} tasi allaqachon bor — qayta qo‘shilmaydi.', 'В «{title}» уже есть {m} — повторно не добавятся.', '{m} already exist in “{title}” — they won’t be duplicated.'],
+  ['{m} tasi allaqachon bor edi — ularga bog‘landi.', '{m} уже были — новые записи связаны с ними.', '{m} already existed — new people were linked to them.'],
   ['AI ro‘yxat (fayldan)', 'AI-список (из файла)', 'AI list (from file)'],
   ['AI yordamchiga savol', 'Вопрос AI-помощнику', 'Ask the AI assistant'],
 ]) { RU[k] = r; EN[k] = e; }

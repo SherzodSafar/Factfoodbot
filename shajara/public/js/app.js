@@ -1209,7 +1209,7 @@ function renderMoreTab(el) {
   el.innerHTML = `<div class="scroll" style="padding-top:8px">
     ${tr.description ? `<div class="card note" style="margin:0 16px 14px">${esc(tr.description)}</div>` : ''}
     <div class="card menu">
-      ${item('m-ai', '🤖', t('AI yordamchi'), t('Ilova va bot haqida istalgan savol'))}
+      ${item('m-ai', '✨', t('AI yordamchi'), t('Ilova va bot haqida istalgan savol'))}
       ${item('m-invite', '📨', t('Qarindoshlarni taklif qilish'), t('Shaxsiy taklif havolasi — kodni aytish shart emas'))}
       ${item('m-notif', '🔔', t('Bildirishnomalar'), t('Yangiliklar va sozlamalar'))}
       ${item('m-lang', '🌐', t('Til'), LANG_NAMES[LANG])}
@@ -1428,28 +1428,108 @@ async function premiumSheet(reason) {
 // AI yordamchi bilan suhbat (oxirgi xabarlar qurilmada saqlanadi)
 const aiChat = store.get('sh_ai', []);
 const AI_TIPS = ['Qanday qilib odam qo‘shaman?', 'Albomga qanday rasm qo‘shaman?', 'Albom kanalini qanday ulayman?', 'Botni oilaviy guruhga qanday ulayman?', 'Tahrir kodi nima?'];
+const SPARK = '<svg viewBox="0 0 24 24" class="spark" aria-hidden="true"><path d="M12 2c.7 5 2.3 7.3 7.5 8-5.2.7-6.8 3-7.5 8-.7-5-2.3-7.3-7.5-8 5.2-.7 6.8-3 7.5-8z"/></svg>';
+const CLIP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 11-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.6-8.6a3.7 3.7 0 0 1 5.2 5.2l-8.6 8.6a1.8 1.8 0 0 1-2.6-2.6l7.9-7.9"/></svg>';
+
+const fileB64 = (blob) => new Promise((ok, bad) => {
+  const r = new FileReader();
+  r.onload = () => ok(String(r.result).split(',')[1] || '');
+  r.onerror = () => bad(r.error);
+  r.readAsDataURL(blob);
+});
+// Katta rasmni (telefon kamerasi) 2000 px gacha kichraytirib JPEG qilamiz — yuklash tezlashadi
+async function shrinkImage(file) {
+  const img = await createImageBitmap(file);
+  const k = Math.min(1, 2000 / Math.max(img.width, img.height));
+  const c = document.createElement('canvas');
+  c.width = Math.round(img.width * k);
+  c.height = Math.round(img.height * k);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  const blob = await new Promise((ok) => c.toBlob(ok, 'image/jpeg', 0.85));
+  return { data: await fileB64(blob), mime: 'image/jpeg' };
+}
+async function pollJob(job) {
+  const until = Date.now() + 6 * 60e3;
+  let misses = 0;
+  while (Date.now() < until) {
+    await new Promise((r) => setTimeout(r, 2500));
+    let d;
+    try { d = await api('ai/job/' + job, { timeout: 20e3 }); misses = 0; } catch (e) { if (++misses > 4) throw e; continue; }
+    if (d.status === 'done') return d;
+    if (d.status === 'error') throw new Error(t(d.error || 'Xatolik yuz berdi'));
+  }
+  throw new Error(t('Javob kechikdi. Qayta urinib ko‘ring'));
+}
+
+// AI ajratgan ro'yxatni ko'rib chiqish
+async function aiPreview(job) {
+  let d;
+  try { d = await api('ai/job/' + job); } catch (err) { return toast(err.message, true); }
+  if (d.status !== 'done') return toast(t('Ma’lumot eskirgan. Faylni qayta yuboring'), true);
+  const byId = new Map(d.rows.map((r) => [r.id, r]));
+  const nmOf = (id) => byId.get(id)?.name;
+  const yrs = (r) => [r.birth, r.death === '+' ? '†' : r.death].filter(Boolean).join(' – ');
+  openSheet(`<div class="sheet-head"><div class="h2 grow">📋 ${t('{n} kishi topildi', { n: d.count })}</div><button class="icon-btn" data-close>${I.close}</button></div>
+    <div class="sheet-body"><div class="ai-rows">${d.rows.map((r) => `<div class="ai-row"><b>${r.gender === 'f' ? '👩' : '👨'} ${esc(nm(r.name))}</b>${yrs(r) ? ` <span class="muted">${esc(yrs(r))}</span>` : ''}
+      <div class="small muted">${[nmOf(r.father) && `${t('ota')}: ${esc(nm(nmOf(r.father)))}`, nmOf(r.mother) && `${t('ona')}: ${esc(nm(nmOf(r.mother)))}`, nmOf(r.spouse) && `${t('juft')}: ${esc(nm(nmOf(r.spouse)))}`].filter(Boolean).join(' · ')}</div></div>`).join('')}</div></div>`);
+}
+
 function aiSheet() {
-  const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">🤖 ${t('AI yordamchi')}</div>
+  const sh = openSheet(`<div class="sheet-head"><div class="h2 grow ai-title">${SPARK} ${t('AI yordamchi')}</div>
       <button class="icon-btn" id="aic" aria-label="${t('Tozalash')}">${I.trash}</button><button class="icon-btn" data-close>${I.close}</button></div>
     <div class="sheet-body"><div class="ai-log" id="ail"></div>
-    <form class="ai-form" id="aif"><input class="input" name="q" placeholder="${t('Savolingizni yozing…')}" autocomplete="off" maxlength="2000" enterkeyhint="send"><button class="btn btn-primary">${I.chev}</button></form></div>`);
+    <form class="ai-form" id="aif"><button type="button" class="icon-btn ai-clip" id="aia" aria-label="${t('Fayl yuborish')}">${CLIP}</button>
+      <input class="input" name="q" placeholder="${t('Savolingizni yozing…')}" autocomplete="off" maxlength="2000" enterkeyhint="send">
+      <button class="btn btn-primary">${I.chev}</button><input type="file" id="aifile" hidden></form></div>`);
   const log = sh.querySelector('#ail');
   let busy = false;
   let failed = null;
+  const save = () => store.set('sh_ai', aiChat.slice(-20));
+  const card = (m, i) => {
+    const c = m.card;
+    const act = c.applied ? `<span class="ai-ok">✅ ${t('Qo‘shildi')}</span>`
+      : !c.fresh ? `<span class="small muted">${t('Hammasi shajarada bor')}</span>`
+      : isEdit() ? `<button type="button" class="btn btn-primary btn-sm" data-apply="${i}">✅ ${t('Shajaraga qo‘shish')} (+${c.fresh})</button>`
+      : `<span class="small muted">${t('Qo‘shish uchun tahrir rejimini yoqing')}</span>`;
+    return `<div class="ai-msg bot ai-card"><b>📋 ${t('{n} kishi topildi', { n: c.count })}</b>${c.summary ? `<div>${esc(c.summary)}</div>` : ''}
+      ${c.matched ? `<div class="small muted">${t('{m} tasi shajarada allaqachon bor — qayta qo‘shilmaydi', { m: c.matched })}</div>` : ''}
+      <div class="ai-card-btns">${act}<button type="button" class="btn btn-soft btn-sm" data-prev="${c.job}">👁 ${t('Ro‘yxat')}</button>
+      ${inTelegram ? `<button type="button" class="btn btn-soft btn-sm" data-csv="${c.job}">📩 CSV</button>` : ''}</div></div>`;
+  };
   const draw = () => {
     log.innerHTML = (aiChat.length ? '' : `<div class="ai-msg bot">${t('Assalomu alaykum! Shajara, albom, kodlar yoki bot buyruqlari haqida so‘rang.')}</div>
-        <div class="ai-tips">${AI_TIPS.map((q) => `<button type="button" class="chip" data-q="${esc(t(q))}">${esc(t(q))}</button>`).join('')}</div>`) +
-      aiChat.map((m) => `<div class="ai-msg ${m.role === 'user' ? 'me' : 'bot'}">${esc(m.content)}</div>`).join('') +
-      (busy ? '<div class="ai-msg bot"><span class="dots"><i></i><i></i><i></i></span></div>' : '') +
-      (failed ? `<div class="ai-err">${esc(failed.msg)} <button type="button" class="btn btn-soft btn-sm" id="air">↻ ${t('Qayta urinish')}</button></div>` : '');
+        <div class="ai-tips"><button type="button" class="chip" data-file>📎 ${t('Fayldan ro‘yxat tuzish')}</button>${AI_TIPS.map((q) => `<button type="button" class="chip" data-q="${esc(t(q))}">${esc(t(q))}</button>`).join('')}</div>`) +
+      aiChat.map((m, i) => (m.card ? card(m, i) : `<div class="ai-msg ${m.role === 'user' ? 'me' : 'bot'}">${esc(m.content)}</div>`)).join('') +
+      (busy ? `<div class="ai-msg bot"><span class="dots"><i></i><i></i><i></i></span>${typeof busy === 'string' ? ` <span class="small muted">${esc(busy)}</span>` : ''}</div>` : '') +
+      (failed ? `<div class="ai-err">${esc(failed.msg)}${failed.q ? ` <button type="button" class="btn btn-soft btn-sm" id="air">↻ ${t('Qayta urinish')}</button>` : ''}</div>` : '');
     log.scrollTop = log.scrollHeight;
     log.querySelectorAll('[data-q]').forEach((b) => (b.onclick = () => ask(b.dataset.q)));
+    log.querySelector('[data-file]')?.addEventListener('click', () => sh.querySelector('#aifile').click());
     log.querySelector('#air')?.addEventListener('click', () => { const q = failed.q; failed = null; ask(q, true); });
+    log.querySelectorAll('[data-prev]').forEach((b) => (b.onclick = () => aiPreview(b.dataset.prev)));
+    log.querySelectorAll('[data-csv]').forEach((b) => (b.onclick = async () => {
+      b.disabled = true;
+      try { await api('ai/csv', { method: 'POST', body: { job: b.dataset.csv } }); toast(t('Chatga yuborildi 📩')); } catch (err) { toast(err.message, true); }
+      b.disabled = false;
+    }));
+    log.querySelectorAll('[data-apply]').forEach((b) => (b.onclick = async () => {
+      const m = aiChat[Number(b.dataset.apply)];
+      b.disabled = true;
+      b.innerHTML = '<span class="spin"></span>';
+      try {
+        const r = await api('ai/apply', { method: 'POST', body: { job: m.card.job } });
+        m.card.applied = true;
+        save();
+        onTreeChanged(r.tree);
+        toast(t('{n} kishi qo‘shildi', { n: r.created }));
+      } catch (err) { toast(err.message, true); }
+      draw();
+    }));
   };
   const ask = async (q, retry) => {
     if (busy || !q) return;
     failed = null;
-    const history = aiChat.slice(-8);
+    const history = aiChat.filter((m) => !m.card).slice(-8);
     if (!retry) aiChat.push({ role: 'user', content: q });
     busy = true;
     draw();
@@ -1461,11 +1541,40 @@ function aiSheet() {
       failed = { q, msg: err.message };
     }
     busy = false;
-    store.set('sh_ai', aiChat.slice(-20));
+    save();
+    draw();
+  };
+  const sendFile = async (f) => {
+    if (busy || !f) return;
+    failed = null;
+    aiChat.push({ role: 'user', content: `📎 ${f.name} · ${fmtSize(f.size)}` });
+    busy = t('Fayl tahlil qilinmoqda… 1-2 daqiqa');
+    draw();
+    try {
+      let data, mime = f.type || '', name = f.name;
+      if (/^image\//.test(mime) && f.size > 1.5e6) {
+        ({ data, mime } = await shrinkImage(f));
+        name = name.replace(/\.\w+$/, '') + '.jpg';
+      } else {
+        if (f.size > 3 * 1024 * 1024) throw new Error(t('Fayl juda katta (3 MB gacha)'));
+        data = await fileB64(f);
+      }
+      const { job } = await api('ai/file', { method: 'POST', body: { name, mime, data, lang: LANG }, timeout: 90e3 });
+      const d = await pollJob(job);
+      aiChat.push({ role: 'assistant', content: `📋 ${d.count}`, card: { job, count: d.count, matched: d.matched, fresh: d.fresh, summary: d.summary } });
+      haptic('success');
+    } catch (err) {
+      failed = { msg: err.message };
+    }
+    busy = false;
+    save();
     draw();
   };
   draw();
-  sh.querySelector('#aic').onclick = () => { aiChat.length = 0; failed = null; store.set('sh_ai', []); draw(); };
+  const fileInp = sh.querySelector('#aifile');
+  sh.querySelector('#aia').onclick = () => fileInp.click();
+  fileInp.onchange = () => { const f = fileInp.files[0]; fileInp.value = ''; sendFile(f); };
+  sh.querySelector('#aic').onclick = () => { aiChat.length = 0; failed = null; save(); draw(); };
   sh.querySelector('#aif').onsubmit = (e) => {
     e.preventDefault();
     const q = e.target.q.value.trim();
@@ -1481,7 +1590,7 @@ function mountAiFab() {
   const b = document.createElement('button');
   b.className = 'ai-fab';
   b.setAttribute('aria-label', t('AI yordamchi'));
-  b.innerHTML = '<span>🤖</span>';
+  b.innerHTML = `<b>AI</b>${SPARK}`;
   document.body.append(b);
   let pos = store.get('sh_aifab', null);
   const S_ = 52;

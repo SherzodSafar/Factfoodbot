@@ -572,9 +572,15 @@ video.lb-media { width: 100%; }
 .ai-form .btn { width: 48px; padding: 0; }
 
 /* Suzuvchi AI tugmasi */
-.ai-fab { position: fixed; z-index: 30; width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; font-size: 26px;
-  background: linear-gradient(135deg, var(--primary), var(--primary-2)); box-shadow: 0 8px 22px color-mix(in srgb, var(--primary) 45%, transparent), 0 2px 6px rgba(0,0,0,.18);
+.ai-fab { position: fixed; z-index: 30; width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center;
+  color: #fff; background: radial-gradient(circle at 30% 25%, rgba(255,255,255,.28), transparent 45%), linear-gradient(140deg, #1d6b52, #2f9e7c 60%, #3fb58f);
+  box-shadow: 0 8px 22px rgba(29,107,82,.45), 0 2px 6px rgba(0,0,0,.18), inset 0 0 0 1.5px rgba(255,255,255,.18);
   touch-action: none; user-select: none; -webkit-user-select: none; transition: left .25s cubic-bezier(.2,.9,.25,1), top .25s cubic-bezier(.2,.9,.25,1), transform .15s; }
+.ai-fab b { font-size: 17px; font-weight: 800; letter-spacing: .5px; line-height: 1; }
+.ai-fab .spark { position: absolute; top: 5px; right: 5px; width: 16px; height: 16px; fill: #f5c451; filter: drop-shadow(0 0 3px rgba(245,196,81,.8)); animation: twinkle 2.6s ease-in-out infinite; }
+@keyframes twinkle { 0%, 100% { transform: scale(1) rotate(0); opacity: 1; } 50% { transform: scale(.7) rotate(45deg); opacity: .75; } }
+.ai-title { display: flex; align-items: center; gap: 8px; }
+.ai-title .spark { width: 22px; height: 22px; fill: var(--gold); }
 .ai-fab:active { transform: scale(.94); }
 /* oyna yoki albom ko'rgichi ochiq bo'lsa yashiramiz */
 body:has(#sheet-root > *) .ai-fab, body:has(.rv) .ai-fab { opacity: 0; pointer-events: none; }
@@ -586,3 +592,11 @@ body:has(#sheet-root > *) .ai-fab, body:has(.rv) .ai-fab { opacity: 0; pointer-e
 .dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); animation: dot 1.2s infinite ease-in-out; }
 .dots i:nth-child(2) { animation-delay: .15s; } .dots i:nth-child(3) { animation-delay: .3s; }
 @keyframes dot { 0%, 80%, 100% { opacity: .3; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+
+.ai-form .ai-clip { width: 44px; height: 48px; flex: none; }
+.ai-form .ai-clip svg { width: 22px; height: 22px; }
+.ai-card { display: flex; flex-direction: column; gap: 6px; max-width: 94%; }
+.ai-card-btns { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 2px; }
+.ai-ok { font-weight: 800; color: var(--primary); }
+.ai-rows { display: flex; flex-direction: column; }
+.ai-row { padding: 8px 2px; border-bottom: 1px solid var(--line); }

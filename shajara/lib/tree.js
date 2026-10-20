@@ -427,6 +427,11 @@ export function importRows(tree, rows, who) {
       s.spouse_ids = [...new Set([...(s.spouse_ids || []), p.id])];
     }
   }
+  return finishImport(tree, created, who);
+}
+
+// Yangi qo'shilganlarning avlodi, qon qarindoshligi va farzandlik tartibini hisoblab, shajaraga qo'shish
+function finishImport(tree, created, who) {
   const all = [...tree.persons, ...created.map((c) => c.p)];
   const byId = new Map(all.map((p) => [p.id, p]));
   const base = Math.min(...tree.persons.map((p) => p.generation ?? 1), 1);
@@ -463,6 +468,91 @@ export function importRows(tree, rows, who) {
   if (!tree.meta.root_id && tree.persons[0]) tree.meta.root_id = tree.persons[0].id;
   addLog(tree, who, 'import', `${created.length}`);
   return created.length;
+}
+
+const normName = (v) => String(v ?? '').toLowerCase().replace(/[ʻʼ‘’'`´]/g, '').replace(/\s+/g, ' ').trim();
+const yearOf = (d) => (d ? String(d).slice(0, 4) : '');
+function safeDate(v) {
+  const s = String(v ?? '').trim();
+  if (!s || s === '+') return null;
+  try { return flexDate(s); } catch { const y = /\b(1[5-9]\d\d|20\d\d)\b/.exec(s)?.[1]; return y || null; }
+}
+
+/**
+ * AI ajratgan ro'yxatni shajaraga solishtirish: qaysi qatorlar shajarada allaqachon bor
+ * (ism + tug'ilgan yil yoki ota-ona ismi mos kelsa), qaysilari yangi.
+ */
+export function planGraph(tree, rows) {
+  const byId = new Map(tree.persons.map((p) => [p.id, p]));
+  const exist = new Map();
+  for (const p of tree.persons) {
+    const k = normName(p.name);
+    if (!exist.has(k)) exist.set(k, []);
+    exist.get(k).push(p);
+  }
+  const rowById = new Map(rows.map((r) => [String(r.id), r]));
+  const matched = new Map();
+  for (const r of rows) {
+    const cands = exist.get(normName(r.name));
+    if (!cands?.length) continue;
+    const by = yearOf(safeDate(r.birth));
+    const parents = [r.father, r.mother].map((id) => normName(rowById.get(String(id))?.name)).filter(Boolean);
+    const score = (p) => {
+      const py = yearOf(p.birth);
+      if (by && py && by !== py) return -1;
+      const pn = [byId.get(p.father_id), byId.get(p.mother_id)].filter(Boolean).map((x) => normName(x.name));
+      return (by && py === by ? 2 : 0) + (parents.some((n) => pn.includes(n)) ? 2 : 0) + (!parents.length && !pn.length ? 1 : 0);
+    };
+    const best = cands.map((p) => [p, score(p)]).filter(([, sc]) => sc >= 2).sort((a, b) => b[1] - a[1]);
+    if (best.length && (best.length === 1 || best[0][1] > best[1][1])) matched.set(String(r.id), best[0][0]);
+  }
+  return { matched, newCount: rows.filter((r) => !matched.has(String(r.id)) && cleanText(r.name, 80)).length };
+}
+
+/**
+ * AI ro'yxatini qo'shish: qatorlarda vaqtinchalik id, ota/ona/juft — shu id'lar (bir xil ismlar adashmaydi).
+ * Shajarada borlar qayta qo'shilmaydi — yangi farzandlar ularga ulanadi.
+ */
+export function importGraph(tree, rows, who) {
+  if (!Array.isArray(rows) || !rows.length) throw new HttpError(400, 'Faylda ma’lumot topilmadi');
+  if (rows.length > 3000) throw new HttpError(400, 'Bir martada 3000 tadan ko‘p odam qo‘shib bo‘lmaydi');
+  const { matched, newCount } = planGraph(tree, rows);
+  if (PAYWALL() && !isPremium(tree) && tree.persons.length + newCount > LIMITS.persons) {
+    throw new HttpError(402, `Bepul tarifda ${LIMITS.persons} kishigacha. Premium bilan cheksiz`);
+  }
+  const map = new Map(matched);
+  const created = [];
+  for (const r of rows) {
+    const id = String(r.id);
+    const name = cleanText(r.name, 80);
+    if (!name || map.has(id)) continue;
+    const death = safeDate(r.death);
+    const p = {
+      id: nextId(tree), code: null, name, gender: genderOf(r.gender), birth: safeDate(r.birth), death,
+      deceased: !!death || String(r.death).trim() === '+', blood: true, generation: null, father_id: null, mother_id: null,
+      spouse_ids: [], child_order: null, note: cleanText(r.note, 1000), place: cleanText(r.place, 120),
+      phone: cleanText(r.phone, 30), source: 'import', photo: null,
+    };
+    map.set(id, p);
+    created.push({ p, r });
+  }
+  const fresh = new Set(created.map((c) => c.p));
+  for (const { p, r } of created) {
+    const f = map.get(String(r.father));
+    const m = map.get(String(r.mother));
+    if (f && f !== p) p.father_id = f.id;
+    if (m && m !== p && m !== f) p.mother_id = m.id;
+  }
+  // Juftlar: kamida bittasi yangi bo'lsa ikki tomonlama bog'laymiz
+  for (const r of rows) {
+    const a = map.get(String(r.id));
+    const b = map.get(String(r.spouse));
+    if (!a || !b || a === b || (!fresh.has(a) && !fresh.has(b))) continue;
+    a.spouse_ids = [...new Set([...(a.spouse_ids || []), b.id])];
+    b.spouse_ids = [...new Set([...(b.spouse_ids || []), a.id])];
+  }
+  const n = created.length ? finishImport(tree, created, who) : 0;
+  return { created: n, matched: matched.size };
 }
 
 /** Eksport qilingan JSON (persons[]) bilan shajarani to'liq almashtirish. */
