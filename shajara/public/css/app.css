@@ -388,13 +388,13 @@ textarea.input { height: auto; min-height: 88px; padding: 14px 16px; resize: ver
 
 /* ---------- Toast ---------- */
 #toast {
-  position: fixed; left: 50%; top: calc(14px + var(--safe-top)); transform: translate(-50%, -140%);
+  position: fixed; left: 50%; top: calc(14px + var(--safe-top)); transform: translate(-50%, -24px);
   z-index: 100; max-width: calc(100% - 32px); padding: 12px 18px; border-radius: 14px;
   background: var(--ink); color: var(--bg); font-weight: 700; font-size: 14px; box-shadow: var(--shadow-lg);
-  transition: transform .35s cubic-bezier(.2, .9, .25, 1);
+  opacity: 0; visibility: hidden; transition: transform .35s cubic-bezier(.2, .9, .25, 1), opacity .25s, visibility .25s;
   pointer-events: none;
 }
-#toast.show { transform: translate(-50%, 0); }
+#toast.show { transform: translate(-50%, 0); opacity: 1; visibility: visible; }
 #toast.err { background: var(--danger); color: #fff; }
 
 /* ---------- Yuklanish ---------- */
@@ -570,3 +570,19 @@ video.lb-media { width: 100%; }
 .ai-form { display: flex; gap: 8px; }
 .ai-form .input { flex: 1; }
 .ai-form .btn { width: 48px; padding: 0; }
+
+/* Suzuvchi AI tugmasi */
+.ai-fab { position: fixed; z-index: 30; width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; font-size: 26px;
+  background: linear-gradient(135deg, var(--primary), var(--primary-2)); box-shadow: 0 8px 22px color-mix(in srgb, var(--primary) 45%, transparent), 0 2px 6px rgba(0,0,0,.18);
+  touch-action: none; user-select: none; -webkit-user-select: none; transition: left .25s cubic-bezier(.2,.9,.25,1), top .25s cubic-bezier(.2,.9,.25,1), transform .15s; }
+.ai-fab:active { transform: scale(.94); }
+/* oyna yoki albom ko'rgichi ochiq bo'lsa yashiramiz */
+body:has(#sheet-root > *) .ai-fab, body:has(.rv) .ai-fab { opacity: 0; pointer-events: none; }
+.ai-fab.drag { transition: none; transform: scale(1.1); opacity: .9; }
+.ai-tips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ai-tips .chip { white-space: normal; text-align: left; }
+.ai-err { align-self: stretch; display: flex; align-items: center; gap: 8px; justify-content: space-between; font-size: 13px; font-weight: 700; color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); padding: 8px 10px; border-radius: 12px; }
+.dots { display: inline-flex; gap: 4px; padding: 4px 2px; }
+.dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); animation: dot 1.2s infinite ease-in-out; }
+.dots i:nth-child(2) { animation-delay: .15s; } .dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes dot { 0%, 80%, 100% { opacity: .3; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }

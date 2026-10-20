@@ -112,7 +112,10 @@ function bg(promise) {
 }
 
 async function aiAnswer(from, chatId, lang, question, user) {
-  tg('sendChatAction', { chat_id: chatId, action: 'typing' });
+  // «yozmoqda…» belgisi 5 soniyada o'chadi — javob kelguncha yangilab turamiz
+  const typing = () => tg('sendChatAction', { chat_id: chatId, action: 'typing' }).catch(() => {});
+  typing();
+  const timer = setInterval(typing, 4500);
   const history = (user?.ai || []).slice(-8);
   let answer;
   try {
@@ -120,6 +123,8 @@ async function aiAnswer(from, chatId, lang, question, user) {
   } catch (e) {
     console.error('ai answer', e);
     return send(chatId, t(lang, 'AI yordamchi hozir javob bera olmadi. Keyinroq urinib ko‘ring yoki /yordam ni bosing.'));
+  } finally {
+    clearInterval(timer);
   }
   // avval kesib, keyin ekranlaymiz — aks holda HTML belgisi o'rtasidan kesilib xabar umuman yuborilmaydi
   const extra = chatId === from.id ? { reply_markup: appButton(lang) } : {};

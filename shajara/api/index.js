@@ -514,7 +514,12 @@ async function route(req, res) {
       .filter((x) => ['user', 'assistant'].includes(x?.role) && typeof x.content === 'string')
       .map((x) => ({ role: x.role, content: x.content.slice(0, 2000) }));
     const { answerQuestion } = await import('../lib/ai.js');
-    return send(res, 200, { answer: await answerQuestion(q, history, ['uz', 'uzc', 'ru', 'en'].includes(body.lang) ? body.lang : 'uz') });
+    try {
+      return send(res, 200, { answer: await answerQuestion(q, history, ['uz', 'uzc', 'ru', 'en'].includes(body.lang) ? body.lang : 'uz') });
+    } catch (e) {
+      console.error('ai', e);
+      throw new HttpError(503, 'AI hozir javob bera olmadi. Birozdan so‘ng qayta urinib ko‘ring');
+    }
   }
 
   // AI ulanishini tekshirish (juda qisqa so'rov, cheklangan)

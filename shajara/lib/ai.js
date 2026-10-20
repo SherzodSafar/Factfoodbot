@@ -20,30 +20,55 @@ async function client() {
 const toParts = (content) => (typeof content === 'string' ? [{ text: content }] : content.map((b) =>
   b.type === 'text' ? { text: b.text } : { inline_data: { mime_type: b.source.media_type, data: b.source.data } }));
 
-async function askGemini(params) {
-  const models = [process.env.GEMINI_MODEL, 'gemini-flash-latest', 'gemini-2.5-flash'].filter(Boolean);
+// O'ylash darajasi: chat uchun minimal (tez), fayl uchun past. Model qo'llamasa keyingi variant sinanadi
+// (Gemini 3: thinkingLevel, Gemini 2.5: thinkingBudget, eski modellar: umuman yo'q).
+const THINK = {
+  fast: [{ thinkingLevel: 'minimal' }, { thinkingBudget: 0 }, null],
+  deep: [{ thinkingLevel: 'low' }, { thinkingBudget: 2048 }, null],
+};
+const thinkOk = new Map();
+export const CHAT_MODELS = () => [...new Set([process.env.GEMINI_CHAT_MODEL, 'gemini-flash-latest', 'gemini-flash-lite-latest', 'gemini-2.5-flash'].filter(Boolean))];
+const FILE_MODELS = () => [...new Set([process.env.GEMINI_MODEL, 'gemini-flash-latest', 'gemini-2.5-flash', 'gemini-flash-lite-latest'].filter(Boolean))];
+
+export async function askGemini({ system, messages, max_tokens, json, mode = 'fast', models, timeout }) {
   let last;
-  for (const model of models) {
-    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`, {
-      method: 'POST',
-      signal: AbortSignal.timeout(params.json ? 240e3 : 120e3),
-      headers: { 'content-type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
-      body: JSON.stringify({
-        systemInstruction: params.system ? { parts: [{ text: params.system }] } : undefined,
-        contents: params.messages.map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: toParts(m.content) })),
-        generationConfig: { maxOutputTokens: params.max_tokens, ...(params.json ? { responseMimeType: 'application/json' } : {}) },
-      }),
-    });
-    const j = await r.json().catch(() => ({}));
-    if (r.ok) return { model, content: [{ type: 'text', text: (j.candidates?.[0]?.content?.parts || []).map((x) => x.text || '').join('') }] };
-    last = new Error(`Gemini ${r.status}: ${j.error?.message || ''}`.slice(0, 300));
-    if (r.status !== 404) throw last;
+  for (const model of models || (mode === 'fast' ? CHAT_MODELS() : FILE_MODELS())) {
+    const variants = THINK[mode];
+    for (let i = thinkOk.get(model + mode) ?? 0; i < variants.length; i++) {
+      const tc = variants[i];
+      let r, j;
+      try {
+        r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`, {
+          method: 'POST',
+          signal: AbortSignal.timeout(timeout || (mode === 'fast' ? 40e3 : 240e3)),
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            systemInstruction: system ? { parts: [{ text: system }] } : undefined,
+            contents: messages.map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: toParts(m.content) })),
+            generationConfig: { maxOutputTokens: max_tokens, ...(tc ? { thinkingConfig: tc } : {}), ...(json ? { responseMimeType: 'application/json' } : {}) },
+          }),
+        });
+        j = await r.json().catch(() => ({}));
+      } catch (e) {
+        last = new Error(`Gemini ${model}: ${e.name === 'TimeoutError' ? 'vaqt tugadi' : e.message}`);
+        break; // keyingi modelga
+      }
+      if (r.ok) {
+        thinkOk.set(model + mode, i);
+        const text = (j.candidates?.[0]?.content?.parts || []).filter((x) => !x.thought).map((x) => x.text || '').join('');
+        return { model, content: [{ type: 'text', text }] };
+      }
+      last = new Error(`Gemini ${model} ${r.status}: ${j.error?.message || ''}`.slice(0, 300));
+      if (r.status === 400 && i < variants.length - 1) continue; // o'ylash sozlamasini qo'llamadi
+      if (r.status === 404 || r.status === 429 || r.status >= 500 || r.status === 400) break; // limit har model uchun alohida
+      throw last;
+    }
   }
   throw last;
 }
 
-async function ask({ json, ...params }) {
-  if (process.env.GEMINI_API_KEY) return askGemini({ json, ...params });
+async function ask({ json, mode, ...params }) {
+  if (process.env.GEMINI_API_KEY) return askGemini({ json, mode, ...params });
   const c = await client();
   // uzun javoblar uchun oqim (stream) — HTTP vaqt chegarasiga tushmaslik uchun
   const run = (model) => c.messages.stream({ model, ...params }).finalMessage();
@@ -75,19 +100,28 @@ Botning imkoniyatlari:
 - Oilaviy guruh: botni guruhga qo'shing va /ulash KOD yuboring. Guruh buyruqlari: /shajara, /albom, /tugilgan (yaqin 30 kundagi tug'ilgan kunlar, ismni bosib shu odamni ochish).
 - Bildirishnomalar: yangi odam, albom, tug'ilgan kun va xotira kunlari (Ko'proq → sozlamalar).
 - Tillar: o'zbek (lotin/kirill), rus, ingliz — /til yoki ilovadagi til tugmasi.
+- Albomda ochiladigan hajm: rasm 4 MB gacha, video va audio 20 MB gacha; kattaroq fayllar va hujjatlar «Chatga yuborish» tugmasi bilan asl sifatda chatga yuboriladi (Telegram bot cheklovi).
+- Ilovada har sahifada 🤖 suzuvchi tugma — AI yordamchi (uni barmoq bilan surib boshqa joyga qo'yish mumkin).
 - Premium: Telegram Stars orqali, cheksiz albom va odamlar.
 - Boshqa buyruqlar: /start, /yordam, /hikmat, /bekor, /royxat.
 Qoidalar: qisqa va aniq javob bering (odatda 2-6 jumla, kerak bo'lsa qadamlar ro'yxati). Faqat oddiy matn, Markdown belgilarisiz. Bilmasangiz, to'qib chiqarmang — /yordam yoki ilovani tavsiya qiling. Boshqa mavzudagi savollarga xushmuomalalik bilan bot mavzusiga qaytaring.`;
 
+// Markdown belgilarini oddiy matnga aylantirish (Telegram va ilovada toza ko'rinsin)
+const plain = (s) => s.replace(/\*\*(.+?)\*\*/g, '$1').replace(/__(.+?)__/g, '$1').replace(/^#{1,6}\s*/gm, '')
+  .replace(/^\s*[*-]\s+/gm, '• ').replace(/`([^`]+)`/g, '$1').trim();
+
 /** Bot haqidagi savolga javob. history: [{role, content}] (oxirgi bir necha almashuv). */
 export async function answerQuestion(question, history, lang) {
   const r = await ask({
-    max_tokens: 8000, // o'ylash tokenlari ham shu chegaraga kiradi
+    max_tokens: 3000,
+    mode: 'fast',
     output_config: { effort: 'low' },
     system: `${KNOWLEDGE}\nJavob tili: ${LANG_NAME[lang] || LANG_NAME.uz}.`,
     messages: [...history, { role: 'user', content: question }],
   });
-  return textOf(r) || '…';
+  const text = plain(textOf(r));
+  if (!text) throw new Error('Bo‘sh javob');
+  return text;
 }
 
 // ------------------------------------------------------ Fayllarni o'qish --
@@ -162,6 +196,7 @@ export async function extractFamily(content, lang) {
   const r = await ask({
     max_tokens: 32000,
     json: true,
+    mode: 'deep',
     output_config: { effort: 'medium' },
     system: `Siz oila shajarasi ma'lumotlarini tartibga soluvchi yordamchisiz. summary maydonini ${LANG_NAME[lang] || LANG_NAME.uz} tilida yozing.`,
     messages: [{ role: 'user', content: [...content, { type: 'text', text: PARSE_PROMPT }] }],
@@ -183,6 +218,20 @@ export function rowsToCsv(rows) {
 }
 
 export async function aiHealth() {
-  const r = await ask({ max_tokens: 200, output_config: { effort: 'low' }, messages: [{ role: 'user', content: 'Say OK' }] });
-  return { ok: true, model: r.model, provider: process.env.GEMINI_API_KEY ? 'gemini' : DIRECT() ? 'anthropic' : 'gateway', text: textOf(r).slice(0, 20) };
+  if (!process.env.GEMINI_API_KEY) {
+    const r = await ask({ max_tokens: 200, output_config: { effort: 'low' }, messages: [{ role: 'user', content: 'Say OK' }] });
+    return { ok: true, model: r.model, provider: DIRECT() ? 'anthropic' : 'gateway' };
+  }
+  const q = [{ role: 'user', content: 'Albomga qanday rasm qo‘shaman?' }];
+  const out = {};
+  await Promise.all(['gemini-flash-latest', 'gemini-flash-lite-latest'].map(async (m) => {
+    const t = Date.now();
+    try {
+      const r = await askGemini({ system: KNOWLEDGE, messages: q, max_tokens: 3000, mode: 'fast', models: [m] });
+      out[m] = { ms: Date.now() - t, think: thinkOk.get(m + 'fast'), text: textOf(r).slice(0, 160) };
+    } catch (e) {
+      out[m] = { ms: Date.now() - t, error: String(e.message).slice(0, 200) };
+    }
+  }));
+  return { ok: true, provider: 'gemini', chat: CHAT_MODELS()[0], out };
 }

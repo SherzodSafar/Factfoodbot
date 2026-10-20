@@ -83,14 +83,15 @@ async function copyText(s) {
 }
 
 // ------------------------------------------------------------ API ----------
-async function api(path, { method = 'GET', body, token = S.token } = {}) {
+async function api(path, { method = 'GET', body, token = S.token, timeout } = {}) {
   const headers = { 'content-type': 'application/json' };
   if (token) headers.authorization = 'Bearer ' + token;
   if (tg?.initData) headers['x-init-data'] = tg.initData;
   let r;
   try {
-    r = await fetch('/api/' + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
-  } catch {
+    r = await fetch('/api/' + path, { method, headers, body: body ? JSON.stringify(body) : undefined, signal: timeout ? AbortSignal.timeout(timeout) : undefined });
+  } catch (e) {
+    if (e?.name === 'TimeoutError') throw Object.assign(new Error(t('Javob kechikdi. Qayta urinib ko‘ring')), { status: 0 });
     throw Object.assign(new Error(t('Internet aloqasini tekshiring')), { status: 0 });
   }
   const j = await r.json().catch(() => ({}));
@@ -400,6 +401,7 @@ function renderMain() {
   $app.querySelectorAll('.tab').forEach((b) => (b.onclick = () => switchTab(b.dataset.tab)));
   S.treeView = null;
   refreshChrome();
+  placeFab?.();
   const go = S.goPerson && S.fam.get(S.goPerson) ? S.goPerson : null;
   S.goPerson = null;
   switchTab(go ? 'tree' : S.tab || 'tree', true);
@@ -1423,39 +1425,101 @@ async function premiumSheet(reason) {
 }
 
 // =================================================================== SHEET
-// AI yordamchi bilan suhbat (tarix shu sessiya davomida saqlanadi)
-const aiChat = [];
+// AI yordamchi bilan suhbat (oxirgi xabarlar qurilmada saqlanadi)
+const aiChat = store.get('sh_ai', []);
+const AI_TIPS = ['Qanday qilib odam qo‘shaman?', 'Albomga qanday rasm qo‘shaman?', 'Albom kanalini qanday ulayman?', 'Botni oilaviy guruhga qanday ulayman?', 'Tahrir kodi nima?'];
 function aiSheet() {
-  const sh = openSheet(`<div class="sheet-head"><div class="h2">🤖 ${t('AI yordamchi')}</div><button class="icon-btn" data-close>${I.close}</button></div>
+  const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">🤖 ${t('AI yordamchi')}</div>
+      <button class="icon-btn" id="aic" aria-label="${t('Tozalash')}">${I.trash}</button><button class="icon-btn" data-close>${I.close}</button></div>
     <div class="sheet-body"><div class="ai-log" id="ail"></div>
-    <form class="ai-form" id="aif"><input class="input" name="q" placeholder="${t('Savolingizni yozing…')}" autocomplete="off" maxlength="2000"><button class="btn btn-primary">${I.chev}</button></form></div>`);
+    <form class="ai-form" id="aif"><input class="input" name="q" placeholder="${t('Savolingizni yozing…')}" autocomplete="off" maxlength="2000" enterkeyhint="send"><button class="btn btn-primary">${I.chev}</button></form></div>`);
   const log = sh.querySelector('#ail');
+  let busy = false;
+  let failed = null;
   const draw = () => {
-    log.innerHTML = (aiChat.length ? '' : `<div class="ai-msg bot">${t('Assalomu alaykum! Shajara, albom, kodlar yoki bot buyruqlari haqida so‘rang.')}</div>`) +
-      aiChat.map((m) => `<div class="ai-msg ${m.role === 'user' ? 'me' : 'bot'}">${esc(m.content)}</div>`).join('');
+    log.innerHTML = (aiChat.length ? '' : `<div class="ai-msg bot">${t('Assalomu alaykum! Shajara, albom, kodlar yoki bot buyruqlari haqida so‘rang.')}</div>
+        <div class="ai-tips">${AI_TIPS.map((q) => `<button type="button" class="chip" data-q="${esc(t(q))}">${esc(t(q))}</button>`).join('')}</div>`) +
+      aiChat.map((m) => `<div class="ai-msg ${m.role === 'user' ? 'me' : 'bot'}">${esc(m.content)}</div>`).join('') +
+      (busy ? '<div class="ai-msg bot"><span class="dots"><i></i><i></i><i></i></span></div>' : '') +
+      (failed ? `<div class="ai-err">${esc(failed.msg)} <button type="button" class="btn btn-soft btn-sm" id="air">↻ ${t('Qayta urinish')}</button></div>` : '');
     log.scrollTop = log.scrollHeight;
+    log.querySelectorAll('[data-q]').forEach((b) => (b.onclick = () => ask(b.dataset.q)));
+    log.querySelector('#air')?.addEventListener('click', () => { const q = failed.q; failed = null; ask(q, true); });
+  };
+  const ask = async (q, retry) => {
+    if (busy || !q) return;
+    failed = null;
+    const history = aiChat.slice(-8);
+    if (!retry) aiChat.push({ role: 'user', content: q });
+    busy = true;
+    draw();
+    try {
+      const r = await api('ai', { method: 'POST', body: { q, history: retry ? history.slice(0, -1) : history, lang: LANG }, timeout: 60e3 });
+      aiChat.push({ role: 'assistant', content: r.answer });
+      haptic('light');
+    } catch (err) {
+      failed = { q, msg: err.message };
+    }
+    busy = false;
+    store.set('sh_ai', aiChat.slice(-20));
+    draw();
   };
   draw();
-  sh.querySelector('#aif').onsubmit = async (e) => {
+  sh.querySelector('#aic').onclick = () => { aiChat.length = 0; failed = null; store.set('sh_ai', []); draw(); };
+  sh.querySelector('#aif').onsubmit = (e) => {
     e.preventDefault();
-    const inp = e.target.q;
-    const q = inp.value.trim();
-    if (!q) return;
-    inp.value = '';
-    const history = aiChat.slice(-8);
-    aiChat.push({ role: 'user', content: q });
-    draw();
-    log.insertAdjacentHTML('beforeend', '<div class="ai-msg bot"><span class="spin"></span></div>');
-    log.scrollTop = log.scrollHeight;
-    try {
-      const r = await api('ai', { method: 'POST', body: { q, history, lang: LANG } });
-      aiChat.push({ role: 'assistant', content: r.answer });
-    } catch (err) {
-      aiChat.pop();
-      toast(err.message, true);
-    }
-    draw();
+    const q = e.target.q.value.trim();
+    e.target.q.value = '';
+    ask(q);
   };
+}
+
+let placeFab = null;
+// Har sahifada turadigan suzuvchi 🤖 tugma: bosilsa yordamchi ochiladi, surib boshqa joyga qo'yish mumkin
+function mountAiFab() {
+  if (document.querySelector('.ai-fab')) return;
+  const b = document.createElement('button');
+  b.className = 'ai-fab';
+  b.setAttribute('aria-label', t('AI yordamchi'));
+  b.innerHTML = '<span>🤖</span>';
+  document.body.append(b);
+  let pos = store.get('sh_aifab', null);
+  const S_ = 52;
+  const place = () => {
+    const w = window.innerWidth, h = window.innerHeight;
+    // standart joy: sarlavha ostida o'ngda (daraxtda qidiruv maydoni yonidagi bo'sh joy)
+    const tb = document.querySelector('.topbar')?.getBoundingClientRect();
+    const y = pos ? pos.y * h - S_ / 2 : tb ? tb.bottom + 8 : h * 0.36;
+    b.style.left = (pos?.side === 'l' ? 10 : w - S_ - 10) + 'px';
+    b.style.top = Math.min(h - S_ - 96, Math.max(60, y)) + 'px';
+  };
+  placeFab = place;
+  let st = null;
+  let dragged = false;
+  b.addEventListener('pointerdown', (e) => { b.setPointerCapture(e.pointerId); st = { x: e.clientX, y: e.clientY }; dragged = false; });
+  b.addEventListener('pointermove', (e) => {
+    if (!st || (!dragged && Math.hypot(e.clientX - st.x, e.clientY - st.y) < 8)) return;
+    dragged = true;
+    b.classList.add('drag');
+    b.style.left = e.clientX - S_ / 2 + 'px';
+    b.style.top = e.clientY - S_ / 2 + 'px';
+  });
+  const end = (e) => {
+    if (!st) return;
+    st = null;
+    b.classList.remove('drag');
+    if (dragged) {
+      pos = { side: e.clientX < window.innerWidth / 2 ? 'l' : 'r', y: e.clientY / window.innerHeight };
+      store.set('sh_aifab', pos);
+      place();
+    }
+  };
+  b.addEventListener('pointerup', end);
+  b.addEventListener('pointercancel', end);
+  // ochish 'click' da — aks holda keyingi sensor bosishi ochilgan oynani darhol yopib qo'yadi
+  b.addEventListener('click', () => { if (dragged) { dragged = false; return; } haptic('light'); aiSheet(); });
+  window.addEventListener('resize', place);
+  place();
 }
 
 function openSheet(html) {
@@ -1763,6 +1827,7 @@ function boot() {
   S.goPerson = /_(p\d{1,8})$/.exec(inv.slice(30))?.[1] || null;
   const startCode = params.get('code') || (!inv ? sp : '');
   const afterOnb = () => {
+    mountAiFab();
     if (inv) return joinByInvite(inv);
     if (startCode) return renderGate(startCode);
     const last = store.get('sh_last');
