@@ -27,8 +27,9 @@ const THINK = {
   deep: [{ thinkingLevel: 'low' }, { thinkingBudget: 2048 }, null],
 };
 const thinkOk = new Map();
-export const CHAT_MODELS = () => [...new Set([process.env.GEMINI_CHAT_MODEL, 'gemini-flash-latest', 'gemini-flash-lite-latest', 'gemini-2.5-flash'].filter(Boolean))];
-const FILE_MODELS = () => [...new Set([process.env.GEMINI_MODEL, 'gemini-flash-latest', 'gemini-2.5-flash', 'gemini-flash-lite-latest'].filter(Boolean))];
+// O'lchov (Vercel fra1): flash-lite ~1.5 s, flash-latest 40 s+ — chat uchun eng tezi birinchi
+export const CHAT_MODELS = () => [...new Set([process.env.GEMINI_CHAT_MODEL, 'gemini-flash-lite-latest', 'gemini-2.5-flash', 'gemini-flash-latest'].filter(Boolean))];
+const FILE_MODELS = () => [...new Set([process.env.GEMINI_MODEL, 'gemini-2.5-flash', 'gemini-flash-lite-latest', 'gemini-flash-latest'].filter(Boolean))];
 
 export async function askGemini({ system, messages, max_tokens, json, mode = 'fast', models, timeout }) {
   let last;
@@ -40,7 +41,7 @@ export async function askGemini({ system, messages, max_tokens, json, mode = 'fa
       try {
         r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`, {
           method: 'POST',
-          signal: AbortSignal.timeout(timeout || (mode === 'fast' ? 40e3 : 240e3)),
+          signal: AbortSignal.timeout(timeout || (mode === 'fast' ? 20e3 : 120e3)),
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
             systemInstruction: system ? { parts: [{ text: system }] } : undefined,
@@ -224,13 +225,14 @@ export async function aiHealth() {
   }
   const q = [{ role: 'user', content: 'Albomga qanday rasm qo‘shaman?' }];
   const out = {};
-  await Promise.all(['gemini-flash-latest', 'gemini-flash-lite-latest'].map(async (m) => {
+  const rows = [{ role: 'user', content: 'Ali (1950) ning otasi Vali (1920), onasi Zuhra. Alining xotini Gulnora. JSON: {"rows":[{"name","father","mother","spouse","birth"}]}' }];
+  await Promise.all([['gemini-flash-lite-latest', 'fast', q], ['gemini-2.5-flash', 'fast', q], ['gemini-2.5-flash', 'deep', rows], ['gemini-flash-lite-latest', 'deep', rows]].map(async ([m, mode, msgs]) => {
     const t = Date.now();
     try {
-      const r = await askGemini({ system: KNOWLEDGE, messages: q, max_tokens: 3000, mode: 'fast', models: [m] });
-      out[m] = { ms: Date.now() - t, think: thinkOk.get(m + 'fast'), text: textOf(r).slice(0, 160) };
+      const r = await askGemini({ system: mode === 'fast' ? KNOWLEDGE : undefined, messages: msgs, max_tokens: 3000, mode, models: [m], json: mode === 'deep' });
+      out[m + ':' + mode] = { ms: Date.now() - t, think: thinkOk.get(m + mode), text: textOf(r).slice(0, 120) };
     } catch (e) {
-      out[m] = { ms: Date.now() - t, error: String(e.message).slice(0, 200) };
+      out[m + ':' + mode] = { ms: Date.now() - t, error: String(e.message).slice(0, 160) };
     }
   }));
   return { ok: true, provider: 'gemini', chat: CHAT_MODELS()[0], out };
