@@ -134,8 +134,31 @@ export function normLang(l) {
   return 'uz';
 }
 
+const UZ_AI = '📋 <b>AI bilan ro‘yxat tuzish</b>\n\nQarindoshlar ro‘yxati bor faylni yuboring: Excel, Word, PDF, CSV, qo‘lyozma yoki daraxt rasmi — yoki ro‘yxatni shu yerga matn qilib yozing.\n\nAI uni shajara formatiga keltiradi, tayyor faylni qaytaradi va bir tugma bilan shajarangizga qo‘shib beradi.';
+RU['AI_IMPORT_HELP'] = '📋 <b>Список с помощью AI</b>\n\nОтправьте файл со списком родственников: Excel, Word, PDF, CSV, фото рукописи или схемы — или напишите список текстом.\n\nAI приведёт его к формату родословной, вернёт готовый файл и добавит в вашу родословную одной кнопкой.';
+EN['AI_IMPORT_HELP'] = '📋 <b>Build the list with AI</b>\n\nSend a file with your relatives: Excel, Word, PDF, CSV, a photo of handwritten notes or a chart — or type the list here.\n\nAI converts it to the family tree format, returns a ready file and adds it to your tree with one tap.';
+for (const [k, r, e] of [
+  ['Savolingizni yozing — masalan: «Albomga qanday rasm qo‘shaman?»', 'Напишите вопрос — например: «Как добавить фото в альбом?»', 'Type your question — e.g. “How do I add a photo to the album?”'],
+  ['AI yordamchi hozir javob bera olmadi. Keyinroq urinib ko‘ring yoki /yordam ni bosing.', 'AI-помощник сейчас не смог ответить. Попробуйте позже или нажмите /yordam.', 'The AI assistant could not answer right now. Try later or tap /yordam.'],
+  ['Fayl juda katta (20 MB dan oshmasin).', 'Файл слишком большой (не более 20 МБ).', 'The file is too large (max 20 MB).'],
+  ['Faylni yuklab bo‘lmadi.', 'Не удалось загрузить файл.', 'Could not download the file.'],
+  ['Bu formatni o‘qib bo‘lmaydi. Faylni .xlsx, .docx, .pdf, .csv yoki rasm qilib yuboring.', 'Этот формат не читается. Отправьте .xlsx, .docx, .pdf, .csv или фото.', 'This format can’t be read. Send .xlsx, .docx, .pdf, .csv or an image.'],
+  ['⏳ AI faylni tahlil qilmoqda… Bu 1-2 daqiqa olishi mumkin.', '⏳ AI анализирует файл… Это может занять 1-2 минуты.', '⏳ AI is analysing the file… This may take 1-2 minutes.'],
+  ['AI faylni tahlil qila olmadi. Boshqa formatda yuborib ko‘ring.', 'AI не смог разобрать файл. Попробуйте другой формат.', 'AI could not process the file. Try another format.'],
+  ['Fayldan odamlar ro‘yxati topilmadi.', 'В файле не найден список людей.', 'No list of people was found in the file.'],
+  ['ga qo‘shish', '— добавить', '— add'],
+  ['{n} kishi topildi.', 'Найдено человек: {n}.', '{n} people found.'],
+  ['Faylni tekshiring. Hammasi to‘g‘ri bo‘lsa — pastdagi tugma bilan shajarangizga qo‘shing yoki ilovada «Fayldan qo‘shish» orqali yuklang.', 'Проверьте файл. Если всё верно — добавьте кнопкой ниже или загрузите в приложении через «Из файла».', 'Check the file. If all is correct, add it with the button below or upload it in the app via “From file”.'],
+  ['Bu faylni ilovada tahrir rejimida «+ → Fayldan qo‘shish» orqali yuklang.', 'Загрузите этот файл в приложении в режиме редактирования: «+ → Из файла».', 'Upload this file in the app in edit mode: “+ → From file”.'],
+  ['Ma’lumot eskirgan. Faylni qayta yuboring.', 'Данные устарели. Отправьте файл заново.', 'Data expired. Send the file again.'],
+  ['Ruxsat yo‘q', 'Нет доступа', 'No permission'],
+  ['{n} kishi «{title}» shajarasiga qo‘shildi.', 'Добавлено {n} чел. в «{title}».', '{n} people added to “{title}”.'],
+  ['AI ro‘yxat (fayldan)', 'AI-список (из файла)', 'AI list (from file)'],
+  ['AI yordamchiga savol', 'Вопрос AI-помощнику', 'Ask the AI assistant'],
+]) { RU[k] = r; EN[k] = e; }
+
 export function t(lang, key, vars = {}) {
-  let s = key === 'HELP' ? UZ_HELP : key;
+  let s = key === 'HELP' ? UZ_HELP : key === 'AI_IMPORT_HELP' ? UZ_AI : key;
   if (lang === 'ru') s = RU[key] || s;
   else if (lang === 'en') s = EN[key] || s;
   else if (lang === 'uzc') s = toCyrillic(s);

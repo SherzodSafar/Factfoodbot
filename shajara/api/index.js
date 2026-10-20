@@ -17,6 +17,7 @@ import { handleUpdate, setupBot, BOT, PLANS, chatKey, linkKey } from '../lib/bot
 import { webhookSecret, todayText } from '../lib/events.js';
 import { notify, escapeHtml } from '../lib/notify.js';
 import { updateUser, getUser } from '../lib/users.js';
+import { aiHealth } from '../lib/ai.js';
 import { loadAlbum, mutateAlbum, publicAlbum, addToAlbum, canUpload, cleanName, ensureAlbum } from '../lib/album.js';
 import { t, LANGS } from '../lib/i18n.js';
 
@@ -492,6 +493,12 @@ async function route(req, res) {
   }
 
   // ---- Telegram webhook
+  // AI ulanishini tekshirish (juda qisqa so'rov, cheklangan)
+  if (path === 'aihealth' && m === 'GET') {
+    if (!rateLimit('aihealth', 5, 60 * 60e3)) throw new HttpError(429, 'Keyinroq');
+    try { return send(res, 200, await aiHealth()); } catch (e) { return send(res, 200, { ok: false, error: String(e.message || e).slice(0, 300) }); }
+  }
+
   if (path === 'webhook' && m === 'POST') {
     if (req.headers['x-telegram-bot-api-secret-token'] !== webhookSecret()) return send(res, 401, { ok: false });
     const update = await readBody(req);

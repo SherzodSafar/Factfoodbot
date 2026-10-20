@@ -30,6 +30,20 @@ function initTelegram() {
   tg.ready();
   tg.expand();
   try { tg.disableVerticalSwipes?.(); } catch {}
+  // To'liq ekran (Bot API 8.0+); Telegram tugmalari ostida qolmaslik uchun xavfsiz chegaralar
+  const insets = () => {
+    const a = tg.safeAreaInset || {}, c = tg.contentSafeAreaInset || {};
+    const r = document.documentElement.style;
+    r.setProperty('--safe-top', `${(a.top || 0) + (c.top || 0)}px`);
+    r.setProperty('--safe-bottom', `${(a.bottom || 0) + (c.bottom || 0)}px`);
+  };
+  try {
+    if (tg.isVersionAtLeast?.('8.0') && !['tdesktop', 'macos', 'web', 'weba', 'webk'].includes(tg.platform)) {
+      tg.requestFullscreen();
+      ['safeAreaChanged', 'contentSafeAreaChanged', 'fullscreenChanged'].forEach((e) => tg.onEvent(e, insets));
+      insets();
+    }
+  } catch {}
   applyTheme();
   tg.onEvent?.('themeChanged', applyTheme);
   tg.BackButton?.onClick(() => goBack());

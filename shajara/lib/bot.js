@@ -1,5 +1,8 @@
 // Telegram bot: buyruqlar, albomga yuklash, guruh va kanalni ulash, to'lovlar.
-import { tg, mediaOf } from './telegram.js';
+import { tg, tgUpload, mediaOf, downloadFile } from './telegram.js';
+import { waitUntil } from '@vercel/functions';
+import { answerQuestion, fileToContent, extractFamily, rowsToCsv } from './ai.js';
+import { importRows } from './tree.js';
 import { t, normLang, LANGS } from './i18n.js';
 import { randomQuote } from './quotes.js';
 import { readJson, writeJson, deleteKey } from './store.js';
@@ -81,11 +84,86 @@ async function onPrivate(msg) {
     return send(from.id, t(lang, 'Bekor qilindi.'));
   }
   if (cmd === '/albom') return send(from.id, t(lang, 'Albomga qo‘shish uchun rasm/videoga javob tariqasida /albom yozing.').replace('/albom', '📎'));
+  if (cmd === '/royxat' || cmd === '/import') {
+    await updateUser(from.id, from, (d) => { d.aimode = { at: Date.now() }; d.pending = null; });
+    return send(from.id, t(lang, 'AI_IMPORT_HELP'));
+  }
+  if (cmd === '/savol' || cmd === '/ai') {
+    const q = text.replace(/^\S+\s*/, '');
+    if (!q) return send(from.id, t(lang, 'Savolingizni yozing — masalan: «Albomga qanday rasm qo‘shaman?»'));
+    return bg(aiAnswer(from, msg.chat.id, lang, q, user));
+  }
+  if (user?.aimode && Date.now() - user.aimode.at < 30 * 60e3 && (msg.document || msg.photo || (text && !cmd))) {
+    return bg(aiImport(from, lang, msg));
+  }
 
   const media = mediaOf(msg);
   if (media) return startUpload({ from, chatId: msg.chat.id, lang, msg, media });
   if (user?.pending && Date.now() - user.pending.at < PENDING_TTL && (text || cmd === '/skip')) return continueUpload({ from, chatId: msg.chat.id, lang, text, cmd });
+  if (text && !cmd) return bg(aiAnswer(from, msg.chat.id, lang, text, user));
   return send(from.id, t(lang, 'Boshlash uchun pastdagi tugmani bosing 👇'), { reply_markup: appButton(lang) });
+}
+
+// ---------------------------------------------------------------- AI yordamchi --
+// Uzoq ishlarni javobdan keyin davom ettiramiz — Telegram webhook kutib qolmasin
+function bg(promise) {
+  const p = promise.catch((e) => console.error('ai', e));
+  try { waitUntil(p); } catch {}
+}
+
+async function aiAnswer(from, chatId, lang, question, user) {
+  tg('sendChatAction', { chat_id: chatId, action: 'typing' });
+  const history = (user?.ai || []).slice(-8);
+  let answer;
+  try {
+    answer = await answerQuestion(question.slice(0, 2000), history, lang);
+  } catch (e) {
+    console.error('ai answer', e);
+    return send(chatId, t(lang, 'AI yordamchi hozir javob bera olmadi. Keyinroq urinib ko‘ring yoki /yordam ni bosing.'));
+  }
+  await send(chatId, escapeHtml(answer).slice(0, 4000), chatId === from.id ? { reply_markup: appButton(lang) } : {});
+  if (chatId === from.id) await updateUser(from.id, from, (d) => { d.ai = [...(d.ai || []), { role: 'user', content: question.slice(0, 1000) }, { role: 'assistant', content: answer.slice(0, 2000) }].slice(-8); });
+}
+
+async function aiImport(from, lang, msg) {
+  const chatId = msg.chat.id;
+  await updateUser(from.id, from, (d) => { d.aimode = null; });
+  let content;
+  if (msg.document || msg.photo) {
+    const doc = msg.document;
+    const f = doc || msg.photo[msg.photo.length - 1];
+    if (f.file_size > 20 * 1024 * 1024) return send(chatId, t(lang, 'Fayl juda katta (20 MB dan oshmasin).'));
+    const file = await downloadFile(f.file_id);
+    if (!file) return send(chatId, t(lang, 'Faylni yuklab bo‘lmadi.'));
+    content = doc ? fileToContent(file.buffer, doc.file_name || file.path, doc.mime_type || '') : fileToContent(file.buffer, 'photo.jpg', 'image/jpeg');
+    if (msg.caption) content?.push({ type: 'text', text: `Foydalanuvchi izohi: ${msg.caption}` });
+  } else content = [{ type: 'text', text: msg.text }];
+  if (!content) return send(chatId, t(lang, 'Bu formatni o‘qib bo‘lmaydi. Faylni .xlsx, .docx, .pdf, .csv yoki rasm qilib yuboring.'));
+  const wait = await send(chatId, t(lang, '⏳ AI faylni tahlil qilmoqda… Bu 1-2 daqiqa olishi mumkin.'));
+  let res;
+  try {
+    res = await extractFamily(content, lang);
+  } catch (e) {
+    console.error('ai import', e);
+    return send(chatId, t(lang, 'AI faylni tahlil qila olmadi. Boshqa formatda yuborib ko‘ring.'));
+  } finally {
+    if (wait?.result) tg('deleteMessage', { chat_id: chatId, message_id: wait.result.message_id });
+  }
+  if (!res.rows.length) return send(chatId, t(lang, 'Fayldan odamlar ro‘yxati topilmadi.'));
+  await updateUser(from.id, from, (d) => { d.aiImport = { rows: res.rows.slice(0, 2000), at: Date.now() }; });
+  const user = await getUser(from.id);
+  const kb = [];
+  for (const [id, role] of Object.entries(user?.trees || {}).slice(0, 8)) {
+    if (role !== 'edit') continue;
+    const tr = await loadTree(id).catch(() => null);
+    if (tr && tr.members?.[String(from.id)]?.role === 'edit') kb.push([{ text: `✅ «${tr.title}» ${t(lang, 'ga qo‘shish')} (${res.rows.length})`, callback_data: `aimp:${id}` }]);
+  }
+  const caption = `📋 ${t(lang, '{n} kishi topildi.', { n: res.rows.length })}
+${escapeHtml(res.summary).slice(0, 700)}
+
+` +
+    t(lang, kb.length ? 'Faylni tekshiring. Hammasi to‘g‘ri bo‘lsa — pastdagi tugma bilan shajarangizga qo‘shing yoki ilovada «Fayldan qo‘shish» orqali yuklang.' : 'Bu faylni ilovada tahrir rejimida «+ → Fayldan qo‘shish» orqali yuklang.');
+  return tgUpload('sendDocument', { chat_id: chatId, caption: caption.slice(0, 1020), parse_mode: 'HTML', reply_markup: kb.length ? { inline_keyboard: kb } : undefined }, 'document', Buffer.from(rowsToCsv(res.rows)), 'shajara.csv', 'text/csv');
 }
 
 // ---------------------------------------------------------------- guruh --
@@ -113,6 +191,11 @@ async function onGroup(msg) {
   if (cmd === '/skip' || cmd === '/bekor' || cmd === '/cancel') {
     const user = await getUser(from.id);
     if (user?.pending?.chat === msg.chat.id) return continueUpload({ from, chatId: msg.chat.id, lang, text, cmd, replyTo: msg.message_id });
+    return;
+  }
+  if (cmd === '/savol' || cmd === '/ai') {
+    const q = text.replace(/^\S+\s*/, '');
+    if (q) return bg(aiAnswer(from, msg.chat.id, lang, q, null));
     return;
   }
   if (!link) {
@@ -235,6 +318,22 @@ async function onCallback(cq) {
     await updateUser(from.id, from, (d) => { d.lang = l; });
     await answer(t(l, 'Til o‘zgartirildi ✅'));
     return tg('editMessageText', { chat_id: cq.message.chat.id, message_id: cq.message.message_id, text: t(l, 'Til o‘zgartirildi ✅') });
+  }
+  if (data.startsWith('aimp:')) {
+    const treeId = data.slice(5);
+    const rows = user?.aiImport?.rows;
+    if (!rows?.length || Date.now() - user.aiImport.at > 24 * 3600e3) return answer(t(lang, 'Ma’lumot eskirgan. Faylni qayta yuboring.'));
+    const tr = await loadTree(treeId).catch(() => null);
+    if (!tr || tr.members?.[String(from.id)]?.role !== 'edit') return answer(t(lang, 'Ruxsat yo‘q'));
+    try {
+      const r = await mutateTree(treeId, (x) => importRows(x, rows, from.first_name || 'AI'));
+      await updateUser(from.id, from, (d) => { d.aiImport = null; });
+      await answer('✅');
+      tg('editMessageReplyMarkup', { chat_id: cq.message.chat.id, message_id: cq.message.message_id, reply_markup: { inline_keyboard: [] } });
+      return send(cq.message.chat.id, `✅ ${t(lang, '{n} kishi «{title}» shajarasiga qo‘shildi.', { n: r.result, title: escapeHtml(tr.title) })}`, { reply_markup: appButton(lang) });
+    } catch (e) {
+      return answer(String(e.message || e).slice(0, 190));
+    }
   }
   if (data.startsWith('alb:')) {
     const [, what, owner] = data.split(':');
@@ -369,6 +468,8 @@ export async function setupBot() {
         { command: 'til', description: t(lang, 'Tilni tanlash') },
         { command: 'hikmat', description: t(lang, 'Qondoshlik haqida hikmat') },
         { command: 'yordam', description: t(lang, 'Qanday foydalaniladi') },
+        { command: 'royxat', description: t(lang, 'AI ro‘yxat (fayldan)') },
+        { command: 'savol', description: t(lang, 'AI yordamchiga savol') },
       ],
     });
     await tg('setMyCommands', {
@@ -377,6 +478,7 @@ export async function setupBot() {
         { command: 'shajara', description: t(lang, 'Shajarani ochish') },
         { command: 'albom', description: t(lang, 'Albomga fayl qo‘shish') },
         { command: 'tugilgan', description: '🎂' },
+        { command: 'savol', description: '🤖 AI' },
         { command: 'hikmat', description: t(lang, 'Qondoshlik haqida hikmat') },
       ],
     });

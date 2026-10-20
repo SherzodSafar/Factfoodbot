@@ -432,7 +432,7 @@ export class TreeView {
             haptic('light');
             // yopiq shox — ochamiz; ochilgan yoki farzandsiz — ma'lumotini ko'rsatamiz
             if (node.classList.contains('closed')) this.expand(node.dataset.unit);
-            else this.opts.onOpen(node.dataset.id);
+            else { const id = node.dataset.id; setTimeout(() => this.opts.onOpen(id), 90); } // sensorli ekranda keyingi 'click' oynani yopib qo'ymasin
           }
         }
         start = null;
