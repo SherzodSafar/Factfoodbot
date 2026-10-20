@@ -890,12 +890,7 @@ function openViewer(ids, index) {
       } catch (err) { toast(err.message, true); }
       b.disabled = false;
     }
-    if (k === 'spd') {
-      const v = sl.querySelector('video');
-      const sp = [1, 1.25, 1.5, 2, 0.5];
-      v.playbackRate = sp[(sp.indexOf(v.playbackRate) + 1) % sp.length];
-      b.innerHTML = `<b>${v.playbackRate}×</b>`;
-    }
+    if (k === 'spd') speedPop(b, sl.querySelector('video'), (v) => (b.innerHTML = `<b>${v}×</b>`));
     if (k === 'by') openProfile(it);
     if (k === 'full') {
       const on = !sl.classList.contains('land');
@@ -948,16 +943,46 @@ function openViewer(ids, index) {
     au.addEventListener('play', sync);
     au.addEventListener('pause', sync);
     au.addEventListener('error', () => { sl.querySelector('.rv-a-name').insertAdjacentHTML('afterend', `<div class="small" style="opacity:.7">${t('Bu formatni ilovada ijro etib bo‘lmadi — chatga yuboring')}</div>`); }, { once: true });
-    const speeds = [1, 1.25, 1.5, 2];
     sl.querySelectorAll('[data-a]').forEach((b) => (b.onclick = (e) => {
       e.stopPropagation();
       haptic('light');
       const k = b.dataset.a;
       if (k === 'play') au.paused ? au.play().catch(() => {}) : au.pause();
-      else if (k === 'spd') { au.playbackRate = speeds[(speeds.indexOf(au.playbackRate) + 1) % speeds.length]; b.textContent = au.playbackRate + '×'; }
+      else if (k === 'spd') speedPop(b, au, (v) => (b.textContent = v + '×'));
       else au.currentTime = Math.max(0, au.currentTime + Number(k));
     }));
     seekable(sl.querySelector('.rv-seek'), au);
+  }
+
+  // Tezlik menyusi: tugma yonida kichik panel (0.5× — 3×)
+  const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 3];
+  function speedPop(btn, media, show) {
+    box.querySelector('.rv-pop')?.remove();
+    const pop = document.createElement('div');
+    pop.className = 'rv-pop';
+    pop.innerHTML = SPEEDS.map((v) => `<button type="button" data-v="${v}" class="${media.playbackRate === v ? 'on' : ''}">${v}×</button>`).join('');
+    box.append(pop);
+    const r = btn.getBoundingClientRect();
+    const w = pop.offsetWidth;
+    const h = pop.offsetHeight;
+    pop.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2)) + 'px';
+    pop.style.top = (r.top - h - 10 > 8 ? r.top - h - 10 : r.bottom + 10) + 'px';
+    const off = (e) => {
+      if (pop.contains(e.target)) return;
+      pop.remove();
+      document.removeEventListener('pointerdown', off, true);
+    };
+    setTimeout(() => document.addEventListener('pointerdown', off, true), 0);
+    pop.onclick = (e) => {
+      e.stopPropagation();
+      const v = Number(e.target.closest('[data-v]')?.dataset.v);
+      if (!v) return;
+      try { media.playbackRate = v; } catch {}
+      show(media.playbackRate);
+      haptic('light');
+      pop.remove();
+      document.removeEventListener('pointerdown', off, true);
+    };
   }
 
   // Ikki barmoq bilan kattalashtirish; kattalashganda lenta surilmaydi, rasm suriladi
@@ -997,6 +1022,7 @@ function openViewer(ids, index) {
   function activate(i) {
     if (i === cur) return;
     cur = i;
+    box.querySelector('.rv-pop')?.remove();
     box.querySelector('.rv-count').textContent = `${i + 1} / ${items.length}`;
     for (const j of [i - 1, i, i + 1, i + 2]) hydrate(j);
     slides.forEach((sl, j) => {
@@ -1219,6 +1245,7 @@ function renderMoreTab(el) {
     ${canEdit() ? `<div class="section"><h3 class="h3">${t('Tahrirchi uchun')}</h3></div><div class="card menu">
       ${item('m-edit', isEdit() ? '🔓' : '🔒', isEdit() ? t('Tahrir rejimini yopish') : t('Tahrir rejimini yoqish'), '', `<span class="switch"><input type="checkbox" ${isEdit() ? 'checked' : ''} tabindex="-1"><span></span></span>`)}
       ${item('m-channel', '🗄', t('Albom kanali'), tr.channel ? '✅ ' + esc(tr.channel.title) : t('Ulanmagan — fayllarni kanalda saqlang'))}
+      ${item('m-dupes', '🧹', t('Takroriy odamlar'), t('Ikkilangan yozuvlarni topish va birlashtirish'))}
       ${item('m-members', '👥', t('A’zolar va huquqlar'), t('{n} kishi kirgan', { n: tr.memberCount }))}
       ${item('m-settings', '⚙️', t('Shajara sozlamalari'), t('Nomi, kodlar, albom huquqlari'))}
       ${inTelegram ? item('m-export', '💾', t('Zaxira nusxa'), t('Shajara va albom ro‘yxati JSON faylda chatga')) : ''}
@@ -1234,6 +1261,7 @@ function renderMoreTab(el) {
   const on = (id, fn) => el.querySelector('#' + id)?.addEventListener('click', fn);
   on('m-invite', inviteSheet);
   on('m-ai', aiSheet);
+  on('m-dupes', dupesSheet);
   on('m-notif', notificationsSheet);
   on('m-lang', langSheet);
   on('m-group', () => linkSheet('group'));
@@ -1271,6 +1299,7 @@ const ACT = {
   add: ['🌱', '{name} qo‘shildi'], edit: ['✏️', '{name} tahrirlandi'], delete: ['🗑', '{name} o‘chirildi'], photo: ['🖼', '{name} surati qo‘yildi'],
   'photo-del': ['🖼', '{name} surati olib tashlandi'], settings: ['⚙️', 'Sozlamalar o‘zgardi'], create: ['🌱', 'Shajara boshlandi: {name}'],
   import: ['📥', 'Ma’lumotlar yuklandi: {name}'], album: ['📸', 'Albom: {name}'],
+  'undo-import': ['↩️', 'Import bekor qilindi: {name}'], merge: ['🧹', 'Takror birlashtirildi: {name}'],
 };
 
 function notificationsSheet() {
@@ -1425,6 +1454,39 @@ async function premiumSheet(reason) {
 }
 
 // =================================================================== SHEET
+// Takroriy odamlar: bir odamning farzandlari/juftlari orasida ismi o'xshash yozuvlarni birlashtirish
+function dupesSheet() {
+  const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">🧹 ${t('Takroriy odamlar')}</div><button class="icon-btn" data-close>${I.close}</button></div>
+    <div class="sheet-body" id="dpb"><div class="empty"><span class="spin" style="color:var(--primary)"></span></div></div>`);
+  const body = sh.querySelector('#dpb');
+  const load = async () => {
+    let r;
+    try { r = await api('dupes'); } catch (err) { body.innerHTML = `<div class="empty">${esc(err.message)}</div>`; return; }
+    if (!r.pairs.length) { body.innerHTML = `<div class="empty"><div class="big">✨</div><b>${t('Takrorlar topilmadi')}</b></div>`; return; }
+    const who = (p) => `<b>${esc(nm(p.name))}</b>${p.birth || p.death ? ` <span class="muted">${esc(yearsLabel(p))}</span>` : ''}${p.kids ? ` · ${t('{n} farzand', { n: p.kids })}` : ''}${p.photo ? ' · 📷' : ''}`;
+    body.innerHTML = `<div class="hint" style="margin-bottom:10px">${t('Bir odamning farzandlari yoki turmush o‘rtoqlari orasida ismi o‘xshash yozuvlar. Birlashtirilganda barcha ma’lumot va bog‘lanishlar saqlanadi.')}</div>
+      <button class="btn btn-primary btn-block" id="dpall">🧹 ${t('Hammasini birlashtirish')} (${r.pairs.length})</button>
+      <div class="dp-list">${r.pairs.map((x, i) => `<div class="dp-row"><div class="grow"><div>${who(x.keep)}</div><div>${who(x.drop)}</div>
+        <div class="small muted">${esc(t(x.type === 'spouse' ? '{name}ning turmush o‘rtog‘i' : '{name}ning farzandi', { name: nm(x.of) }))}</div></div>
+        <button class="btn btn-soft btn-sm" data-i="${i}">${t('Birlashtirish')}</button></div>`).join('')}</div>`;
+    const merge = async (pairs, btn) => {
+      btn.disabled = true;
+      try {
+        const res = await api('dupes/merge', { method: 'POST', body: { pairs } });
+        onTreeChanged(res.tree);
+        toast(t('{n} ta takror birlashtirildi', { n: res.merged }));
+        load();
+      } catch (err) { toast(err.message, true); btn.disabled = false; }
+    };
+    body.querySelector('#dpall').onclick = async (e) => {
+      const btn = e.currentTarget;
+      if (await confirmBox(t('Hammasi birlashtirilsinmi?'))) merge(r.pairs.map((x) => [x.keep.id, x.drop.id]), btn);
+    };
+    body.querySelectorAll('[data-i]').forEach((b) => (b.onclick = () => { const x = r.pairs[Number(b.dataset.i)]; merge([[x.keep.id, x.drop.id]], b); }));
+  };
+  load();
+}
+
 // AI yordamchi bilan suhbat (oxirgi xabarlar qurilmada saqlanadi)
 const aiChat = store.get('sh_ai', []);
 const AI_TIPS = ['Qanday qilib odam qo‘shaman?', 'Albomga qanday rasm qo‘shaman?', 'Albom kanalini qanday ulayman?', 'Botni oilaviy guruhga qanday ulayman?', 'Tahrir kodi nima?'];
@@ -1487,7 +1549,7 @@ function aiSheet() {
   const save = () => store.set('sh_ai', aiChat.slice(-20));
   const card = (m, i) => {
     const c = m.card;
-    const act = c.applied ? `<span class="ai-ok">✅ ${t('Qo‘shildi')}</span>`
+    const act = c.applied ? `<span class="ai-ok">✅ ${t('Qo‘shildi')}</span>${isEdit() ? `<button type="button" class="btn btn-soft btn-sm" data-undo="${i}">↩️ ${t('Bekor qilish')}</button>` : ''}`
       : !c.fresh ? `<span class="small muted">${t('Hammasi shajarada bor')}</span>`
       : isEdit() ? `<button type="button" class="btn btn-primary btn-sm" data-apply="${i}">✅ ${t('Shajaraga qo‘shish')} (+${c.fresh})</button>`
       : `<span class="small muted">${t('Qo‘shish uchun tahrir rejimini yoqing')}</span>`;
@@ -1511,6 +1573,21 @@ function aiSheet() {
       b.disabled = true;
       try { await api('ai/csv', { method: 'POST', body: { job: b.dataset.csv } }); toast(t('Chatga yuborildi 📩')); } catch (err) { toast(err.message, true); }
       b.disabled = false;
+    }));
+    log.querySelectorAll('[data-undo]').forEach((b) => (b.onclick = async () => {
+      const m = aiChat[Number(b.dataset.undo)];
+      if (!(await confirmBox(t('Oxirgi import bekor qilinsinmi? U bilan qo‘shilgan odamlar o‘chiriladi.')))) return;
+      b.disabled = true;
+      try {
+        const r = await api('ai/undo', { method: 'POST' });
+        onTreeChanged(r.tree);
+        m.card.applied = false;
+        toast(t('{n} kishi olib tashlandi', { n: r.removed }));
+        const d = await api('ai/job/' + m.card.job).catch(() => null);
+        if (d?.status === 'done') Object.assign(m.card, { matched: d.matched, fresh: d.fresh });
+        save();
+      } catch (err) { toast(err.message, true); }
+      draw();
     }));
     log.querySelectorAll('[data-apply]').forEach((b) => (b.onclick = async () => {
       const m = aiChat[Number(b.dataset.apply)];

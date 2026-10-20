@@ -10,6 +10,7 @@ import { readJson, writeJson, getFile, deleteKey, listKeys } from '../lib/store.
 import {
   HttpError, findTreeByCode, loadTree, createTree, mutateTree, publicTree, addPerson, updatePerson, deletePerson,
   savePhoto, changeSettings, upsertMember, importRows, replacePersons, importGraph, planGraph,
+  undoImport, findDuplicates, mergePersons,
 } from '../lib/tree.js';
 import { tg, tgUpload, sendDocument, sendStored, mediaOf, downloadFile, fetchFilePart } from '../lib/telegram.js';
 const MIME = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', heic: 'image/heic', mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', mkv: 'video/x-matroska', m4v: 'video/mp4', mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac', ogg: 'audio/ogg', oga: 'audio/ogg', opus: 'audio/ogg', wav: 'audio/wav', flac: 'audio/flac', pdf: 'application/pdf' };
@@ -503,6 +504,27 @@ async function route(req, res) {
     return send(res, 200, { blobMs, telegramMs: Date.now() - t, region: process.env.VERCEL_REGION || null });
   }
 
+  // ---- Takroriy odamlarni topish va birlashtirish
+  if (parts[0] === 'dupes') {
+    const { tok, tree, user, uid } = await authTree(req, 'edit');
+    if (m === 'GET') {
+      const byId = new Map(tree.persons.map((p) => [p.id, p]));
+      const brief = (p) => ({ id: p.id, name: p.name, birth: p.birth, death: p.death, photo: !!p.photo, kids: tree.persons.filter((x) => x.father_id === p.id || x.mother_id === p.id).length });
+      return send(res, 200, { pairs: findDuplicates(tree).map((x) => ({ keep: brief(byId.get(x.keep)), drop: brief(byId.get(x.drop)), type: x.type, of: byId.get(x.of)?.name || '' })) });
+    }
+    if (parts[1] === 'merge' && m === 'POST') {
+      const body = await readBody(req);
+      const pairs = (Array.isArray(body.pairs) ? body.pairs : []).slice(0, 500);
+      const r = await mutateTree(tok.treeId, (t) => {
+        checkVer(t, tok);
+        let n = 0;
+        for (const [keep, drop] of pairs) if (mergePersons(t, String(keep), String(drop), nameOf(user))) n++;
+        return n;
+      });
+      return send(res, 200, { merged: r.result, tree: out(r.data, 'edit', uid) });
+    }
+  }
+
   // ---- AI: fayldan ro'yxat (Mini App). Uzoq ish — fon vazifasi, ilova holatini so'rab turadi
   if (parts[0] === 'ai' && parts[1]) {
     const jobKey = (id) => `aijobs/${String(id).replace(/[^a-z0-9]/gi, '')}.json`;
@@ -538,7 +560,19 @@ async function route(req, res) {
       const d = (await readJson(jobKey(parts[2])))?.data;
       if (!d) throw new HttpError(404, 'Topilmadi');
       if (d.status === 'pending' && Date.now() - d.at > 6 * 60e3) return send(res, 200, { status: 'error', error: 'Vaqt tugadi. Qayta urinib ko‘ring' });
+      // joriy shajara bilan qayta solishtiramiz (bekor qilish yoki tahrirdan keyin sonlar yangilansin)
+      if (d.status === 'done' && req.headers.authorization) {
+        try {
+          const plan = planGraph((await authTree(req)).tree, d.rows);
+          Object.assign(d, { matched: plan.matched.size, fresh: plan.newCount });
+        } catch {}
+      }
       return send(res, 200, d);
+    }
+    if (parts[1] === 'undo' && m === 'POST') {
+      const { tok, user, uid } = await authTree(req, 'edit');
+      const r = await mutateTree(tok.treeId, (t) => (checkVer(t, tok), undoImport(t, nameOf(user))));
+      return send(res, 200, { removed: r.result, tree: out(r.data, 'edit', uid) });
     }
     if (parts[1] === 'apply' && m === 'POST') {
       const body = await readBody(req);

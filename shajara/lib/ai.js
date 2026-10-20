@@ -101,6 +101,7 @@ Botning imkoniyatlari:
 - Oilaviy guruh: botni guruhga qo'shing va /ulash KOD yuboring. Guruh buyruqlari: /shajara, /albom, /tugilgan (yaqin 30 kundagi tug'ilgan kunlar, ismni bosib shu odamni ochish).
 - Bildirishnomalar: yangi odam, albom, tug'ilgan kun va xotira kunlari (Ko'proq → sozlamalar).
 - Tillar: o'zbek (lotin/kirill), rus, ingliz — /til yoki ilovadagi til tugmasi.
+- Fayldan import qilinganda shajarada bor odamlar qayta qo'shilmaydi; xato import AI oynasidagi «↩️ Bekor qilish» bilan qaytariladi. Ikkilangan odamlar: Ko'proq → «🧹 Takroriy odamlar» — birlashtirish.
 - Albomda ochiladigan hajm: rasm 4 MB gacha, video va audio 20 MB gacha; kattaroq fayllar va hujjatlar «Chatga yuborish» tugmasi bilan asl sifatda chatga yuboriladi (Telegram bot cheklovi).
 - Ilovada har sahifada 🤖 suzuvchi tugma — AI yordamchi (uni barmoq bilan surib boshqa joyga qo'yish mumkin).
 - Premium: Telegram Stars orqali, cheksiz albom va odamlar.

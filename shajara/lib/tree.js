@@ -478,35 +478,185 @@ function safeDate(v) {
   try { return flexDate(s); } catch { const y = /\b(1[5-9]\d\d|20\d\d)\b/.exec(s)?.[1]; return y || null; }
 }
 
+// Ismlarni taqqoslash: katta-kichik harf, tutuq belgisi, x/h, qo'sh harf va qavsdagi izoh farq qilmaydi
+const fuzzyName = (v) => normName(String(v ?? '').replace(/\(.*?\)/g, '')).replace(/x/g, 'h').replace(/[^\p{L}\p{N}]/gu, '').replace(/(.)\1+/gu, '$1');
+function lev1(a, b) {
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0, j = 0, diff = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { i++; j++; continue; }
+    if (++diff > 1) return false;
+    if (a.length > b.length) i++;
+    else if (a.length < b.length) j++;
+    else { i++; j++; }
+  }
+  return diff + (a.length - i) + (b.length - j) <= 1;
+}
+/** 2 — bir xil ism, 1 — bitta harf farqi (Qadirbergan/Qodirbergan), 0 — boshqa ism. */
+function sameName(a, b) {
+  const x = fuzzyName(a), y = fuzzyName(b);
+  if (!x || !y) return 0;
+  return x === y ? 2 : Math.min(x.length, y.length) >= 4 && lev1(x, y) ? 1 : 0;
+}
+const idNum = (id) => Number(String(id).replace(/\D/g, '')) || 0;
+
+function treeIndex(tree) {
+  const byId = new Map(tree.persons.map((p) => [p.id, p]));
+  const kids = new Map();
+  const sp = new Map();
+  const add = (m, k, v) => { if (!m.has(k)) m.set(k, new Set()); m.get(k).add(v); };
+  for (const p of tree.persons) {
+    for (const pid of [p.father_id, p.mother_id]) if (pid && byId.has(pid)) add(kids, pid, p);
+    for (const sid of p.spouse_ids || []) {
+      const q = byId.get(sid);
+      if (q && q !== p) { add(sp, p.id, q); add(sp, q.id, p); }
+    }
+  }
+  return { byId, kids, sp };
+}
+
 /**
- * AI ajratgan ro'yxatni shajaraga solishtirish: qaysi qatorlar shajarada allaqachon bor
- * (ism + tug'ilgan yil yoki ota-ona ismi mos kelsa), qaysilari yangi.
+ * AI ajratgan ro'yxatni shajaraga solishtirish. Avval ism + tug'ilgan yil bo'yicha aniq mosliklar topiladi,
+ * keyin qarindoshlik bo'yicha yoyiladi: mos kelgan odamning farzandlari, turmush o'rtoqlari va ota-onasi
+ * shajaradagi farzandlari/juftlari orasidan (imlo farqlarini hisobga olib) izlanadi.
  */
 export function planGraph(tree, rows) {
-  const byId = new Map(tree.persons.map((p) => [p.id, p]));
-  const exist = new Map();
-  for (const p of tree.persons) {
-    const k = normName(p.name);
-    if (!exist.has(k)) exist.set(k, []);
-    exist.get(k).push(p);
-  }
-  const rowById = new Map(rows.map((r) => [String(r.id), r]));
-  const matched = new Map();
+  const { byId, kids, sp } = treeIndex(tree);
+  const R = new Map(rows.map((r) => [String(r.id), r]));
+  const rKids = new Map();
+  const rSp = new Map();
+  const add = (m, k, v) => { if (!m.has(k)) m.set(k, new Set()); m.get(k).add(v); };
   for (const r of rows) {
-    const cands = exist.get(normName(r.name));
-    if (!cands?.length) continue;
-    const by = yearOf(safeDate(r.birth));
-    const parents = [r.father, r.mother].map((id) => normName(rowById.get(String(id))?.name)).filter(Boolean);
-    const score = (p) => {
-      const py = yearOf(p.birth);
-      if (by && py && by !== py) return -1;
-      const pn = [byId.get(p.father_id), byId.get(p.mother_id)].filter(Boolean).map((x) => normName(x.name));
-      return (by && py === by ? 2 : 0) + (parents.some((n) => pn.includes(n)) ? 2 : 0) + (!parents.length && !pn.length ? 1 : 0);
-    };
-    const best = cands.map((p) => [p, score(p)]).filter(([, sc]) => sc >= 2).sort((a, b) => b[1] - a[1]);
-    if (best.length && (best.length === 1 || best[0][1] > best[1][1])) matched.set(String(r.id), best[0][0]);
+    for (const pid of [r.father, r.mother]) if (pid && R.has(String(pid))) add(rKids, String(pid), r);
+    const s = R.get(String(r.spouse));
+    if (s && s !== r) { add(rSp, String(r.id), s); add(rSp, String(s.id), r); }
+  }
+  const matched = new Map();
+  const used = new Set();
+  const queue = [];
+  const fits = (r, p) => {
+    const a = yearOf(safeDate(r.birth));
+    const b = yearOf(p.birth);
+    if (a && b && a !== b) return 0;
+    if (r.gender && p.gender && genderOf(r.gender) !== p.gender) return 0;
+    const ns = sameName(r.name, p.name);
+    return ns ? ns * 2 + (a && a === b ? 2 : 0) : 0;
+  };
+  const pick = (r, cands) => {
+    let top = 0;
+    let best = [];
+    for (const p of cands || []) {
+      if (used.has(p.id)) continue;
+      const sc = fits(r, p);
+      if (sc > top) { top = sc; best = [p]; } else if (sc && sc === top) best.push(p);
+    }
+    if (!best.length) return null;
+    // teng nomzodlar bir xil ismli bo'lsa (shajaradagi takror) — eng eskisi; turli ismlar bo'lsa — aniq emas
+    if (best.length > 1 && new Set(best.map((p) => fuzzyName(p.name))).size > 1) return null;
+    return best.sort((x, y) => idNum(x.id) - idNum(y.id))[0];
+  };
+  const link = (r, p) => { matched.set(String(r.id), p); used.add(p.id); queue.push(r); };
+  // 1) Tayanch: ism + tug'ilgan yil, shajarada yagona
+  const exact = new Map();
+  for (const p of tree.persons) {
+    const y = yearOf(p.birth);
+    if (!y) continue;
+    const k = fuzzyName(p.name) + '|' + y;
+    exact.set(k, exact.has(k) ? null : p);
+  }
+  for (const r of rows) {
+    const y = yearOf(safeDate(r.birth));
+    const p = y && exact.get(fuzzyName(r.name) + '|' + y);
+    if (p && !used.has(p.id) && !matched.has(String(r.id)) && fits(r, p)) link(r, p);
+  }
+  // 2) Qarindoshlik bo'yicha yoyilish
+  while (queue.length) {
+    const r = queue.shift();
+    const p = matched.get(String(r.id));
+    for (const c of rKids.get(String(r.id)) || []) if (!matched.has(String(c.id))) { const q = pick(c, kids.get(p.id)); if (q) link(c, q); }
+    for (const s of rSp.get(String(r.id)) || []) if (!matched.has(String(s.id))) { const q = pick(s, sp.get(p.id)); if (q) link(s, q); }
+    for (const k of ['father', 'mother']) {
+      const pr = R.get(String(r[k]));
+      const pp = byId.get(p[k + '_id']);
+      if (pr && pp && !matched.has(String(pr.id)) && !used.has(pp.id) && fits(pr, pp)) link(pr, pp);
+    }
   }
   return { matched, newCount: rows.filter((r) => !matched.has(String(r.id)) && cleanText(r.name, 80)).length };
+}
+
+/** Oxirgi importni bekor qilish (qo'shilgan odamlar va ularga bog'lanishlar o'chiriladi). */
+export function undoImport(tree, who) {
+  let ids = tree.meta.lastImport?.ids;
+  if (!ids?.length) {
+    // eski importlar uchun: oxirgi «import» yozuvidagi son — ro'yxat oxiridagi shuncha odam
+    const n = Number(tree.log?.find((l) => l.action === 'import')?.name);
+    const tail = n > 0 ? tree.persons.slice(-n) : [];
+    if (!n || tail.length !== n || tail.some((p) => p.source !== 'import')) throw new HttpError(400, 'Bekor qiladigan import topilmadi');
+    ids = tail.map((p) => p.id);
+  }
+  const drop = new Set(ids);
+  const before = tree.persons.length;
+  tree.persons = tree.persons.filter((p) => !drop.has(p.id));
+  for (const p of tree.persons) {
+    if (drop.has(p.father_id)) p.father_id = null;
+    if (drop.has(p.mother_id)) p.mother_id = null;
+    if (p.spouse_ids?.some((x) => drop.has(x))) p.spouse_ids = p.spouse_ids.filter((x) => !drop.has(x));
+  }
+  if (drop.has(tree.meta.root_id)) tree.meta.root_id = tree.persons[0]?.id || null;
+  tree.meta.lastImport = null;
+  const removed = before - tree.persons.length;
+  addLog(tree, who, 'undo-import', String(removed));
+  return removed;
+}
+
+/** Ehtimoliy takrorlar: bir odamning farzandlari yoki juftlari orasida ismi o'xshash, yili zid bo'lmaganlar. */
+export function findDuplicates(tree) {
+  const { byId, kids, sp } = treeIndex(tree);
+  const out = [];
+  const seen = new Set();
+  const scan = (group, type, of) => {
+    const arr = [...group];
+    for (let i = 0; i < arr.length; i++) {
+      for (let j = i + 1; j < arr.length; j++) {
+        const a = arr[i];
+        const b = arr[j];
+        if (a.gender !== b.gender || !sameName(a.name, b.name)) continue;
+        const ya = yearOf(a.birth);
+        const yb = yearOf(b.birth);
+        if (ya && yb && ya !== yb) continue;
+        const [keep, drop] = idNum(a.id) < idNum(b.id) ? [a, b] : [b, a];
+        if (seen.has(drop.id)) continue;
+        seen.add(drop.id);
+        out.push({ keep: keep.id, drop: drop.id, type, of });
+      }
+    }
+  };
+  for (const [pid, set] of kids) scan(set, 'child', pid);
+  for (const [pid, set] of sp) scan(set, 'spouse', pid);
+  return out.filter((x) => byId.has(x.keep) && byId.has(x.drop));
+}
+
+/** Ikki yozuvni birlashtirish: drop'ning bog'lanishlari va bo'sh maydonlari keep'ga o'tadi, drop o'chiriladi. */
+export function mergePersons(tree, keepId, dropId, who) {
+  const keep = tree.persons.find((p) => p.id === keepId);
+  const drop = tree.persons.find((p) => p.id === dropId);
+  if (!keep || !drop || keep === drop) return false;
+  for (const k of ['birth', 'death', 'photo', 'note', 'place', 'phone', 'code']) if (!keep[k] && drop[k]) keep[k] = drop[k];
+  if (drop.deceased) keep.deceased = true;
+  if (!keep.father_id && drop.father_id && drop.father_id !== keepId) keep.father_id = drop.father_id;
+  if (!keep.mother_id && drop.mother_id && drop.mother_id !== keepId) keep.mother_id = drop.mother_id;
+  keep.spouse_ids = [...new Set([...(keep.spouse_ids || []), ...(drop.spouse_ids || [])])].filter((x) => x !== keepId && x !== dropId);
+  for (const p of tree.persons) {
+    if (p.father_id === dropId) p.father_id = keepId;
+    if (p.mother_id === dropId) p.mother_id = keepId;
+    if (p.spouse_ids?.includes(dropId)) p.spouse_ids = [...new Set(p.spouse_ids.map((x) => (x === dropId ? keepId : x)))].filter((x) => x !== p.id);
+  }
+  tree.persons = tree.persons.filter((p) => p.id !== dropId);
+  if (tree.meta.root_id === dropId) tree.meta.root_id = keepId;
+  if (tree.meta.lastImport?.ids) tree.meta.lastImport.ids = tree.meta.lastImport.ids.filter((x) => x !== dropId);
+  addLog(tree, who, 'merge', keep.name);
+  return true;
 }
 
 /**
@@ -552,6 +702,7 @@ export function importGraph(tree, rows, who) {
     b.spouse_ids = [...new Set([...(b.spouse_ids || []), a.id])];
   }
   const n = created.length ? finishImport(tree, created, who) : 0;
+  if (n) tree.meta.lastImport = { at: new Date().toISOString(), ids: created.map((c) => c.p.id) };
   return { created: n, matched: matched.size };
 }
 
