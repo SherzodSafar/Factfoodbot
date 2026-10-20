@@ -27,9 +27,9 @@ const THINK = {
   deep: [{ thinkingLevel: 'low' }, { thinkingBudget: 2048 }, null],
 };
 const thinkOk = new Map();
-// O'lchov (Vercel fra1): flash-lite ~1.5 s, flash-latest 40 s+ — chat uchun eng tezi birinchi
-export const CHAT_MODELS = () => [...new Set([process.env.GEMINI_CHAT_MODEL, 'gemini-flash-lite-latest', 'gemini-2.5-flash', 'gemini-flash-latest'].filter(Boolean))];
-const FILE_MODELS = () => [...new Set([process.env.GEMINI_MODEL, 'gemini-2.5-flash', 'gemini-flash-lite-latest', 'gemini-flash-latest'].filter(Boolean))];
+// O'lchov (Vercel fra1, bepul tarif): flash-lite chat ~3 s, fayl ~2.5 s; flash-latest 40 s+ (zaxira sifatida)
+export const CHAT_MODELS = () => [...new Set([process.env.GEMINI_CHAT_MODEL, 'gemini-flash-lite-latest', 'gemini-flash-latest'].filter(Boolean))];
+const FILE_MODELS = () => [...new Set([process.env.GEMINI_MODEL, 'gemini-flash-lite-latest', 'gemini-flash-latest'].filter(Boolean))];
 
 export async function askGemini({ system, messages, max_tokens, json, mode = 'fast', models, timeout }) {
   let last;
@@ -203,12 +203,14 @@ export async function extractFamily(content, lang) {
     messages: [{ role: 'user', content: [...content, { type: 'text', text: PARSE_PROMPT }] }],
   });
   const raw = textOf(r);
-  const json = raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1);
-  const data = JSON.parse(json);
-  const rows = (Array.isArray(data.rows) ? data.rows : [])
+  // model ba'zan {rows:[...]} o'rniga to'g'ridan-to'g'ri massiv qaytaradi — ikkalasini ham qabul qilamiz
+  let data;
+  try { data = JSON.parse(raw); } catch { data = JSON.parse(raw.match(/[[{][\s\S]*[\]}]/)?.[0] || '{}'); }
+  const list = Array.isArray(data) ? data : Array.isArray(data.rows) ? data.rows : [];
+  const rows = list
     .map((x) => Object.fromEntries(FIELDS.map((k) => [k, String(x?.[k] ?? '').trim()])))
     .filter((x) => x.name);
-  return { rows, summary: String(data.summary || '') };
+  return { rows, summary: Array.isArray(data) ? '' : String(data.summary || '') };
 }
 
 /** Qatorlarni namuna.csv formatida qaytarish. */
@@ -219,21 +221,7 @@ export function rowsToCsv(rows) {
 }
 
 export async function aiHealth() {
-  if (!process.env.GEMINI_API_KEY) {
-    const r = await ask({ max_tokens: 200, output_config: { effort: 'low' }, messages: [{ role: 'user', content: 'Say OK' }] });
-    return { ok: true, model: r.model, provider: DIRECT() ? 'anthropic' : 'gateway' };
-  }
-  const q = [{ role: 'user', content: 'Albomga qanday rasm qo‘shaman?' }];
-  const out = {};
-  const rows = [{ role: 'user', content: 'Ali (1950) ning otasi Vali (1920), onasi Zuhra. Alining xotini Gulnora. JSON: {"rows":[{"name","father","mother","spouse","birth"}]}' }];
-  await Promise.all([['gemini-flash-lite-latest', 'fast', q], ['gemini-2.5-flash', 'fast', q], ['gemini-2.5-flash', 'deep', rows], ['gemini-flash-lite-latest', 'deep', rows]].map(async ([m, mode, msgs]) => {
-    const t = Date.now();
-    try {
-      const r = await askGemini({ system: mode === 'fast' ? KNOWLEDGE : undefined, messages: msgs, max_tokens: 3000, mode, models: [m], json: mode === 'deep' });
-      out[m + ':' + mode] = { ms: Date.now() - t, think: thinkOk.get(m + mode), text: textOf(r).slice(0, 120) };
-    } catch (e) {
-      out[m + ':' + mode] = { ms: Date.now() - t, error: String(e.message).slice(0, 160) };
-    }
-  }));
-  return { ok: true, provider: 'gemini', chat: CHAT_MODELS()[0], out };
+  const t = Date.now();
+  const r = await ask({ max_tokens: 300, mode: 'fast', output_config: { effort: 'low' }, messages: [{ role: 'user', content: 'Say OK' }] });
+  return { ok: true, ms: Date.now() - t, model: r.model, provider: process.env.GEMINI_API_KEY ? 'gemini' : DIRECT() ? 'anthropic' : 'gateway' };
 }
