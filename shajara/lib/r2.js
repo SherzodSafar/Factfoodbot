@@ -66,3 +66,12 @@ export async function r2Store(key, size, contentType, readPart) {
     throw e;
   }
 }
+
+/** Ulanishni tekshirish: kichik obyekt yozib, imzolangan havola orqali o'qiydi. */
+export async function r2Probe() {
+  const key = 'health/ping.txt';
+  const w = await client().fetch(`${base()}/${key}`, { method: 'PUT', body: 'ok', headers: { 'content-type': 'text/plain' } });
+  if (!w.ok) return 'put ' + w.status;
+  const r = await fetch(await r2Url(key));
+  return r.ok && (await r.text()) === 'ok' ? 'ok' : 'get ' + r.status;
+}

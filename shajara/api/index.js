@@ -531,7 +531,16 @@ async function route(req, res) {
     const blobMs = Date.now() - t;
     t = Date.now();
     await tg('getMe', {});
-    return send(res, 200, { blobMs, telegramMs: Date.now() - t, region: process.env.VERCEL_REGION || null });
+    const out = { blobMs, telegramMs: Date.now() - t, region: process.env.VERCEL_REGION || null, db: !!process.env.DATABASE_URL };
+    const r2 = await import('../lib/r2.js');
+    if (r2.r2On() && url.searchParams.get('r2')) {
+      // R2 tekshiruvi: kichik faylni yozib, imzolangan havola orqali o'qish
+      try {
+        const ok = await r2.r2Probe();
+        out.r2 = ok;
+      } catch (e) { out.r2 = String(e.message).slice(0, 200); }
+    }
+    return send(res, 200, out);
   }
 
   // ---- Takroriy odamlarni topish va birlashtirish
@@ -658,26 +667,6 @@ async function route(req, res) {
     const { handleOldBot } = await import('../lib/bot.js');
     await handleOldBot(update).catch((e) => console.error('oldbot', e));
     return send(res, 200, { ok: true });
-  }
-
-  // VAQTINCHA: yangi botga ko'chirish (bir marta ishga tushiriladi, keyin o'chiriladi)
-  if (path === 'rebrand' && m === 'GET' && url.searchParams.get('k') === '352484a3f11c35fc642992e0') {
-    const out = {};
-    const { setupBot } = await import('../lib/bot.js');
-    try { out.setup = await setupBot(); } catch (e) { out.setupError = String(e.message); }
-    if (process.env.OLD_BOT_TOKEN) {
-      const base = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
-      const r = await fetch(`https://api.telegram.org/bot${process.env.OLD_BOT_TOKEN}/setWebhook`, {
-        method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ url: base + '/api/oldbot', secret_token: hashCode('oldbot:' + process.env.OLD_BOT_TOKEN).slice(0, 48), allowed_updates: ['message', 'callback_query'] }),
-      }).then((x) => x.json()).catch((e) => ({ error: String(e) }));
-      out.oldWebhook = r;
-    }
-    if (process.env.DATABASE_URL) {
-      const { migrateToDb } = await import('../lib/store.js');
-      try { out.migrated = await migrateToDb(); } catch (e) { out.migrateError = String(e.message); }
-    }
-    return send(res, 200, out);
   }
 
   if (path === 'webhook' && m === 'POST') {
