@@ -622,29 +622,6 @@ async function route(req, res) {
     }
   }
 
-  // VAQTINCHA: MTProto sinovi (keyin o'chiriladi)
-  if (path === 'mtptest' && m === 'GET' && url.searchParams.get('k') === '352484a3f11c35fc642992e0') {
-    const out = {};
-    try {
-      const { mtprotoPart, decodeFileId } = await import('../lib/mtproto.js');
-      let it = null;
-      for (const key of await listKeys('albums/')) {
-        const d = (await readJson(key))?.data;
-        it = (d?.items || []).filter((x) => x.ch?.msg && x.type !== 'photo').sort((a, b) => (b.size || 0) - (a.size || 0))[0] || it;
-        if (it) break;
-      }
-      if (!it) return send(res, 200, { error: 'no item' });
-      const f = decodeFileId(it.fileId);
-      Object.assign(out, { type: it.type, size: it.size, dc: f.dcId, refLen: f.fileReference.length, ch: it.ch });
-      const t0 = Date.now();
-      const r = await mtprotoPart(it.fileId, 0, 65535, it.size, it.ch);
-      Object.assign(out, { ok: true, bytes: r.buffer.length, ms: Date.now() - t0, head: r.buffer.subarray(0, 12).toString('hex') });
-    } catch (e) {
-      out.error = String(e?.message || e).slice(0, 300);
-    }
-    return send(res, 200, out);
-  }
-
   // AI ulanishini tekshirish (juda qisqa so'rov, cheklangan)
   if (path === 'aihealth' && m === 'GET') {
     if (!rateLimit('aihealth', 5, 60 * 60e3)) throw new HttpError(429, 'Keyinroq');
