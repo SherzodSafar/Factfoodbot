@@ -580,33 +580,6 @@ async function route(req, res) {
     }
   }
 
-  // VAQTINCHA: AI ajratishni haqiqiy fayl bilan sinash (keyin o'chiriladi)
-  if (path === 'aitest' && m === 'GET' && url.searchParams.get('k') === '352484a3f11c35fc642992e0') {
-    const zlib = await import('node:zlib');
-    const buf = zlib.gunzipSync(Buffer.from(url.searchParams.get('z') || '', 'base64url'));
-    const ai = await import('../lib/ai.js');
-    const content = ai.fileToContent(buf, 'shajara.txt', 'text/plain');
-    const id = randomId(14);
-    await writeJson(`aijobs/${id}.json`, { status: 'pending', at: Date.now() });
-    const job = (async () => {
-      const t0 = Date.now();
-      try {
-        const r = await ai.extractFamily(content, 'uz');
-        const byId = new Map(r.rows.map((x) => [x.id, x]));
-        const nmOf = (i) => byId.get(i)?.name || '';
-        const check = {};
-        for (const x of r.rows) if (['Laylo', 'Saidbek', 'Karimboy', 'Omongul', 'Doniyor', 'Yo‘ldosh', 'Irisbika', 'Zuxra', 'Hamdam'].includes(x.name)) (check[x.name] ||= []).push([x.birth, x.death, 'f:' + nmOf(x.father), 'm:' + nmOf(x.mother), 's:' + nmOf(x.spouse)].join(' '));
-        await writeJson(`aijobs/${id}.json`, { status: 'done', at: Date.now(), ms: Date.now() - t0, rounds: r.rounds, count: r.rows.length,
-          withParent: r.rows.filter((x) => x.father || x.mother).length, deadLinks: r.rows.filter((x) => [x.father, x.mother, x.spouse].some((v) => v && !byId.has(v))).length,
-          roots: r.rows.filter((x) => !x.father && !x.mother && !x.spouse).map((x) => x.name).slice(0, 30), summary: r.summary, check, last: r.rows.slice(-3) });
-      } catch (e) {
-        await writeJson(`aijobs/${id}.json`, { status: 'error', at: Date.now(), ms: Date.now() - t0, error: String(e.message).slice(0, 300) });
-      }
-    })();
-    try { waitUntil(job); } catch { await job; }
-    return send(res, 200, { job: id });
-  }
-
   // AI ulanishini tekshirish (juda qisqa so'rov, cheklangan)
   if (path === 'aihealth' && m === 'GET') {
     if (!rateLimit('aihealth', 5, 60 * 60e3)) throw new HttpError(429, 'Keyinroq');

@@ -230,7 +230,39 @@ function estimatePeople(content) {
   return n;
 }
 
+// AI xatolarini kod bilan to'g'rilash: jinsga qarab ota/ona joyi, yo'q havolalar,
+// ikkinchi ota-ona yozilmagan bo'lsa — yagona turmush o'rtog'i
+function fixParents(rows) {
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  for (const r of rows) {
+    for (const k of ['father', 'mother', 'spouse']) if (r[k] && (!byId.has(r[k]) || r[k] === r.id)) r[k] = '';
+    if (r.mother && r.mother === r.father) r.mother = '';
+  }
+  const spouses = new Map();
+  const addSp = (a, b) => {
+    if (!a || !b || a === b) return;
+    if (!spouses.has(a)) spouses.set(a, new Set());
+    spouses.get(a).add(b);
+  };
+  for (const r of rows) if (r.spouse) { addSp(r.id, r.spouse); addSp(r.spouse, r.id); }
+  const g = (id) => byId.get(id)?.gender;
+  for (const r of rows) {
+    if (g(r.father) === 'f' && (!r.mother || g(r.mother) === 'm')) [r.father, r.mother] = [r.mother, r.father];
+    else if (!r.father && g(r.mother) === 'm') [r.father, r.mother] = [r.mother, ''];
+    const one = r.father || r.mother;
+    if (one && !(r.father && r.mother)) {
+      const sp = [...(spouses.get(one) || [])].filter((x) => x !== r.id);
+      if (sp.length === 1) {
+        if (r.father) r.mother = sp[0];
+        else r.father = sp[0];
+      }
+    }
+  }
+  return rows;
+}
+
 /** Materialdan shajara qatorlarini ajratish: rows[{id,name,gender,birth,death,father,mother,spouse,note}] (ota/ona/juft — id). */
+export { fixParents };
 export async function extractFamily(content, lang) {
   const system = 'You convert family records into structured family-tree data. Be exhaustive and precise.';
   const base = { role: 'user', content: [...content, { type: 'text', text: PARSE_PROMPT(lang) }] };
@@ -261,7 +293,7 @@ export async function extractFamily(content, lang) {
       rows.push(x);
     }
   }
-  return { rows: rows.slice(0, 3000), summary, rounds: round };
+  return { rows: fixParents(rows.slice(0, 3000)), summary, rounds: round };
 }
 
 /** Qatorlarni namuna.csv formatida qaytarish (ota/ona/juft — ism bilan). */
