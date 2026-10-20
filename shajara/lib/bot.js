@@ -121,7 +121,10 @@ async function aiAnswer(from, chatId, lang, question, user) {
     console.error('ai answer', e);
     return send(chatId, t(lang, 'AI yordamchi hozir javob bera olmadi. Keyinroq urinib ko‘ring yoki /yordam ni bosing.'));
   }
-  await send(chatId, escapeHtml(answer).slice(0, 4000), chatId === from.id ? { reply_markup: appButton(lang) } : {});
+  // avval kesib, keyin ekranlaymiz — aks holda HTML belgisi o'rtasidan kesilib xabar umuman yuborilmaydi
+  const extra = chatId === from.id ? { reply_markup: appButton(lang) } : {};
+  const r = await send(chatId, escapeHtml(answer.slice(0, 3800)), extra);
+  if (!r?.ok) await tg('sendMessage', { chat_id: chatId, text: answer.slice(0, 4000), ...extra });
   if (chatId === from.id) await updateUser(from.id, from, (d) => { d.ai = [...(d.ai || []), { role: 'user', content: question.slice(0, 1000) }, { role: 'assistant', content: answer.slice(0, 2000) }].slice(-8); });
 }
 

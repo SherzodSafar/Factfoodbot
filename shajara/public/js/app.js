@@ -1207,6 +1207,7 @@ function renderMoreTab(el) {
   el.innerHTML = `<div class="scroll" style="padding-top:8px">
     ${tr.description ? `<div class="card note" style="margin:0 16px 14px">${esc(tr.description)}</div>` : ''}
     <div class="card menu">
+      ${item('m-ai', '🤖', t('AI yordamchi'), t('Ilova va bot haqida istalgan savol'))}
       ${item('m-invite', '📨', t('Qarindoshlarni taklif qilish'), t('Shaxsiy taklif havolasi — kodni aytish shart emas'))}
       ${item('m-notif', '🔔', t('Bildirishnomalar'), t('Yangiliklar va sozlamalar'))}
       ${item('m-lang', '🌐', t('Til'), LANG_NAMES[LANG])}
@@ -1230,6 +1231,7 @@ function renderMoreTab(el) {
   </div>`;
   const on = (id, fn) => el.querySelector('#' + id)?.addEventListener('click', fn);
   on('m-invite', inviteSheet);
+  on('m-ai', aiSheet);
   on('m-notif', notificationsSheet);
   on('m-lang', langSheet);
   on('m-group', () => linkSheet('group'));
@@ -1421,6 +1423,41 @@ async function premiumSheet(reason) {
 }
 
 // =================================================================== SHEET
+// AI yordamchi bilan suhbat (tarix shu sessiya davomida saqlanadi)
+const aiChat = [];
+function aiSheet() {
+  const sh = openSheet(`<div class="sheet-head"><div class="h2">🤖 ${t('AI yordamchi')}</div><button class="icon-btn" data-close>${I.close}</button></div>
+    <div class="sheet-body"><div class="ai-log" id="ail"></div>
+    <form class="ai-form" id="aif"><input class="input" name="q" placeholder="${t('Savolingizni yozing…')}" autocomplete="off" maxlength="2000"><button class="btn btn-primary">${I.chev}</button></form></div>`);
+  const log = sh.querySelector('#ail');
+  const draw = () => {
+    log.innerHTML = (aiChat.length ? '' : `<div class="ai-msg bot">${t('Assalomu alaykum! Shajara, albom, kodlar yoki bot buyruqlari haqida so‘rang.')}</div>`) +
+      aiChat.map((m) => `<div class="ai-msg ${m.role === 'user' ? 'me' : 'bot'}">${esc(m.content)}</div>`).join('');
+    log.scrollTop = log.scrollHeight;
+  };
+  draw();
+  sh.querySelector('#aif').onsubmit = async (e) => {
+    e.preventDefault();
+    const inp = e.target.q;
+    const q = inp.value.trim();
+    if (!q) return;
+    inp.value = '';
+    const history = aiChat.slice(-8);
+    aiChat.push({ role: 'user', content: q });
+    draw();
+    log.insertAdjacentHTML('beforeend', '<div class="ai-msg bot"><span class="spin"></span></div>');
+    log.scrollTop = log.scrollHeight;
+    try {
+      const r = await api('ai', { method: 'POST', body: { q, history, lang: LANG } });
+      aiChat.push({ role: 'assistant', content: r.answer });
+    } catch (err) {
+      aiChat.pop();
+      toast(err.message, true);
+    }
+    draw();
+  };
+}
+
 function openSheet(html) {
   const back = document.createElement('div');
   back.className = 'backdrop';
