@@ -17,7 +17,7 @@ import { handleUpdate, setupBot, BOT, PLANS, chatKey, linkKey } from '../lib/bot
 import { webhookSecret, todayText } from '../lib/events.js';
 import { notify, escapeHtml } from '../lib/notify.js';
 import { updateUser, getUser } from '../lib/users.js';
-import { aiHealth } from '../lib/ai.js';
+import { waitUntil } from '@vercel/functions';
 import { loadAlbum, mutateAlbum, publicAlbum, addToAlbum, canUpload, cleanName, ensureAlbum } from '../lib/album.js';
 import { t, LANGS } from '../lib/i18n.js';
 
@@ -493,20 +493,28 @@ async function route(req, res) {
   }
 
   // ---- Telegram webhook
+  // Tezlikni o'lchash: ombor va Telegram javob vaqti (ms)
+  if (path === 'ping' && m === 'GET') {
+    let t = Date.now();
+    await readJson('users/0.json').catch(() => null);
+    const blobMs = Date.now() - t;
+    t = Date.now();
+    await tg('getMe', {});
+    return send(res, 200, { blobMs, telegramMs: Date.now() - t, region: process.env.VERCEL_REGION || null });
+  }
+
   // AI ulanishini tekshirish (juda qisqa so'rov, cheklangan)
   if (path === 'aihealth' && m === 'GET') {
     if (!rateLimit('aihealth', 5, 60 * 60e3)) throw new HttpError(429, 'Keyinroq');
-    try { return send(res, 200, await aiHealth()); } catch (e) { return send(res, 200, { ok: false, error: String(e.message || e).slice(0, 300) }); }
+    try { return send(res, 200, await (await import('../lib/ai.js')).aiHealth()); } catch (e) { return send(res, 200, { ok: false, error: String(e.message || e).slice(0, 300) }); }
   }
 
   if (path === 'webhook' && m === 'POST') {
     if (req.headers['x-telegram-bot-api-secret-token'] !== webhookSecret()) return send(res, 401, { ok: false });
     const update = await readBody(req);
-    try {
-      await handleUpdate(update);
-    } catch (e) {
-      console.error('webhook', e);
-    }
+    // Telegram'ga darhol javob beramiz, ishni fonda davom ettiramiz — keyingi xabarlar navbatda kutib qolmaydi
+    const job = handleUpdate(update).catch((e) => console.error('webhook', e));
+    try { waitUntil(job); } catch { await job; }
     return send(res, 200, { ok: true });
   }
 

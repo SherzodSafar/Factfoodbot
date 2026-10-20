@@ -1,11 +1,12 @@
-// AI yordamchi (Claude): bot haqidagi savollarga javob va har qanday fayldan shajara ro'yxatini tuzish.
-// Kalit: ANTHROPIC_API_KEY bo'lsa to'g'ridan-to'g'ri, bo'lmasa Vercel AI Gateway (OIDC, kalitsiz).
+// AI yordamchi: bot haqidagi savollarga javob va har qanday fayldan shajara ro'yxatini tuzish.
+// Provayder: GEMINI_API_KEY bo'lsa Google Gemini (bepul limit), aks holda Claude Haiku —
+// ANTHROPIC_API_KEY bo'lsa to'g'ridan-to'g'ri, bo'lmasa Vercel AI Gateway (OIDC).
 import zlib from 'node:zlib';
 import Anthropic from '@anthropic-ai/sdk';
 import { getVercelOidcToken } from '@vercel/functions/oidc';
 
 const DIRECT = () => !!process.env.ANTHROPIC_API_KEY;
-const GATEWAY_MODELS = ['anthropic/claude-opus-5.5', 'anthropic/claude-opus-5-5', 'anthropic/claude-opus-5'];
+const GATEWAY_MODELS = ['anthropic/claude-haiku-5.5', 'anthropic/claude-haiku-5-5', 'anthropic/claude-haiku-4.5'];
 let gwModel = null;
 
 async function client() {
@@ -15,11 +16,37 @@ async function client() {
   return new Anthropic({ apiKey: token, baseURL: 'https://ai-gateway.vercel.sh' });
 }
 
-async function ask(params) {
+// Claude kontent bloklarini Gemini "parts" ga aylantirish
+const toParts = (content) => (typeof content === 'string' ? [{ text: content }] : content.map((b) =>
+  b.type === 'text' ? { text: b.text } : { inline_data: { mime_type: b.source.media_type, data: b.source.data } }));
+
+async function askGemini(params) {
+  const models = [process.env.GEMINI_MODEL, 'gemini-flash-latest', 'gemini-2.5-flash'].filter(Boolean);
+  let last;
+  for (const model of models) {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
+      body: JSON.stringify({
+        systemInstruction: params.system ? { parts: [{ text: params.system }] } : undefined,
+        contents: params.messages.map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: toParts(m.content) })),
+        generationConfig: { maxOutputTokens: params.max_tokens, ...(params.json ? { responseMimeType: 'application/json' } : {}) },
+      }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (r.ok) return { model, content: [{ type: 'text', text: (j.candidates?.[0]?.content?.parts || []).map((x) => x.text || '').join('') }] };
+    last = new Error(`Gemini ${r.status}: ${j.error?.message || ''}`.slice(0, 300));
+    if (r.status !== 404) throw last;
+  }
+  throw last;
+}
+
+async function ask({ json, ...params }) {
+  if (process.env.GEMINI_API_KEY) return askGemini({ json, ...params });
   const c = await client();
   // uzun javoblar uchun oqim (stream) — HTTP vaqt chegarasiga tushmaslik uchun
   const run = (model) => c.messages.stream({ model, ...params }).finalMessage();
-  if (DIRECT()) return run('claude-opus-5-5');
+  if (DIRECT()) return run('claude-haiku-5-5');
   for (const model of gwModel ? [gwModel] : GATEWAY_MODELS) {
     try {
       const r = await run(model);
@@ -133,6 +160,7 @@ const FIELDS = ['name', 'gender', 'birth', 'death', 'father', 'mother', 'spouse'
 export async function extractFamily(content, lang) {
   const r = await ask({
     max_tokens: 32000,
+    json: true,
     output_config: { effort: 'medium' },
     system: `Siz oila shajarasi ma'lumotlarini tartibga soluvchi yordamchisiz. summary maydonini ${LANG_NAME[lang] || LANG_NAME.uz} tilida yozing.`,
     messages: [{ role: 'user', content: [...content, { type: 'text', text: PARSE_PROMPT }] }],
@@ -155,5 +183,5 @@ export function rowsToCsv(rows) {
 
 export async function aiHealth() {
   const r = await ask({ max_tokens: 200, output_config: { effort: 'low' }, messages: [{ role: 'user', content: 'Say OK' }] });
-  return { ok: true, model: r.model, direct: DIRECT(), text: textOf(r).slice(0, 20) };
+  return { ok: true, model: r.model, provider: process.env.GEMINI_API_KEY ? 'gemini' : DIRECT() ? 'anthropic' : 'gateway', text: textOf(r).slice(0, 20) };
 }

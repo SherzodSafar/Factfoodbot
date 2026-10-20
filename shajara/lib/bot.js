@@ -1,7 +1,7 @@
 // Telegram bot: buyruqlar, albomga yuklash, guruh va kanalni ulash, to'lovlar.
 import { tg, tgUpload, mediaOf, downloadFile } from './telegram.js';
 import { waitUntil } from '@vercel/functions';
-import { answerQuestion, fileToContent, extractFamily, rowsToCsv } from './ai.js';
+const ai = () => import('./ai.js'); // og'ir SDK faqat kerak bo'lganda yuklanadi
 import { importRows } from './tree.js';
 import { t, normLang, LANGS } from './i18n.js';
 import { randomQuote } from './quotes.js';
@@ -116,7 +116,7 @@ async function aiAnswer(from, chatId, lang, question, user) {
   const history = (user?.ai || []).slice(-8);
   let answer;
   try {
-    answer = await answerQuestion(question.slice(0, 2000), history, lang);
+    answer = await (await ai()).answerQuestion(question.slice(0, 2000), history, lang);
   } catch (e) {
     console.error('ai answer', e);
     return send(chatId, t(lang, 'AI yordamchi hozir javob bera olmadi. Keyinroq urinib ko‘ring yoki /yordam ni bosing.'));
@@ -135,6 +135,7 @@ async function aiImport(from, lang, msg) {
     if (f.file_size > 20 * 1024 * 1024) return send(chatId, t(lang, 'Fayl juda katta (20 MB dan oshmasin).'));
     const file = await downloadFile(f.file_id);
     if (!file) return send(chatId, t(lang, 'Faylni yuklab bo‘lmadi.'));
+    const { fileToContent } = await ai();
     content = doc ? fileToContent(file.buffer, doc.file_name || file.path, doc.mime_type || '') : fileToContent(file.buffer, 'photo.jpg', 'image/jpeg');
     if (msg.caption) content?.push({ type: 'text', text: `Foydalanuvchi izohi: ${msg.caption}` });
   } else content = [{ type: 'text', text: msg.text }];
@@ -142,7 +143,7 @@ async function aiImport(from, lang, msg) {
   const wait = await send(chatId, t(lang, '⏳ AI faylni tahlil qilmoqda… Bu 1-2 daqiqa olishi mumkin.'));
   let res;
   try {
-    res = await extractFamily(content, lang);
+    res = await (await ai()).extractFamily(content, lang);
   } catch (e) {
     console.error('ai import', e);
     return send(chatId, t(lang, 'AI faylni tahlil qila olmadi. Boshqa formatda yuborib ko‘ring.'));
@@ -163,7 +164,7 @@ ${escapeHtml(res.summary).slice(0, 700)}
 
 ` +
     t(lang, kb.length ? 'Faylni tekshiring. Hammasi to‘g‘ri bo‘lsa — pastdagi tugma bilan shajarangizga qo‘shing yoki ilovada «Fayldan qo‘shish» orqali yuklang.' : 'Bu faylni ilovada tahrir rejimida «+ → Fayldan qo‘shish» orqali yuklang.');
-  return tgUpload('sendDocument', { chat_id: chatId, caption: caption.slice(0, 1020), parse_mode: 'HTML', reply_markup: kb.length ? { inline_keyboard: kb } : undefined }, 'document', Buffer.from(rowsToCsv(res.rows)), 'shajara.csv', 'text/csv');
+  return tgUpload('sendDocument', { chat_id: chatId, caption: caption.slice(0, 1020), parse_mode: 'HTML', reply_markup: kb.length ? { inline_keyboard: kb } : undefined }, 'document', Buffer.from((await ai()).rowsToCsv(res.rows)), 'shajara.csv', 'text/csv');
 }
 
 // ---------------------------------------------------------------- guruh --
