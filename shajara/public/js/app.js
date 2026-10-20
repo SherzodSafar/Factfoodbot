@@ -860,7 +860,7 @@ function openViewer(ids, index) {
         <div class="rv-meta">📁 ${esc(nm(a?.name || ''))} · ${fmtDate(it.at.slice(0, 10))}</div>
         ${it.by?.name ? `<button class="rv-by" data-act="by">👤 ${esc(it.by.name)}</button>` : ''}
         ${it.caption ? `<div class="rv-cap">${esc(it.caption)}</div>` : ''}
-        ${it.kind === 'video' && it.src ? `<div class="rv-vbar"><button data-act="pp">${VI.pause}</button><div class="rv-seek"><i></i></div><span class="rv-vt">0:00</span></div>` : ''}
+        ${it.kind === 'video' && it.src ? `<div class="rv-vbar"><div class="rv-seek"><i></i></div><span class="rv-vt">0:00</span><button data-act="pp">${VI.pause}</button></div>` : ''}
       </div>`;
     sl.querySelectorAll('[data-act]').forEach((b) => (b.onclick = (e) => { e.stopPropagation(); act(b.dataset.act, it, sl, b); }));
     const v = sl.querySelector('video');
@@ -1523,17 +1523,28 @@ async function pollJob(job) {
   throw new Error(t('Javob kechikdi. Qayta urinib ko‘ring'));
 }
 
-// AI ajratgan ro'yxatni ko'rib chiqish
+// AI ajratgan ro'yxatni ko'rib chiqish: yangilar yoki hammasi
 async function aiPreview(job) {
   let d;
   try { d = await api('ai/job/' + job); } catch (err) { return toast(err.message, true); }
   if (d.status !== 'done') return toast(t('Ma’lumot eskirgan. Faylni qayta yuboring'), true);
   const byId = new Map(d.rows.map((r) => [r.id, r]));
+  const fresh = new Set(d.newIds || []);
   const nmOf = (id) => byId.get(id)?.name;
   const yrs = (r) => [r.birth, r.death === '+' ? '†' : r.death].filter(Boolean).join(' – ');
-  openSheet(`<div class="sheet-head"><div class="h2 grow">📋 ${t('{n} kishi topildi', { n: d.count })}</div><button class="icon-btn" data-close>${I.close}</button></div>
-    <div class="sheet-body"><div class="ai-rows">${d.rows.map((r) => `<div class="ai-row"><b>${r.gender === 'f' ? '👩' : '👨'} ${esc(nm(r.name))}</b>${yrs(r) ? ` <span class="muted">${esc(yrs(r))}</span>` : ''}
-      <div class="small muted">${[nmOf(r.father) && `${t('ota')}: ${esc(nm(nmOf(r.father)))}`, nmOf(r.mother) && `${t('ona')}: ${esc(nm(nmOf(r.mother)))}`, nmOf(r.spouse) && `${t('juft')}: ${esc(nm(nmOf(r.spouse)))}`].filter(Boolean).join(' · ')}</div></div>`).join('')}</div></div>`);
+  const row = (r) => `<div class="ai-row"><b>${r.gender === 'f' ? '👩' : '👨'} ${esc(nm(r.name))}</b>${yrs(r) ? ` <span class="muted">${esc(yrs(r))}</span>` : ''}${fresh.has(r.id) ? ` <span class="ai-new">${t('yangi')}</span>` : ''}
+      <div class="small muted">${[nmOf(r.father) && `${t('ota')}: ${esc(nm(nmOf(r.father)))}`, nmOf(r.mother) && `${t('ona')}: ${esc(nm(nmOf(r.mother)))}`, nmOf(r.spouse) && `${t('juft')}: ${esc(nm(nmOf(r.spouse)))}`].filter(Boolean).join(' · ')}</div></div>`;
+  let only = fresh.size > 0;
+  const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">📋 ${t('{n} kishi topildi', { n: d.count })}</div><button class="icon-btn" data-close>${I.close}</button></div>
+    <div class="sheet-body">${fresh.size ? `<div class="seg" id="aps"><button type="button" class="on" data-v="new">${t('Yangilar')} · ${fresh.size}</button><button type="button" data-v="all">${t('Hammasi')} · ${d.count}</button></div>` : ''}
+    <div class="ai-rows" id="apr"></div></div>`);
+  const draw = () => { sh.querySelector('#apr').innerHTML = d.rows.filter((r) => !only || fresh.has(r.id)).map(row).join(''); };
+  sh.querySelectorAll('#aps button').forEach((b) => (b.onclick = () => {
+    only = b.dataset.v === 'new';
+    sh.querySelectorAll('#aps button').forEach((x) => x.classList.toggle('on', x === b));
+    draw();
+  }));
+  draw();
 }
 
 function aiSheet() {
@@ -1555,7 +1566,7 @@ function aiSheet() {
       : `<span class="small muted">${t('Qo‘shish uchun tahrir rejimini yoqing')}</span>`;
     return `<div class="ai-msg bot ai-card"><b>📋 ${t('{n} kishi topildi', { n: c.count })}</b>${c.summary ? `<div>${esc(c.summary)}</div>` : ''}
       ${c.matched ? `<div class="small muted">${t('{m} tasi shajarada allaqachon bor — qayta qo‘shilmaydi', { m: c.matched })}</div>` : ''}
-      <div class="ai-card-btns">${act}<button type="button" class="btn btn-soft btn-sm" data-prev="${c.job}">👁 ${t('Ro‘yxat')}</button>
+      <div class="ai-card-btns">${act}<button type="button" class="btn btn-soft btn-sm" data-prev="${c.job}">👁 ${c.fresh && !c.applied ? `${t('Yangilar')} · ${c.fresh}` : t('Ro‘yxat')}</button>
       ${inTelegram ? `<button type="button" class="btn btn-soft btn-sm" data-csv="${c.job}">📩 CSV</button>` : ''}</div></div>`;
   };
   const draw = () => {

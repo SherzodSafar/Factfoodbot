@@ -12,7 +12,9 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.135.0",
     "@vercel/blob": "^2.8.2",
-    "@vercel/functions": "^3.10.1"
+    "@vercel/functions": "^3.10.1",
+    "big-integer": "^1.6.52",
+    "telegram": "^2.26.22"
   },
   "engines": {
     "node": ">=20"

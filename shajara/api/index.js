@@ -440,7 +440,15 @@ async function route(req, res) {
     const rg = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range || ''));
     const start = rg && rg[1] ? Number(rg[1]) : 0;
     const end = rg && rg[2] ? Math.min(Number(rg[2]), start + CH) : start + CH;
-    const file = await fetchFilePart(f, start, end);
+    const size = Number(url.searchParams.get('z')) || 0;
+    let file = null;
+    if (size > 20 * 1024 * 1024) {
+      // Bot API 20 MB dan kattasini bermaydi — MTProto orqali (bot tokeni bilan)
+      const { mtprotoPart, mtprotoOn } = await import('../lib/mtproto.js');
+      if (!mtprotoOn()) throw new HttpError(413, 'Fayl katta — Telegramda oching');
+      const r = await mtprotoPart(f, start, end, size, { chat: url.searchParams.get('c'), msg: Number(url.searchParams.get('m')) || 0 });
+      file = { ...r, path: '' };
+    } else file = await fetchFilePart(f, start, end);
     if (!file) throw new HttpError(404, 'Fayl topilmadi');
     const ext = (url.searchParams.get('x') || file.path.split('.').pop() || '').toLowerCase();
     const type = MIME[ext] || 'application/octet-stream';
@@ -564,7 +572,7 @@ async function route(req, res) {
       if (d.status === 'done' && req.headers.authorization) {
         try {
           const plan = planGraph((await authTree(req)).tree, d.rows);
-          Object.assign(d, { matched: plan.matched.size, fresh: plan.newCount });
+          Object.assign(d, { matched: plan.matched.size, fresh: plan.newCount, newIds: d.rows.filter((r) => !plan.matched.has(String(r.id))).map((r) => r.id) });
         } catch {}
       }
       return send(res, 200, d);
@@ -612,6 +620,29 @@ async function route(req, res) {
       console.error('ai', e);
       throw new HttpError(503, 'AI hozir javob bera olmadi. Birozdan so‘ng qayta urinib ko‘ring');
     }
+  }
+
+  // VAQTINCHA: MTProto sinovi (keyin o'chiriladi)
+  if (path === 'mtptest' && m === 'GET' && url.searchParams.get('k') === '352484a3f11c35fc642992e0') {
+    const out = {};
+    try {
+      const { mtprotoPart, decodeFileId } = await import('../lib/mtproto.js');
+      let it = null;
+      for (const key of await listKeys('albums/')) {
+        const d = (await readJson(key))?.data;
+        it = (d?.items || []).filter((x) => x.ch?.msg && x.type !== 'photo').sort((a, b) => (b.size || 0) - (a.size || 0))[0] || it;
+        if (it) break;
+      }
+      if (!it) return send(res, 200, { error: 'no item' });
+      const f = decodeFileId(it.fileId);
+      Object.assign(out, { type: it.type, size: it.size, dc: f.dcId, refLen: f.fileReference.length, ch: it.ch });
+      const t0 = Date.now();
+      const r = await mtprotoPart(it.fileId, 0, 65535, it.size, it.ch);
+      Object.assign(out, { ok: true, bytes: r.buffer.length, ms: Date.now() - t0, head: r.buffer.subarray(0, 12).toString('hex') });
+    } catch (e) {
+      out.error = String(e?.message || e).slice(0, 300);
+    }
+    return send(res, 200, out);
   }
 
   // AI ulanishini tekshirish (juda qisqa so'rov, cheklangan)

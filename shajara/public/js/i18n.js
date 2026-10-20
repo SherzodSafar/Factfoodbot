@@ -113,6 +113,8 @@ const D = [
   ['Fayl juda katta (3 MB gacha)', 'Файл слишком большой (до 3 МБ)', 'File too large (max 3 MB)'],
   ['Fayl yuborish', 'Отправить файл', 'Send a file'],
   ['Bekor qilish', 'Отменить', 'Undo'],
+  ['Yangilar', 'Новые', 'New'],
+  ['yangi', 'новый', 'new'],
   ['Oxirgi import bekor qilinsinmi? U bilan qo‘shilgan odamlar o‘chiriladi.', 'Отменить последний импорт? Добавленные им люди будут удалены.', 'Undo the last import? People it added will be removed.'],
   ['{n} kishi olib tashlandi', 'Удалено человек: {n}', '{n} people removed'],
   ['Takroriy odamlar', 'Дубликаты', 'Duplicates'],

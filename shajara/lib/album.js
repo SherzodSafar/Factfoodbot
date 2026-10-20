@@ -3,6 +3,7 @@
 import { readJson, writeJson, updateJson, ConflictError } from './store.js';
 import { sendStored, mediaOf } from './telegram.js';
 import { signMedia, randomId } from './auth.js';
+import { mtprotoOn } from './mtproto.js';
 import { HttpError, PAYWALL, LIMITS, isPremium, mutateTree, addLog } from './tree.js';
 import { notify, escapeHtml } from './notify.js';
 import { t } from './i18n.js';
@@ -72,14 +73,16 @@ export function publicAlbum(doc, tree, uid) {
     albums: doc.albums,
     items: doc.items.map((it) => {
       const kind = kindOf(it);
-      const ok = kind === 'image' ? !it.size || it.size <= IMG_MAX : kind !== 'file' && (!it.size || it.size <= INLINE_MAX);
+      // 20 MB dan katta video/audio — MTProto orqali bo'laklab (kalitlar sozlangan bo'lsa)
+      const big = (kind === 'video' || kind === 'audio') && it.size > INLINE_MAX && mtprotoOn() && it.ch?.msg;
+      const ok = kind === 'image' ? !it.size || it.size <= IMG_MAX : kind !== 'file' && (!it.size || it.size <= INLINE_MAX || big);
       return {
         byUser: it.by?.id ? users[it.by.id]?.username || null : null,
         id: it.id, album: it.album, type: it.type, kind, mime: it.mime || null, caption: it.caption, name: it.name, w: it.w, h: it.h, dur: it.dur,
         size: it.size, by: it.by, at: it.at,
         views: it.views || (it.seen || []).length, sends: it.sends || 0, likes: (it.likes || []).length, liked: !!uid && (it.likes || []).includes(String(uid)),
         thumb: it.thumbId ? mediaUrl(it.thumbId) : null,
-        src: ok ? mediaUrl(it.fileId, EXT[it.mime] || (it.type === 'voice' ? 'ogg' : it.type === 'photo' ? 'jpg' : '')) : null,
+        src: ok ? mediaUrl(it.fileId, EXT[it.mime] || (it.type === 'voice' ? 'ogg' : it.type === 'photo' ? 'jpg' : '')) + (big ? `&z=${it.size}&c=${it.ch.chat}&m=${it.ch.msg}` : '') : null,
       };
     }),
   };

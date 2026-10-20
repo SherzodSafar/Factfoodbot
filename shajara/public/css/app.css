@@ -610,3 +610,5 @@ body:has(#sheet-root > *) .ai-fab, body:has(.rv) .ai-fab { opacity: 0; pointer-e
 .dp-list { margin-top: 12px; }
 .dp-row { display: flex; align-items: center; gap: 10px; padding: 10px 2px; border-bottom: 1px solid var(--line); }
 .dp-row .grow > div { line-height: 1.45; }
+.ai-new { font-size: 11px; font-weight: 800; color: #fff; background: var(--primary); padding: 1px 7px; border-radius: 99px; vertical-align: 1px; }
+#aps { margin-bottom: 8px; }
