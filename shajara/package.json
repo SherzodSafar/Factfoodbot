@@ -11,8 +11,10 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.135.0",
+    "@neondatabase/serverless": "^1.2.0",
     "@vercel/blob": "^2.8.2",
     "@vercel/functions": "^3.10.1",
+    "aws4fetch": "^1.0.20",
     "big-integer": "^1.6.52",
     "telegram": "^2.26.22"
   },

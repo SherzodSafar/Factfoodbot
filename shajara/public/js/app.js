@@ -1,4 +1,4 @@
-// Shajara iBot — Mini App
+// Shajara AI — Mini App
 import { I } from './icons.js';
 import { quoteOfDay, randomQuote } from './quotes.js';
 import { TreeView, esc } from './tree-view.js?v=5';
@@ -9,7 +9,7 @@ import { t, nm, LANG, setLang, LANG_NAMES, fmtDate, monthShort, fmtNum } from '.
 
 const tg = window.Telegram?.WebApp;
 const inTelegram = !!tg?.initData;
-const BOT = 'Shajara_iBot';
+const BOT = 'ShajaraAiBot';
 const $app = document.getElementById('app');
 const $sheets = document.getElementById('sheet-root');
 
@@ -76,6 +76,7 @@ async function confirmBox(text) {
 }
 function openLink(url) {
   if (url.startsWith('https://t.me/') && tg?.openTelegramLink && inTelegram) tg.openTelegramLink(url);
+  else if (tg?.openLink && inTelegram) tg.openLink(url);
   else window.open(url, '_blank');
 }
 async function copyText(s) {
@@ -187,7 +188,7 @@ function renderOnboarding(done, start = 0) {
       ? `<div class="onb-slide"><div class="logo" style="width:96px;height:96px;margin-bottom:22px">${LOGO}</div><h2>Tilni tanlang · Выберите язык</h2>
           <div class="lang-list">${Object.entries(LANG_NAMES).map(([k, v]) => `<button class="lang-opt ${LANG === k ? 'on' : ''}" data-lang="${k}"><span>${{ uz: '🇺🇿', uzc: '🇺🇿', ru: '🇷🇺', en: '🇬🇧' }[k]}</span>${v}${LANG === k ? '<b>✓</b>' : ''}</button>`).join('')}</div></div>`
       : `<div class="onb-slide"><div class="onb-art">${ART[s.art]}</div><h2>${t(s.h)}</h2><p>${t(s.p)}</p></div>`).join('')}</div>
-    <div class="onb-foot"><div class="dots">${SLIDES.map(() => '<i></i>').join('')}</div>
+    <div class="onb-foot"><div class="small muted onb-legal">${t('Davom etib, siz {a} va {b}ga rozilik bildirasiz.', { a: `<a href="/legal/terms.html" target="_blank">${t('foydalanish shartlari')}</a>`, b: `<a href="/legal/privacy.html" target="_blank">${t('maxfiylik siyosati')}</a>` })}</div><div class="dots">${SLIDES.map(() => '<i></i>').join('')}</div>
     <button class="btn btn-primary btn-block" id="onb-next"></button></div></div>`;
   const track = $app.querySelector('.onb-track');
   const dots = [...$app.querySelectorAll('.dots i')];
@@ -219,7 +220,7 @@ function renderOnboarding(done, start = 0) {
 }
 
 // =================================================================== KIRISH (GATE)
-const LOGO = `<svg viewBox="0 0 64 64" fill="none"><path d="M32 58V36" stroke="#f6e7c4" stroke-width="4" stroke-linecap="round"/><path d="M32 44 22 36M32 40l10-8" stroke="#f6e7c4" stroke-width="3.5" stroke-linecap="round"/><circle cx="32" cy="22" r="14" fill="#56c697"/><circle cx="19" cy="30" r="9" fill="#3db183"/><circle cx="45" cy="30" r="9" fill="#3db183"/><circle cx="32" cy="20" r="4" fill="#f6e7c4"/><circle cx="20" cy="30" r="3" fill="#f6e7c4"/><circle cx="44" cy="30" r="3" fill="#f6e7c4"/></svg>`;
+const LOGO = '<img src="/img/icon192.png" alt="Shajara AI" class="logo-img">';
 
 function renderGate(prefill = '') {
   S.tree = null;
@@ -1254,13 +1255,15 @@ function renderMoreTab(el) {
     <div class="card menu">
       ${item('m-switch', '🌳', t('Boshqa shajaraga o‘tish'), t('Kod kiritish yoki yangi yaratish'))}
       ${item('m-onb', '✨', t('Tanishtiruvni qayta ko‘rish'))}
+      ${item('m-legal', '📄', t('Maxfiylik siyosati va shartlar'))}
       ${item('m-forget', '🚪', t('Shu qurilmadan chiqish'), t('Keyingi safar kod qayta so‘raladi'), '', 'danger')}
     </div>
-    <div class="muted small" style="text-align:center;padding:26px 16px 30px">Shajara iBot · @${BOT}<br>${t('«Ildizini bilgan — adashmas»')}</div>
+    <div class="muted small" style="text-align:center;padding:26px 16px 30px">Shajara AI · @${BOT}<br>${t('«Ildizini bilgan — adashmas»')}</div>
   </div>`;
   const on = (id, fn) => el.querySelector('#' + id)?.addEventListener('click', fn);
   on('m-invite', inviteSheet);
   on('m-ai', aiSheet);
+  on('m-legal', () => openLink(location.origin + '/legal/privacy.html'));
   on('m-dupes', dupesSheet);
   on('m-notif', notificationsSheet);
   on('m-lang', langSheet);

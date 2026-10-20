@@ -1,5 +1,6 @@
 // Kirish kodlari, sessiya va taklif tokenlari, Telegram imzosini tekshirish.
 import crypto from 'node:crypto';
+import { dbOn, q } from './db.js';
 
 const SECRET = process.env.APP_SECRET || 'dev-secret-faqat-lokal';
 
@@ -87,7 +88,11 @@ export function verifyInitData(initData) {
 
 // Bitta server nusxasi doirasidagi tezkor cheklov (asosiy himoya — foydalanuvchi hujjatidagi hisoblagich).
 const attempts = new Map();
-export function rateLimit(key, max = 8, windowMs = 10 * 60e3) {
+/**
+ * So'rovlar cheklovi. Avval server xotirasida (tez), Neon ulangan bo'lsa — barcha server nusxalari uchun umumiy
+ * hisob bazada saqlanadi (xotira yangi nusxada nolga tushib qolmasin).
+ */
+export async function rateLimit(key, max = 8, windowMs = 10 * 60e3) {
   const now = Date.now();
   const rec = attempts.get(key) || { n: 0, at: now };
   if (now - rec.at > windowMs) {
@@ -96,7 +101,20 @@ export function rateLimit(key, max = 8, windowMs = 10 * 60e3) {
   }
   rec.n++;
   attempts.set(key, rec);
-  return rec.n <= max;
+  if (attempts.size > 5000) attempts.clear();
+  if (rec.n > max) return false;
+  if (!dbOn()) return true;
+  try {
+    const r = await q(
+      `insert into rl (key, n, reset_at) values ($1, 1, now() + ($2 || ' milliseconds')::interval)
+       on conflict (key) do update set
+         n = case when rl.reset_at < now() then 1 else rl.n + 1 end,
+         reset_at = case when rl.reset_at < now() then excluded.reset_at else rl.reset_at end
+       returning n`, [key, String(windowMs)]);
+    return r[0].n <= max;
+  } catch {
+    return true; // baza vaqtincha ishlamasa foydalanuvchini to'smaymiz
+  }
 }
 
 export function randomId(len = 10) {

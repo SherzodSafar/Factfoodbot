@@ -9,11 +9,11 @@ import { readJson, writeJson, deleteKey } from './store.js';
 import { signInvite, parseInvite } from './auth.js';
 import { loadTree, mutateTree } from './tree.js';
 import { getUser, updateUser } from './users.js';
-import { loadAlbum, addToAlbum, canUpload, cleanName } from './album.js';
+import { loadAlbum, addToAlbum, canUpload, cleanName, mutateAlbum } from './album.js';
 import { escapeHtml } from './notify.js';
 import { upcomingText } from './events.js';
 
-export const BOT = () => process.env.BOT_USERNAME || 'Shajara_iBot';
+export const BOT = () => process.env.BOT_USERNAME || 'ShajaraAiBot';
 const URL_ = () => (process.env.PUBLIC_URL || '').replace(/\/$/, '');
 const PENDING_TTL = 60 * 60e3;
 export const chatKey = (id) => `chats/${id}.json`;
@@ -64,7 +64,7 @@ async function onPrivate(msg) {
     else if (/^[a-z0-9_-]{4,40}$/i.test(payload)) extra = `?code=${encodeURIComponent(payload)}`;
     return send(from.id,
       `${t(lang, 'Assalomu alaykum, <b>{name}</b>! 🌿', { name: escapeHtml(from.first_name || '') })}\n\n` +
-      `${t(lang, '<b>Shajara iBot</b> — oilangiz shajarasini qurish, saqlash va avlodlarga yetkazish uchun.')}\n\n` +
+      `${t(lang, '<b>Shajara AI</b> — oilangiz shajarasini qurish, saqlash va avlodlarga yetkazish uchun.')}\n\n` +
       `${t(lang, "🌳 Jonli shajara daraxti\n👥 Qarindoshlar ro'yxati\n📸 Oilaviy albom (rasm, video, hujjat)\n🔔 Yangiliklar va tug'ilgan kun eslatmalari\n🔐 Maxfiy kodlar va taklif havolalari")}\n\n` +
       `<i>«${escapeHtml(q.t)}»</i>\n— ${escapeHtml(q.a)}\n\n` +
       t(lang, extra ? 'Sizni shajaraga taklif qilishdi — pastdagi tugmani bosing 👇' : 'Boshlash uchun pastdagi tugmani bosing 👇'),
@@ -77,6 +77,9 @@ async function onPrivate(msg) {
   if (cmd === '/hikmat') {
     const q = randomQuote();
     return send(from.id, `📜 <i>«${escapeHtml(q.t)}»</i>\n\n— ${escapeHtml(q.a)}`);
+  }
+  if (cmd === '/privacy' || cmd === '/shartlar') {
+    return send(from.id, `📄 ${t(lang, 'Maxfiylik siyosati va shartlar')}:\n${URL_()}/legal/privacy.html\n${URL_()}/legal/terms.html`);
   }
   if (cmd === '/yordam' || cmd === '/help') return send(from.id, `${t(lang, '<b>Qanday foydalaniladi?</b>')}\n\n${t(lang, 'HELP')}`, { reply_markup: appButton(lang) });
   if (cmd === '/bekor' || cmd === '/cancel') {
@@ -433,8 +436,55 @@ async function onMembership(cm) {
   }
   if ((status === 'member' || status === 'administrator') && chat.type !== 'private') {
     const linked = await readJson(chatKey(chat.id));
+    // yangi bot albom kanaliga admin qilindi — fayl identifikatorlarini shu bot uchun yangilaymiz
+    if (status === 'administrator' && chat.type === 'channel' && linked?.data?.treeId) bg(refreshAlbumFiles(linked.data.treeId, cm.from?.id));
     if (!linked && chat.type !== 'channel') await send(chat.id, t(lang, 'Salom! Meni shajaraga ulash uchun ilovadan kod oling va shu yerga /ulash KOD yuboring.'));
   }
+}
+
+/**
+ * Bot almashganda albom fayllarining file_id'lari eskiradi (har bot uchun alohida). Kanaldagi har bir postni
+ * tahrirchining shaxsiy chatiga ovozsiz forward qilib, yangi file_id olamiz va forwardni darhol o'chiramiz.
+ */
+export async function refreshAlbumFiles(treeId, notifyUid) {
+  const tree = await loadTree(treeId).catch(() => null);
+  if (!tree) return 0;
+  const target = notifyUid || tree.owner || String(process.env.ADMIN_IDS || '').split(',')[0];
+  if (!target) return 0;
+  const doc = await loadAlbum(treeId);
+  const me = (await tg('getMe', {})).result?.id;
+  const fresh = {};
+  for (const it of doc.items) {
+    if (!it.ch?.msg || it.bot === me) continue;
+    const r = await tg('forwardMessage', { chat_id: target, from_chat_id: it.ch.chat, message_id: it.ch.msg, disable_notification: true });
+    if (!r.ok) continue;
+    const m = mediaOf(r.result);
+    if (m) fresh[it.id] = { fileId: m.fileId, thumbId: m.thumbId || null };
+    await tg('deleteMessage', { chat_id: target, message_id: r.result.message_id });
+    await new Promise((ok) => setTimeout(ok, 60));
+  }
+  const n = Object.keys(fresh).length;
+  if (n) {
+    await mutateAlbum(treeId, (d) => {
+      for (const x of d.items) if (fresh[x.id]) Object.assign(x, fresh[x.id], { bot: me });
+    });
+  }
+  await send(target, `✅ ${t('uz', 'Albom yangi botga ko‘chirildi: {n} ta fayl.', { n })}`).catch(() => {});
+  return n;
+}
+
+// ---------------------------------------------------------------- eski bot (@Shajara_iBot) — yangisiga yo'naltirish --
+export async function handleOldBot(u) {
+  const msg = u.message || u.callback_query?.message;
+  const chat = msg?.chat;
+  if (!chat || chat.type !== 'private') return;
+  const payload = (u.message?.text || '').startsWith('/start ') ? u.message.text.split(' ')[1] : '';
+  const lang = normLang(u.message?.from?.language_code || u.callback_query?.from?.language_code);
+  const text = t(lang, '🌳 <b>Shajara iBot</b> endi <b>Shajara AI</b> nomi bilan ishlaydi!\n\nBarcha shajaralar va albomlar saqlangan. Davom etish uchun yangi botni oching 👇');
+  await fetch(`https://api.telegram.org/bot${process.env.OLD_BOT_TOKEN}/sendMessage`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ chat_id: chat.id, text, parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: '✨ @ShajaraAiBot', url: `https://t.me/${BOT()}${payload ? '?start=' + payload : ''}` }]] } }),
+  });
 }
 
 // ---------------------------------------------------------------- to'lovlar (Telegram Stars) --
@@ -474,6 +524,12 @@ export async function setupBot() {
   out.menu = await tg('setChatMenuButton', { menu_button: { type: 'web_app', text: 'Shajara', web_app: { url: url + '/' } } });
   for (const lang of ['uz', 'ru', 'en']) {
     const lc = lang === 'uz' ? undefined : lang;
+    await tg('setMyName', { name: 'Shajara AI', language_code: lc });
+    await tg('setMyShortDescription', { language_code: lc, short_description: t(lang, 'BOT_SHORT') });
+    await tg('setMyDescription', { language_code: lc, description: t(lang, 'BOT_ABOUT') });
+  }
+  for (const lang of ['uz', 'ru', 'en']) {
+    const lc = lang === 'uz' ? undefined : lang;
     await tg('setMyCommands', {
       language_code: lc,
       commands: [
@@ -483,6 +539,7 @@ export async function setupBot() {
         { command: 'yordam', description: t(lang, 'Qanday foydalaniladi') },
         { command: 'royxat', description: t(lang, 'AI ro‘yxat (fayldan)') },
         { command: 'savol', description: t(lang, 'AI yordamchiga savol') },
+        { command: 'privacy', description: t(lang, 'Maxfiylik siyosati va shartlar') },
       ],
     });
     await tg('setMyCommands', {
@@ -497,7 +554,7 @@ export async function setupBot() {
     });
   }
   out.desc = await tg('setMyDescription', {
-    description: 'Shajara iBot — oilangiz shajarasi: jonli daraxt, qarindoshlar ro‘yxati, oilaviy albom, bildirishnomalar va tug‘ilgan kun eslatmalari. 🌳',
+    description: 'Shajara AI — oilangiz shajarasi: jonli daraxt, qarindoshlar ro‘yxati, oilaviy albom, bildirishnomalar va tug‘ilgan kun eslatmalari. 🌳',
   });
   out.short = await tg('setMyShortDescription', { short_description: 'Oila shajarasi va oilaviy albom 🌳' });
   return out;

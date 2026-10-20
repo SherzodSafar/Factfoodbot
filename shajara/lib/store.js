@@ -5,7 +5,10 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
+import { dbOn, q } from './db.js';
+
 const useBlob = !!process.env.BLOB_READ_WRITE_TOKEN;
+// JSON hujjatlar: Neon ulangan bo'lsa — bazada (eski Blob'dagilari birinchi o'qishda avtomatik ko'chiriladi)
 const DATA_DIR = path.resolve(process.cwd(), '.data');
 
 let blobLib;
@@ -28,7 +31,7 @@ async function streamToBuffer(stream) {
 }
 
 /** @returns {Promise<{data:any, etag:string}|null>} */
-export async function readJson(key, forWrite = false) {
+async function readJsonFile(key, forWrite = false) {
   if (useBlob) {
     const { get, head } = await blob();
     // get() qaytaradigan ETag CDN formatida bo'ladi; shartli yozish uchun API ETag'i (head) kerak.
@@ -53,7 +56,7 @@ export async function readJson(key, forWrite = false) {
 /**
  * etag: undefined → shart yo'q; null → fayl mavjud bo'lmasligi kerak; satr → mos kelishi kerak.
  */
-export async function writeJson(key, data, etag) {
+async function writeJsonFile(key, data, etag) {
   const body = JSON.stringify(data);
   if (useBlob) {
     const { put } = await blob();
@@ -77,14 +80,14 @@ export async function writeJson(key, data, etag) {
   const file = path.join(DATA_DIR, key);
   await fs.mkdir(path.dirname(file), { recursive: true });
   if (etag !== undefined) {
-    const cur = await readJson(key);
+    const cur = await readJsonFile(key);
     if (etag === null && cur) throw new ConflictError('exists');
     if (etag && (!cur || cur.etag !== etag)) throw new ConflictError('etag');
   }
   await fs.writeFile(file, body);
 }
 
-export async function deleteKey(key) {
+async function deleteKeyFile(key) {
   if (useBlob) {
     const { del } = await blob();
     await del(key).catch(() => {});
@@ -126,8 +129,7 @@ export async function getFile(key) {
   }
 }
 
-/** Kalitlar ro'yxati (prefiks bo'yicha). */
-export async function listKeys(prefix) {
+async function listKeysFile(prefix) {
   if (useBlob) {
     const { list } = await blob();
     const out = [];
@@ -146,6 +148,57 @@ export async function listKeys(prefix) {
   } catch {
     return [];
   }
+}
+
+/** @returns {Promise<{data:any, etag:string}|null>} */
+export async function readJson(key, forWrite = false) {
+  if (!dbOn()) return readJsonFile(key, forWrite);
+  const r = await q('select data, ver from kv where key = $1', [key]);
+  if (r.length) return { data: r[0].data, etag: String(r[0].ver) };
+  // eski ombordan bir martalik ko'chirish
+  const old = await readJsonFile(key).catch(() => null);
+  if (!old) return null;
+  await q('insert into kv (key, data) values ($1, $2) on conflict (key) do nothing', [key, JSON.stringify(old.data)]);
+  return readJson(key, forWrite);
+}
+
+/** etag: undefined → shart yo'q; null → hujjat mavjud bo'lmasligi kerak; satr → mos kelishi kerak. */
+export async function writeJson(key, data, etag) {
+  if (!dbOn()) return writeJsonFile(key, data, etag);
+  const body = JSON.stringify(data);
+  if (etag === undefined) {
+    await q('insert into kv (key, data) values ($1, $2) on conflict (key) do update set data = excluded.data, ver = kv.ver + 1, updated_at = now()', [key, body]);
+    return;
+  }
+  if (etag === null) {
+    // eski omborda bo'lsa ham "mavjud" hisoblanadi
+    if (!(await q('select 1 from kv where key = $1', [key])).length && (await readJsonFile(key).catch(() => null))) throw new ConflictError('exists');
+    const r = await q('insert into kv (key, data) values ($1, $2) on conflict (key) do nothing returning key', [key, body]);
+    if (!r.length) throw new ConflictError('exists');
+    return;
+  }
+  const r = await q('update kv set data = $2, ver = ver + 1, updated_at = now() where key = $1 and ver = $3 returning key', [key, body, Number(etag)]);
+  if (!r.length) throw new ConflictError('etag');
+}
+
+export async function deleteKey(key) {
+  if (dbOn()) await q('delete from kv where key = $1', [key]);
+  await deleteKeyFile(key);
+}
+
+/** Kalitlar ro'yxati (prefiks bo'yicha). */
+export async function listKeys(prefix) {
+  const file = await listKeysFile(prefix).catch(() => []);
+  if (!dbOn()) return file;
+  const r = await q("select key from kv where key like $1 || '%'", [prefix.replace(/[%_]/g, (c) => '\\' + c)]);
+  return [...new Set([...r.map((x) => x.key), ...file])];
+}
+
+/** Eski ombordagi barcha JSON hujjatlarni bazaga ko'chirish. */
+export async function migrateToDb(prefixes = ['trees/', 'codes/', 'users/', 'albums/', 'chats/', 'links/', 'aijobs/', 'mtproto/']) {
+  let n = 0;
+  for (const p of prefixes) for (const key of await listKeysFile(p).catch(() => [])) if (key.endsWith('.json')) { await readJson(key); n++; }
+  return n;
 }
 
 /** JSON hujjatni o'qib-o'zgartirib qayta yozish (ziddiyatda 4 marta qayta urinadi). */

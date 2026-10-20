@@ -1,5 +1,5 @@
 // Telegram webhook, menyu tugmasi va buyruqlarni sozlash.
-//   ADMIN_KEY=... node scripts/setup-bot.js https://shajara-ibot.vercel.app
+//   ADMIN_KEY=... node scripts/setup-bot.js https://shajara-ai.vercel.app
 const server = (process.argv[2] || '').replace(/\/$/, '');
 if (!server) {
   console.log('Foydalanish: ADMIN_KEY=... node scripts/setup-bot.js <server_url>');

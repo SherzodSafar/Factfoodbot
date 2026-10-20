@@ -91,7 +91,7 @@ const textOf = (r) => (r.content || []).filter((b) => b.type === 'text').map((b)
 
 const LANG_NAME = { uz: "o'zbek (lotin)", uzc: 'o‘zbek (kirill)', ru: 'русский', en: 'English' };
 
-const KNOWLEDGE = `Siz «Shajara iBot» (@Shajara_iBot) Telegram botining yordamchisisiz. Faqat shu bot, oila shajarasi va qarindoshlik mavzusida yordam berasiz.
+const KNOWLEDGE = `Siz «Shajara AI» (@ShajaraAiBot) Telegram botining yordamchisisiz. Faqat shu bot, oila shajarasi va qarindoshlik mavzusida yordam berasiz.
 Botning imkoniyatlari:
 - Mini App (pastdagi «Shajara» tugmasi yoki /start): yangi shajara yaratish yoki shajara kodini kiritib kirish. Har shajarada 2 kod: kirish kodi (ko'rish uchun) va tahrir kodi (o'zgartirish uchun, 🔒 tugmasi orqali kiritiladi).
 - Bo'limlar: Daraxt (bosh ajdoddan boshlanadi, ismni bosganda farzandlari ochiladi, ochilgan odamni yana bosganda ma'lumotlari; 🌳 tugmasi bilan «haqiqiy daraxt» ko'rinishi), Ro'yxat (avlodlar bo'yicha, qidiruv, filtrlar), Albom, Tahlil (statistika, tug'ilgan kunlar), Ko'proq (sozlamalar, a'zolar, taklif havolasi, eksport, premium).

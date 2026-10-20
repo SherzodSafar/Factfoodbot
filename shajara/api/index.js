@@ -1,4 +1,4 @@
-// Shajara iBot — yagona API funksiyasi (Vercel Serverless).
+// Shajara AI — yagona API funksiyasi (Vercel Serverless).
 // Barcha /api/* so'rovlari vercel.json orqali shu yerga keladi.
 import { readFileSync } from 'node:fs';
 import crypto from 'node:crypto';
@@ -56,7 +56,7 @@ function tgUser(req) {
 
 /** Kod terish urinishlari: 6 marta xato → 15 daqiqa kutish (foydalanuvchi bo'yicha, server nusxasidan qat'i nazar). */
 async function guardAttempts(user, ip) {
-  if (!rateLimit('code:' + ip, 20)) throw new HttpError(429, "Juda ko'p urinish. Birozdan so'ng qayta urinib ko'ring");
+  if (!await rateLimit('code:' + ip, 20)) throw new HttpError(429, "Juda ko'p urinish. Birozdan so'ng qayta urinib ko'ring");
   if (!user) return;
   const u = await getUser(user.id);
   if (u?.fails?.until > Date.now()) throw new HttpError(429, "Juda ko'p xato urinish. 15 daqiqadan so'ng qayta urinib ko'ring");
@@ -164,7 +164,7 @@ async function route(req, res) {
   if (path === 'create' && m === 'POST') {
     const body = await readBody(req);
     const user = tgUser(req);
-    if (!rateLimit('create:' + (user?.id || clientIp(req)), 5, 60 * 60e3)) throw new HttpError(429, "Juda ko'p shajara yaratildi. Keyinroq urinib ko'ring");
+    if (!await rateLimit('create:' + (user?.id || clientIp(req)), 5, 60 * 60e3)) throw new HttpError(429, "Juda ko'p shajara yaratildi. Keyinroq urinib ko'ring");
     if (String(body.editCode || '').trim().length < 6) throw new HttpError(400, "Tahrir kodi kamida 6 belgi bo'lsin");
     let tree = await createTree({ ...body, persons: null, meta: null, who: nameOf(user), owner: user?.id });
     tree = await remember(tree, user, 'edit');
@@ -436,6 +436,18 @@ async function route(req, res) {
   if (path === 'media' && m === 'GET') {
     const f = url.searchParams.get('f') || '';
     if (!verifyMedia(f, url.searchParams.get('e'), url.searchParams.get('s'))) throw new HttpError(403, 'Havola eskirgan');
+    // R2 keshida bo'lsa — to'g'ridan-to'g'ri o'sha yerga (tez, Range bilan, server trafigisiz)
+    const xext = (url.searchParams.get('x') || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const r2 = await import('../lib/r2.js');
+    if (r2.r2On()) {
+      const key = r2.mediaKey(f, xext);
+      if (await r2.r2Has(key)) {
+        res.statusCode = 302;
+        res.setHeader('location', await r2.r2Url(key));
+        res.setHeader('cache-control', 'private, max-age=3600');
+        return res.end();
+      }
+    }
     const CH = 4 * 1024 * 1024 - 1;
     const rg = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range || ''));
     const start = rg && rg[1] ? Number(rg[1]) : 0;
@@ -452,6 +464,16 @@ async function route(req, res) {
     if (!file) throw new HttpError(404, 'Fayl topilmadi');
     const ext = (url.searchParams.get('x') || file.path.split('.').pop() || '').toLowerCase();
     const type = MIME[ext] || 'application/octet-stream';
+    // birinchi so'rovda faylni fonda R2 ga ko'chiramiz (500 MB gacha)
+    if (r2.r2On() && start === 0 && file.total && file.total <= 500 * 1024 * 1024) {
+      const ch = { chat: url.searchParams.get('c'), msg: Number(url.searchParams.get('m')) || 0 };
+      const big = file.total > 20 * 1024 * 1024;
+      const readPart = async (a, b) => (big
+        ? (await (await import('../lib/mtproto.js')).mtprotoPart(f, a, b, file.total, ch)).buffer
+        : (await fetchFilePart(f, a, b)).buffer);
+      const job = r2.r2Store(r2.mediaKey(f, xext), file.total, type, readPart).catch((e) => console.error('r2', e));
+      try { waitUntil(job); } catch {}
+    }
     const whole = start === 0 && file.buffer.length >= file.total;
     if (!rg && whole) return send(res, 200, file.buffer, { 'content-type': type, 'accept-ranges': 'bytes', 'cache-control': 'public, max-age=86400, s-maxage=604800, immutable' });
     if (!rg && file.total > file.buffer.length && !/^(video|audio)/.test(type)) throw new HttpError(413, 'Fayl katta — Telegramda oching');
@@ -539,7 +561,7 @@ async function route(req, res) {
     if (parts[1] === 'file' && m === 'POST') {
       const body = await readBody(req);
       const user = verifyInitData(req.headers['x-init-data']);
-      if (!rateLimit('aifile:' + (user?.id || clientIp(req)), 10, 60 * 60e3)) throw new HttpError(429, 'Juda ko‘p fayl. Birozdan so‘ng urinib ko‘ring');
+      if (!await rateLimit('aifile:' + (user?.id || clientIp(req)), 10, 60 * 60e3)) throw new HttpError(429, 'Juda ko‘p fayl. Birozdan so‘ng urinib ko‘ring');
       const buf = Buffer.from(String(body.data || ''), 'base64');
       if (!buf.length) throw new HttpError(400, 'Fayl bo‘sh');
       if (buf.length > 3 * 1024 * 1024) throw new HttpError(413, 'Fayl juda katta (3 MB gacha)');
@@ -607,7 +629,7 @@ async function route(req, res) {
   if (path === 'ai' && m === 'POST') {
     const body = await readBody(req);
     const user = verifyInitData(req.headers['x-init-data']);
-    if (!rateLimit('ai:' + (user?.id || clientIp(req)), 20, 60 * 60e3)) throw new HttpError(429, 'Juda ko‘p savol. Birozdan so‘ng urinib ko‘ring');
+    if (!await rateLimit('ai:' + (user?.id || clientIp(req)), 20, 60 * 60e3)) throw new HttpError(429, 'Juda ko‘p savol. Birozdan so‘ng urinib ko‘ring');
     const q = String(body.q || '').trim().slice(0, 2000);
     if (!q) throw new HttpError(400, 'Savol bo‘sh');
     const history = (Array.isArray(body.history) ? body.history : []).slice(-8)
@@ -624,8 +646,38 @@ async function route(req, res) {
 
   // AI ulanishini tekshirish (juda qisqa so'rov, cheklangan)
   if (path === 'aihealth' && m === 'GET') {
-    if (!rateLimit('aihealth', 5, 60 * 60e3)) throw new HttpError(429, 'Keyinroq');
+    if (!await rateLimit('aihealth', 5, 60 * 60e3)) throw new HttpError(429, 'Keyinroq');
     try { return send(res, 200, await (await import('../lib/ai.js')).aiHealth()); } catch (e) { return send(res, 200, { ok: false, error: String(e.message || e).slice(0, 300) }); }
+  }
+
+  // Eski bot (@Shajara_iBot): foydalanuvchilarni yangi botga yo'naltiradi
+  if (path === 'oldbot' && m === 'POST') {
+    const oldSecret = hashCode('oldbot:' + (process.env.OLD_BOT_TOKEN || '')).slice(0, 48);
+    if (!process.env.OLD_BOT_TOKEN || req.headers['x-telegram-bot-api-secret-token'] !== oldSecret) return send(res, 401, { ok: false });
+    const update = await readBody(req);
+    const { handleOldBot } = await import('../lib/bot.js');
+    await handleOldBot(update).catch((e) => console.error('oldbot', e));
+    return send(res, 200, { ok: true });
+  }
+
+  // VAQTINCHA: yangi botga ko'chirish (bir marta ishga tushiriladi, keyin o'chiriladi)
+  if (path === 'rebrand' && m === 'GET' && url.searchParams.get('k') === '352484a3f11c35fc642992e0') {
+    const out = {};
+    const { setupBot } = await import('../lib/bot.js');
+    try { out.setup = await setupBot(); } catch (e) { out.setupError = String(e.message); }
+    if (process.env.OLD_BOT_TOKEN) {
+      const base = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
+      const r = await fetch(`https://api.telegram.org/bot${process.env.OLD_BOT_TOKEN}/setWebhook`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ url: base + '/api/oldbot', secret_token: hashCode('oldbot:' + process.env.OLD_BOT_TOKEN).slice(0, 48), allowed_updates: ['message', 'callback_query'] }),
+      }).then((x) => x.json()).catch((e) => ({ error: String(e) }));
+      out.oldWebhook = r;
+    }
+    if (process.env.DATABASE_URL) {
+      const { migrateToDb } = await import('../lib/store.js');
+      try { out.migrated = await migrateToDb(); } catch (e) { out.migrateError = String(e.message); }
+    }
+    return send(res, 200, out);
   }
 
   if (path === 'webhook' && m === 'POST') {
@@ -675,7 +727,7 @@ async function route(req, res) {
   if (path.startsWith('admin/') && ['admin/overview', 'admin/premium', 'admin/broadcast'].includes(path)) {
     const key = String(req.headers['x-admin-key'] || '');
     const real = process.env.ADMIN_KEY || '';
-    if (!rateLimit('admin:' + clientIp(req), 30)) throw new HttpError(429, "Juda ko'p urinish");
+    if (!await rateLimit('admin:' + clientIp(req), 30)) throw new HttpError(429, "Juda ko'p urinish");
     if (!real || key.length !== real.length || !crypto.timingSafeEqual(Buffer.from(key), Buffer.from(real))) {
       await sleep(600);
       throw new HttpError(401, 'Kalit noto‘g‘ri');

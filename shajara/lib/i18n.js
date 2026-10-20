@@ -5,8 +5,8 @@ export const LANGS = ['uz', 'uzc', 'ru', 'en'];
 
 const RU = {
   'Assalomu alaykum, <b>{name}</b>! 🌿': 'Ассаламу алейкум, <b>{name}</b>! 🌿',
-  '<b>Shajara iBot</b> — oilangiz shajarasini qurish, saqlash va avlodlarga yetkazish uchun.':
-    '<b>Shajara iBot</b> — чтобы построить, сохранить и передать потомкам родословную вашей семьи.',
+  '<b>Shajara AI</b> — oilangiz shajarasini qurish, saqlash va avlodlarga yetkazish uchun.':
+    '<b>Shajara AI</b> — чтобы построить, сохранить и передать потомкам родословную вашей семьи.',
   "🌳 Jonli shajara daraxti\n👥 Qarindoshlar ro'yxati\n📸 Oilaviy albom (rasm, video, hujjat)\n🔔 Yangiliklar va tug'ilgan kun eslatmalari\n🔐 Maxfiy kodlar va taklif havolalari":
     '🌳 Живое родословное древо\n👥 Список родственников\n📸 Семейный альбом (фото, видео, документы)\n🔔 Новости и напоминания о днях рождения\n🔐 Секретные коды и пригласительные ссылки',
   'Boshlash uchun pastdagi tugmani bosing 👇': 'Нажмите кнопку ниже, чтобы начать 👇',
@@ -68,8 +68,8 @@ for (const [k, r] of EXTRA.map((x) => [x[0], x[1]])) RU[k] = r;
 
 const EN = {
   'Assalomu alaykum, <b>{name}</b>! 🌿': 'Hello, <b>{name}</b>! 🌿',
-  '<b>Shajara iBot</b> — oilangiz shajarasini qurish, saqlash va avlodlarga yetkazish uchun.':
-    '<b>Shajara iBot</b> — build, keep and pass on your family tree.',
+  '<b>Shajara AI</b> — oilangiz shajarasini qurish, saqlash va avlodlarga yetkazish uchun.':
+    '<b>Shajara AI</b> — build, keep and pass on your family tree.',
   "🌳 Jonli shajara daraxti\n👥 Qarindoshlar ro'yxati\n📸 Oilaviy albom (rasm, video, hujjat)\n🔔 Yangiliklar va tug'ilgan kun eslatmalari\n🔐 Maxfiy kodlar va taklif havolalari":
     '🌳 Live family tree\n👥 List of relatives\n📸 Family album (photos, videos, documents)\n🔔 News and birthday reminders\n🔐 Secret codes and invite links',
   'Boshlash uchun pastdagi tugmani bosing 👇': 'Tap the button below to start 👇',
@@ -134,6 +134,20 @@ export function normLang(l) {
   return 'uz';
 }
 
+const UZ_BOT = {
+  BOT_SHORT: 'Oila shajarasi: jonli daraxt, albom, tug‘ilgan kunlar va AI yordamchi.',
+  BOT_ABOUT: '🌳 Shajara AI — oilangiz shajarasini qurish, saqlash va avlodlarga yetkazish uchun.\n\n• Jonli shajara daraxti va qarindoshlar ro‘yxati\n• Oilaviy albom (rasm, video, audio)\n• Tug‘ilgan kun va xotira kunlari eslatmalari\n• AI yordamchi: istalgan fayldan ro‘yxat tuzadi\n• Maxfiy kodlar bilan himoya\n\nBoshlash uchun «Start» ni bosing.',
+};
+RU.BOT_SHORT = 'Семейная родословная: живое древо, альбом, дни рождения и AI-помощник.';
+RU.BOT_ABOUT = '🌳 Shajara AI — постройте, сохраните и передайте потомкам родословную вашей семьи.\n\n• Живое древо и список родственников\n• Семейный альбом (фото, видео, аудио)\n• Напоминания о днях рождения и памятных датах\n• AI-помощник: составит список из любого файла\n• Защита секретными кодами\n\nНажмите «Start», чтобы начать.';
+EN.BOT_SHORT = 'Family tree: a living tree, album, birthdays and an AI assistant.';
+EN.BOT_ABOUT = '🌳 Shajara AI — build, keep and pass on your family tree.\n\n• Living family tree and relatives list\n• Family album (photos, video, audio)\n• Birthday and memorial reminders\n• AI assistant: builds a list from any file\n• Protected by secret codes\n\nTap “Start” to begin.';
+for (const [k, r, e] of [
+  ['🌳 <b>Shajara iBot</b> endi <b>Shajara AI</b> nomi bilan ishlaydi!\n\nBarcha shajaralar va albomlar saqlangan. Davom etish uchun yangi botni oching 👇', '🌳 <b>Shajara iBot</b> теперь называется <b>Shajara AI</b>!\n\nВсе родословные и альбомы сохранены. Откройте нового бота, чтобы продолжить 👇', '🌳 <b>Shajara iBot</b> is now <b>Shajara AI</b>!\n\nAll trees and albums are kept. Open the new bot to continue 👇'],
+  ['Albom yangi botga ko‘chirildi: {n} ta fayl.', 'Альбом перенесён в нового бота: {n} файлов.', 'Album moved to the new bot: {n} files.'],
+  ['Maxfiylik siyosati va shartlar', 'Политика конфиденциальности и условия', 'Privacy policy and terms'],
+]) { RU[k] = r; EN[k] = e; }
+
 const UZ_AI = '📋 <b>AI bilan ro‘yxat tuzish</b>\n\nQarindoshlar ro‘yxati bor faylni yuboring: Excel, Word, PDF, CSV, qo‘lyozma yoki daraxt rasmi — yoki ro‘yxatni shu yerga matn qilib yozing.\n\nAI uni shajara formatiga keltiradi, tayyor faylni qaytaradi va bir tugma bilan shajarangizga qo‘shib beradi.';
 RU['AI_IMPORT_HELP'] = '📋 <b>Список с помощью AI</b>\n\nОтправьте файл со списком родственников: Excel, Word, PDF, CSV, фото рукописи или схемы — или напишите список текстом.\n\nAI приведёт его к формату родословной, вернёт готовый файл и добавит в вашу родословную одной кнопкой.';
 EN['AI_IMPORT_HELP'] = '📋 <b>Build the list with AI</b>\n\nSend a file with your relatives: Excel, Word, PDF, CSV, a photo of handwritten notes or a chart — or type the list here.\n\nAI converts it to the family tree format, returns a ready file and adds it to your tree with one tap.';
@@ -160,7 +174,7 @@ for (const [k, r, e] of [
 ]) { RU[k] = r; EN[k] = e; }
 
 export function t(lang, key, vars = {}) {
-  let s = key === 'HELP' ? UZ_HELP : key === 'AI_IMPORT_HELP' ? UZ_AI : key;
+  let s = key === 'HELP' ? UZ_HELP : key === 'AI_IMPORT_HELP' ? UZ_AI : UZ_BOT[key] || key;
   if (lang === 'ru') s = RU[key] || s;
   else if (lang === 'en') s = EN[key] || s;
   else if (lang === 'uzc') s = toCyrillic(s);

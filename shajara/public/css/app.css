@@ -612,3 +612,6 @@ body:has(#sheet-root > *) .ai-fab, body:has(.rv) .ai-fab { opacity: 0; pointer-e
 .dp-row .grow > div { line-height: 1.45; }
 .ai-new { font-size: 11px; font-weight: 800; color: #fff; background: var(--primary); padding: 1px 7px; border-radius: 99px; vertical-align: 1px; }
 #aps { margin-bottom: 8px; }
+.logo-img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 22%; }
+#home .logo-img { width: 30px; height: 30px; border-radius: 9px; }
+.onb-legal { text-align: center; line-height: 1.4; } .onb-legal a { color: inherit; text-decoration: underline; }
