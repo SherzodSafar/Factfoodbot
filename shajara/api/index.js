@@ -48,6 +48,35 @@ const clientIp = (req) => String(req.headers['x-forwarded-for'] || req.socket?.r
 const nameOf = (u) => (u ? [u.first_name, u.last_name].filter(Boolean).join(' ') || (u.username ? '@' + u.username : 'Telegram') : null);
 const esc = (v) => String(v ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
 let oldOff = null; // eski botni uzish (bir marta)
+let capFix = null;
+// Bir martalik: avval saqlangan portretlar izohini to'liq ism sharifga almashtirish (albom va kanalda)
+async function portraitCaptions() {
+  if (await readJson('sys/portrait-cap-v1.json').catch(() => null)) return;
+  let n = 0;
+  for (const key of await listKeys('trees/')) {
+    const tr = (await readJson(key).catch(() => null))?.data;
+    const ps = (tr?.persons || []).filter((p) => p.photoItem);
+    if (!ps.length) continue;
+    const want = new Map(ps.map((p) => [p.photoItem, fullName(tr, p)]));
+    const doc = await loadAlbum(tr.id);
+    const todo = doc.items.filter((it) => want.has(it.id) && it.caption !== want.get(it.id));
+    if (!todo.length) continue;
+    await mutateAlbum(tr.id, (d) => { for (const it of d.items) if (want.has(it.id)) it.caption = want.get(it.id); });
+    for (const it of todo) {
+      if (it.ch?.msg) await tg('editMessageCaption', { chat_id: it.ch.chat, message_id: it.ch.msg, parse_mode: 'HTML',
+        caption: `📁 <b>Portretlar</b>\n${escapeHtml(want.get(it.id))}\n— ${escapeHtml(it.by?.name || '')}` }).catch(() => {});
+      n++;
+    }
+  }
+  await writeJson('sys/portrait-cap-v1.json', { at: new Date().toISOString(), n });
+  console.log('portrait captions', n);
+}
+// Ism sharif: ism (familiya bilan bo'lsa ham) + otasining ismi: «Jumaboy Saparboy o'g'li»
+const fullName = (tree, p) => {
+  const f = p.father_id && tree.persons.find((x) => x.id === p.father_id);
+  const first = (f?.name || '').trim().split(/\s+/)[0];
+  return first ? `${p.name} ${first} ${p.gender === 'f' ? 'qizi' : 'o‘g‘li'}` : p.name;
+};
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function tgUser(req) {
@@ -124,7 +153,7 @@ const checkVer = (tree, tok) => {
 function out(tree, role, uid) {
   const p = publicTree(tree, role, uid ? String(uid) : null);
   p.photoSig = signMedia('p:' + tree.id);
-  p.invite = `https://t.me/${BOT()}?start=${signInvite(tree.id, tree.ver || 1)}`;
+  p.invite = `https://t.me/${BOT()}?startapp=${signInvite(tree.id, tree.ver || 1)}`;
   return p;
 }
 
@@ -396,7 +425,7 @@ async function route(req, res) {
         const albumName = person ? 'Portretlar' : cleanName(body.albumName);
         const albumId = person ? doc.albums.find((a) => a.name.trim().toLowerCase() === 'portretlar')?.id : body.album;
         const aName = doc.albums.find((a) => a.id === albumId)?.name || albumName || 'Umumiy';
-        const caption = person ? person.name : cleanName(body.caption, 900);
+        const caption = person ? fullName(tree, person) : cleanName(body.caption, 900);
         const name = cleanName(body.name, 120).replace(/[\\/]/g, '_') || 'file';
         const mime = /^[a-z]+\/[a-z0-9.+-]+$/i.test(body.mime || '') ? body.mime : 'application/octet-stream';
         const cap = `📁 <b>${escapeHtml(aName)}</b>${caption ? '\n' + escapeHtml(caption) : ''}\n— ${escapeHtml(by.name)}`;
@@ -823,7 +852,8 @@ async function route(req, res) {
     // Telegram'ga darhol javob beramiz, ishni fonda davom ettiramiz — keyingi xabarlar navbatda kutib qolmaydi
     const job = handleUpdate(update).catch((e) => console.error('webhook', e));
     if (!oldOff) oldOff = import('../lib/bot.js').then((b) => b.oldBotOff()).catch((e) => console.error('oldbot', e)); // bir martalik
-    try { waitUntil(Promise.all([job, oldOff])); } catch { await job; }
+    if (!capFix) capFix = portraitCaptions().catch((e) => console.error('capfix', e)); // bir martalik
+    try { waitUntil(Promise.all([job, oldOff, capFix])); } catch { await job; }
     return send(res, 200, { ok: true });
   }
 

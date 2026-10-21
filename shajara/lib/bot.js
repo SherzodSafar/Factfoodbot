@@ -248,12 +248,12 @@ async function onGroup(msg) {
   if (cmd === '/shajara' || cmd === '/start') {
     const inv = signInvite(tree.id, tree.ver || 1);
     return send(msg.chat.id, `🌳 <b>${escapeHtml(tree.title)}</b>`, {
-      reply_markup: { inline_keyboard: [[{ text: t(lang, '🌳 Shajarani ochish'), url: `https://t.me/${BOT()}?start=${inv}` }]] },
+      reply_markup: { inline_keyboard: [[{ text: t(lang, '🌳 Shajarani ochish'), url: `https://t.me/${BOT()}?startapp=${inv}` }]] },
     });
   }
   if (cmd === '/tugilgan') {
     const inv = signInvite(tree.id, tree.ver || 1);
-    return send(msg.chat.id, upcomingText(tree, lang, (pid) => `https://t.me/${BOT()}?start=${inv}_${pid}`));
+    return send(msg.chat.id, upcomingText(tree, lang, (pid) => `https://t.me/${BOT()}?startapp=${inv}_${pid}`));
   }
   if (cmd === '/albom') {
     const src = msg.reply_to_message;

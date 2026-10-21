@@ -117,5 +117,7 @@ export async function botMe() {
 export async function appLink(payload) {
   const me = await botMe();
   const bot = me.username || process.env.BOT_USERNAME || 'ShajaraAiBot';
-  return me.has_main_web_app ? `https://t.me/${bot}?startapp=${payload}` : `https://t.me/${bot}?start=${payload}`;
+  return me.has_main_web_app === false ? `https://t.me/${bot}?start=${payload}` : `https://t.me/${bot}?startapp=${payload}`;
 }
+/** Sinxron variant (Main Mini App yoqilgan): ilovani to'g'ridan-to'g'ri ochadi. */
+export const appUrl = (payload) => `https://t.me/${process.env.BOT_USERNAME || 'ShajaraAiBot'}?startapp=${payload}`;

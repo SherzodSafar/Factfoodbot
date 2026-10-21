@@ -15,7 +15,7 @@ export function todayText(tree, lang) {
   // ism ustiga bosilsa — ilovada o'sha shaxs profili ochiladi (/tugilgan ro'yxatidagi kabi)
   const bot = process.env.BOT_USERNAME || 'ShajaraAiBot';
   const inv = signInvite(tree.id, tree.ver || 1);
-  const nm = (x) => `<a href="https://t.me/${bot}?start=${inv}_${x.id}">${escapeHtml(x.name)}</a>`;
+  const nm = (x) => `<a href="https://t.me/${bot}?startapp=${inv}_${x.id}">${escapeHtml(x.name)}</a>`;
   let text = `🌳 <b>${escapeHtml(tree.title)}</b>\n`;
   if (births.length) {
     text += `\n${t(lang, '🎂 <b>Bugun tug‘ilgan kun:</b>')}\n` + births.map((b) => '• ' + t(lang, '{name} — {age} yosh', { name: '\u0001', age: b.age }).replace('\u0001', nm(b))).join('\n');
