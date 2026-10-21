@@ -256,4 +256,7 @@ for (const [k, r, e] of [
   ["📤 Kimga yuborishni tanlash", "📤 Выбрать, кому отправить", "📤 Choose who to send to"],
   ["💡 Rasm siqilgan holda keldi. Asl sifatda saqlash uchun uni «Fayl» sifatida yuboring (📎 → Fayl).", "💡 Фото пришло в сжатом виде. Чтобы сохранить оригинал, отправьте его как «Файл» (📎 → Файл).", "💡 The photo arrived compressed. To keep the original quality, send it as a “File” (📎 → File)."],
   ["📸 Faylni ko‘rish uchun pastdagi tugmani bosing 👇", "📸 Нажмите кнопку ниже, чтобы посмотреть файл 👇", "📸 Tap the button below to view the file 👇"],
+  ["🌙 <b>Bugungi yangiliklar</b>", "🌙 <b>Новости за сегодня</b>", "🌙 <b>Today's news</b>"],
+  ["…va yana {n} ta", "…и ещё {n}", "…and {n} more"],
+  ["⏭ Keyinroq to‘ldiraman", "⏭ Заполню позже", "⏭ I'll fill it in later"],
 ]) { RU[k] = r; EN[k] = e; }

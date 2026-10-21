@@ -46,7 +46,7 @@ export function signInvite(treeId, ver) {
   return `inv_${treeId}${mac(`inv:${treeId}:${ver}`, 16)}`;
 }
 export function parseInvite(s) {
-  const m = /^inv_([a-z0-9]{12})([A-Za-z0-9_-]{16})(?:_(p\d{1,8})|_m([a-z0-9]{10})|_([nf])|_a([a-z0-9]{10}))?$/.exec(String(s || ''));
+  const m = /^inv_([a-z0-9]{12})([A-Za-z0-9_-]{16})(?:_(p\d{1,8})|_m([a-z0-9]{10})|_([nfl])|_a([a-z0-9]{10}))?$/.exec(String(s || ''));
   return m ? { treeId: m[1], sig: m[2], person: m[3] || null, media: m[4] || null, inbox: m[5] || null, item: m[6] || null } : null;
 }
 export function checkInvite(inv, ver) {

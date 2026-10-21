@@ -64,7 +64,7 @@ async function onPrivate(msg) {
       if (b.lang) lang = b.lang; // havola yuborilgan til
       return send(from.id, t(lang, '🌳 <b>{title}</b>\n\nSizdan <b>{name}</b> oilasi ma’lumotlarini to‘ldirib berish so‘ralmoqda: ismlar, tug‘ilgan sanalar, turmush o‘rtoqlari va farzandlari. Bu 5–10 daqiqa oladi.\n\nIlovada (savol-javob shaklida) yoki shu yerda bot bilan yozishib to‘ldirishingiz mumkin 👇', { title: escapeHtml(tr.title), name: escapeHtml(head.name) }),
         { reply_markup: { inline_keyboard: [[{ text: t(lang, '✍️ Ilovada to‘ldirish'), web_app: { url: `${URL_()}/?br=${br[1]}_${br[2]}` } }],
-          [{ text: t(lang, '💬 Shu yerda yozishma orqali'), callback_data: `bc:go:${br[1]}_${br[2]}` }]] } });
+          [{ text: t(lang, '💬 Shu yerda to‘ldirish'), callback_data: `bc:go:${br[1]}_${br[2]}` }]] } });
     }
     if (pinv?.item) {
       return send(from.id, t(lang, '📸 Faylni ko‘rish uchun pastdagi tugmani bosing 👇'), { reply_markup: { inline_keyboard: [[{ text: t(lang, '👀 Ko‘rish'), web_app: { url: `${URL_()}/?inv=${payload}` } }]] } });

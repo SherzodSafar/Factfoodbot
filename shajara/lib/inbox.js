@@ -82,16 +82,21 @@ export async function commentDigest(tree, doc) {
     const a = doc.albums.find((x) => x.id === it.album)?.name || '';
     albums.set(a, (albums.get(a) || 0) + c);
   }
-  if (!n) return 0;
-  const { BOT } = await import('./bot.js');
+  const { takeDigest } = await import('./notify.js');
+  const evs = await takeDigest(tree.id);
+  if (!n && !evs.length) return 0;
   const { appLink } = await import('./telegram.js');
-  const link = await appLink(`${signInvite(tree.id, tree.ver || 1)}_f`);
+  // faqat izohlar bo'lsa — «Oila izohlari», aks holda «Yangiliklar» bo'limi ochiladi
+  const link = await appLink(`${signInvite(tree.id, tree.ver || 1)}_${evs.length ? 'l' : 'f'}`);
   const names = [...albums.keys()].filter(Boolean).slice(0, 5).map((a) => `«${escapeHtml(a)}»`).join(', ');
   let sent = 0;
   for (const g of tree.groups) {
     const lang = g.lang || 'uz';
     const r = await tg('sendMessage', { chat_id: g.id, parse_mode: 'HTML', disable_web_page_preview: true,
-      text: t(lang, '💬 Bugun {albums} albomlaridagi fayllarga <b>{n} ta</b> izoh yozildi', { albums: names, n }),
+      text: [t(lang, '🌙 <b>Bugungi yangiliklar</b>'),
+        ...evs.slice(-25).map((e) => '• ' + (e.text[lang] || e.text.uz || Object.values(e.text)[0] || '')),
+        ...(evs.length > 25 ? [t(lang, '…va yana {n} ta', { n: evs.length - 25 })] : []),
+        ...(n ? [t(lang, '💬 Bugun {albums} albomlaridagi fayllarga <b>{n} ta</b> izoh yozildi', { albums: names, n })] : [])].join('\n'),
       reply_markup: { inline_keyboard: [[{ text: t(lang, '👀 Ko‘rish'), url: link }]] } }).catch(() => null);
     if (r?.ok) sent++;
   }

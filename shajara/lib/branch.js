@@ -213,7 +213,7 @@ async function step(from, s) {
   const ids = order(s);
   if (s.i >= ids.length) s.i = ids.length - 1;
   const p = W.get(ids[s.i]);
-  for (const x of [p, ...spousesOf(W, p.id)]) {
+  for (const x of s.later ? [] : [p, ...spousesOf(W, p.id)]) {
     const miss = missingOf(x, inLaw(s, x));
     if (miss.length) { s.ask = { k: miss[0], pid: x.id }; await save(from.id, s); return ask(from, s); }
   }
@@ -249,7 +249,9 @@ async function ask(from, s) {
     death: [t(L, '🤲 <b>{who}</b> qachon vafot etgan? To‘liq sanani yozing: kun.oy.yil (masalan: 05.06.2001).', { who }), null],
     other: [t(L, '<b>{who}</b> — onasi/otasi kim?', { who }), spousesOf(W_(s), a.parent).map((sp) => [{ text: sp.name, callback_data: `bc:op:${sp.id}` }])],
   }[a.k];
-  return send(from.id, Q[0], Q[1] ? [...Q[1], [{ text: t(L, '✖️ Bekor qilish'), callback_data: 'bc:cancel' }]] : undefined);
+  // yangi kishi qo'shilayotganda — bekor qilish; yetishmayotgan maydonda — keyinroq (yakunlashda baribir so'raladi)
+  const tail = a.add ? { text: t(L, '✖️ Bekor qilish'), callback_data: 'bc:cancel' } : !s.final ? { text: t(L, '⏭ Keyinroq to‘ldiraman'), callback_data: 'bc:later' } : null;
+  return send(from.id, Q[0], [...(Q[1] || []), ...(tail ? [[tail]] : [])]);
 }
 
 // yangi kishi qo'shish ketma-ketligi: ism → (farzand: jins) → tug'ilgan → hayotmi → (vafot) → (bir nechta juft: ikkinchi ota-ona)
@@ -272,6 +274,7 @@ async function answered(from, s) {
   if (n) { s.ask = n; await save(from.id, s); return ask(from, s); }
   // tuzatish (bitta maydon): marhum bo'lsa vafot sanasini ham so'raymiz — step() buni o'zi tutadi
   s.ask = null;
+  if (s.final) return finish(from, s); // yakunlashdagi tekshiruv davom etadi
   return step(from, s);
 }
 
@@ -349,6 +352,7 @@ export async function chatCallback(cq, lang) {
   const W = W_(s);
   const ids = order(s);
   const p = W.get(ids[s.i]);
+  if (act === 'later') { s.later = true; s.ask = null; return step(from, s); }
   if (act === 'cancel') {
     // qo'shilayotgan yangi kishini tashlab yuborish
     if (s.ask?.add) delete s.W[s.ask.pid];
@@ -444,6 +448,7 @@ async function finish(from, s) {
     const miss = missingOf(x, inLaw(s, x));
     if (miss.length) {
       s.ask = { k: miss[0], pid: x.id };
+      s.final = true;
       await save(from.id, s);
       await send(from.id, t(L, 'Yuborishdan oldin yetishmayotgan ma’lumotni to‘ldiring:'));
       return ask(from, s);

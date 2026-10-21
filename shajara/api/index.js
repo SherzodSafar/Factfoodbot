@@ -51,7 +51,7 @@ let oldOff = null; // eski botni uzish (bir marta)
 let capFix = null;
 // Bir martalik: avval saqlangan portretlar izohini to'liq ism sharifga almashtirish (albom va kanalda)
 async function portraitCaptions() {
-  if (await readJson('sys/portrait-cap-v1.json').catch(() => null)) return;
+  if (await readJson('sys/portrait-cap-v2.json').catch(() => null)) return;
   let n = 0;
   for (const key of await listKeys('trees/')) {
     const tr = (await readJson(key).catch(() => null))?.data;
@@ -68,14 +68,20 @@ async function portraitCaptions() {
       n++;
     }
   }
-  await writeJson('sys/portrait-cap-v1.json', { at: new Date().toISOString(), n });
+  await writeJson('sys/portrait-cap-v2.json', { at: new Date().toISOString(), n });
   console.log('portrait captions', n);
 }
-// Ism sharif: ism (familiya bilan bo'lsa ham) + otasining ismi: «Jumaboy Saparboy o'g'li»
+// Ism sharif (otasining ismi asosida). 2000-yildan oldin tug'ilganlar — familiya shaklida: «Jumaboy Saparboyev»,
+// keyingi avlod — «Sherzod Iskandar o'g'li». Ismda familiya allaqachon bo'lsa — o'zgarishsiz.
+const NEW_STYLE_FROM = 2000;
+const ovEv = (n, fem) => { const l = n.slice(-1).toLowerCase(); return n + (/[aeiou]/.test(l) ? 'yev' : l === 'y' ? 'ev' : 'ov') + (fem ? 'a' : ''); };
 const fullName = (tree, p) => {
+  const name = String(p.name || '').trim();
   const f = p.father_id && tree.persons.find((x) => x.id === p.father_id);
   const first = (f?.name || '').trim().split(/\s+/)[0];
-  return first ? `${p.name} ${first} ${p.gender === 'f' ? 'qizi' : 'o‘g‘li'}` : p.name;
+  if (!first || name.split(/\s+/).length > 1) return name;
+  const yr = Number(String(p.birth || '').slice(0, 4)) || (Number(String(f.birth || '').slice(0, 4)) + 25) || (p.deceased ? 1950 : NEW_STYLE_FROM);
+  return yr < NEW_STYLE_FROM ? `${name} ${ovEv(first, p.gender === 'f')}` : `${name} ${first} ${p.gender === 'f' ? 'qizi' : 'o‘g‘li'}`;
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 

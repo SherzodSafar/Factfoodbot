@@ -409,7 +409,7 @@ function renderMain() {
   updateBackButton();
   if (go) setTimeout(() => { S.treeView?.focus(go, { k: 1 }); personSheet(go); }, 250);
   fetchUnread();
-  if (S.goInbox) { const k = S.goInbox === 'f' ? 'fam' : 'me'; S.goInbox = null; setTimeout(() => notificationsSheet(k), 300); }
+  if (S.goInbox) { const k = { f: 'fam', l: 'log' }[S.goInbox] || 'me'; S.goInbox = null; setTimeout(() => notificationsSheet(k), 300); }
   if (S.goItem) { const id = S.goItem; S.goItem = null; setTimeout(() => openMediaComments(id, false), 300); }
   if (S.goMedia) { const mid = S.goMedia; S.goMedia = null; setTimeout(() => openMediaComments(mid), 300); }
   if (S.openProps && canEdit()) { S.openProps = false; setTimeout(branchesSheet, 300); }
@@ -1600,20 +1600,27 @@ function langSheet() {
 function inviteSheet() {
   const tr = S.tree;
   const code = savedTrees().find((x) => x.id === tr.id)?.viewCode;
-  const text = t('🌳 «{title}» — oilamiz shajarasi. Havolani bosing va o‘z ildizingizni ko‘ring!', { title: nm(tr.title) });
+  // havola va xabar tanlangan tilda (ilova ham shu tilda ochiladi: oxiridagi -ru/-en/...)
+  let lang = LANG;
+  const link = () => `${tr.invite}-${lang}`;
+  const msg = () => tIn(lang, '🌳 «{title}» — oilamiz shajarasi. Havolani bosing va o‘z ildizingizni ko‘ring!', { title: tr.title })[0];
   const sh = openSheet(`<div class="sheet-head"><div class="h2">📨 ${t('Taklif qilish')}</div><button class="icon-btn" data-close>${I.close}</button></div>
     <div class="sheet-body"><p class="muted" style="margin-top:0">${t('Bu havola orqali kirgan qarindoshlar shajarani ko‘ra oladi va albomga fayl qo‘sha oladi. Tahrirlash uchun alohida kod kerak.')}</p>
-    <div class="card" style="padding:12px 14px;word-break:break-all;font-weight:700;font-size:13px">${esc(tr.invite)}</div>
+    <div class="h3" style="margin:6px 2px 8px">🌐 ${t('Havola tili')}</div>
+    <div class="seg" data-seg="il" style="margin-bottom:10px">${Object.entries(LANG_NAMES).map(([k, v]) => `<button type="button" data-v="${k}" class="${k === lang ? 'on' : ''}">${v}</button>`).join('')}</div>
+    <div class="card" id="il-link" style="padding:12px 14px;word-break:break-all;font-weight:700;font-size:13px">${esc(link())}</div>
     <div class="actions"><button class="btn btn-primary" id="shr">${I.share} ${t('Ulashish')}</button><button class="btn btn-ghost" id="cpy">${t('Nusxa olish')}</button></div>
     ${code ? `<div class="hint" style="text-align:center;margin-top:12px">${t('Kirish kodi: {code}', { code: `<b>${esc(code)}</b>` })}</div>` : ''}
     <div class="hint" style="text-align:center;margin-top:6px">${t('Havolani bekor qilish uchun sozlamalarda kirish kodini almashtiring.')}</div></div>`);
+  bindSeg(sh);
+  sh.querySelector('[data-seg="il"]').addEventListener('change', () => { lang = segVal(sh, 'il') || lang; sh.querySelector('#il-link').textContent = link(); });
   sh.querySelector('#shr').onclick = () => {
-    const url = `https://t.me/share/url?url=${encodeURIComponent(tr.invite)}&text=${encodeURIComponent(text)}`;
+    const url = `https://t.me/share/url?url=${encodeURIComponent(link())}&text=${encodeURIComponent(msg())}`;
     if (inTelegram) openLink(url);
-    else if (navigator.share) navigator.share({ text: text + '\n' + tr.invite }).catch(() => {});
-    else copyText(tr.invite);
+    else if (navigator.share) navigator.share({ text: msg() + '\n' + link() }).catch(() => {});
+    else copyText(link());
   };
-  sh.querySelector('#cpy').onclick = () => copyText(tr.invite);
+  sh.querySelector('#cpy').onclick = () => copyText(link());
 }
 
 function linkSheet(kind) {
@@ -2580,10 +2587,13 @@ function boot() {
   document.documentElement.lang = LANG === 'uzc' ? 'uz-Cyrl' : LANG;
   const params = new URLSearchParams(location.search);
   const sp = tg?.initDataUnsafe?.start_param || '';
-  const inv = params.get('inv') || (sp.startsWith('inv_') ? sp : '');
+  let inv = params.get('inv') || (sp.startsWith('inv_') ? sp : '');
+  // taklif havolasi tili: ...-ru — birinchi marta kirayotgan bo'lsa shu tilda ochiladi
+  const il = /-(uz|uzc|ru|en)$/.exec(inv);
+  if (il) { inv = inv.slice(0, -il[0].length); let had = null; try { had = localStorage.getItem('sh_lang'); } catch {} if (!had) setLang(il[1]); }
   S.goPerson = /_(p\d{1,8})$/.exec(inv.slice(30))?.[1] || null;
   S.goMedia = /_m([a-z0-9]{10})$/.exec(inv.slice(30))?.[1] || null;
-  S.goInbox = /_([nf])$/.exec(inv.slice(30))?.[1] || null;
+  S.goInbox = /_([nfl])$/.exec(inv.slice(30))?.[1] || null;
   S.goItem = /_a([a-z0-9]{10})$/.exec(inv.slice(30))?.[1] || null;
   const startCode = params.get('code') || (!inv ? sp : '');
   const br = /^([a-z0-9]{6,20})_([A-Za-z0-9]{4,16})$/.exec(params.get('br') || '');
