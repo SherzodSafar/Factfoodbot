@@ -1,5 +1,5 @@
 // Kunlik voqealar: tug'ilgan kunlar va xotira kunlari, webhook kaliti.
-import { hashCode } from './auth.js';
+import { hashCode, signInvite } from './auth.js';
 import { todaysEvents } from './tree.js';
 import { t } from './i18n.js';
 import { escapeHtml } from './notify.js';
@@ -12,13 +12,17 @@ export function webhookSecret() {
 export function todayText(tree, lang) {
   const { births, memorials } = todaysEvents(tree);
   if (!births.length && !memorials.length) return null;
+  // ism ustiga bosilsa — ilovada o'sha shaxs profili ochiladi (/tugilgan ro'yxatidagi kabi)
+  const bot = process.env.BOT_USERNAME || 'ShajaraAiBot';
+  const inv = signInvite(tree.id, tree.ver || 1);
+  const nm = (x) => `<a href="https://t.me/${bot}?start=${inv}_${x.id}">${escapeHtml(x.name)}</a>`;
   let text = `🌳 <b>${escapeHtml(tree.title)}</b>\n`;
   if (births.length) {
-    text += `\n${t(lang, '🎂 <b>Bugun tug‘ilgan kun:</b>')}\n` + births.map((b) => '• ' + t(lang, '{name} — {age} yosh', { name: escapeHtml(b.name), age: b.age })).join('\n');
+    text += `\n${t(lang, '🎂 <b>Bugun tug‘ilgan kun:</b>')}\n` + births.map((b) => '• ' + t(lang, '{name} — {age} yosh', { name: '\u0001', age: b.age }).replace('\u0001', nm(b))).join('\n');
     text += `\n\n${t(lang, 'Tabriklashni unutmang — bir qo‘ng‘iroq ham qondoshlikni mustahkamlaydi. 💚')}`;
   }
   if (memorials.length) {
-    text += `\n\n${t(lang, '🤲 <b>Xotira kuni:</b>')}\n` + memorials.map((x) => '• ' + t(lang, '{name} — vafotiga {years} yil', { name: escapeHtml(x.name), years: x.years })).join('\n');
+    text += `\n\n${t(lang, '🤲 <b>Xotira kuni:</b>')}\n` + memorials.map((x) => '• ' + t(lang, '{name} — vafotiga {years} yil', { name: '\u0001', years: x.years }).replace('\u0001', nm(x))).join('\n');
     text += `\n\n${t(lang, 'Duo bilan yod eting.')}`;
   }
   return text;

@@ -397,12 +397,19 @@ async function route(req, res) {
         const u = await mutateAlbum(tree.id, (d) => { const x = d.items.find((y) => y.id === iid); if (x) x.sends = (x.sends || 0) + 1; return x?.sends; }).catch(() => null);
         return send(res, 200, { ok: true, sends: u?.result });
       }
+      if (parts[3] === 'c' || parts[3] === 'people') {
+        const r = await (await import('../lib/comments.js')).commentRoute({ tree, uid, role, user, nameOf, m, parts, url, readBody: () => readBody(req) });
+        if (r) return send(res, 200, r);
+      }
       if ((parts[3] === 'view' || parts[3] === 'like') && m === 'POST') {
         if (parts[3] === 'like' && !uid) return send(res, 200, { ok: true });
         const r = await mutateAlbum(tree.id, (d) => {
           const x = d.items.find((y) => y.id === iid);
           if (!x) return null;
-          if (parts[3] === 'view') x.views = (x.views || (x.seen || []).length) + 1;
+          if (parts[3] === 'view') {
+            x.views = (x.views || (x.seen || []).length) + 1;
+            if (uid && !(x.seen ||= []).includes(uid)) x.seen.push(uid);
+          }
           else {
             const arr = (x.likes ||= []);
             const i = arr.indexOf(uid);
@@ -555,14 +562,17 @@ async function route(req, res) {
       await mutateTree(tok.treeId, (t) => { t.branches = { ...(t.branches || {}), [bid]: { head: head.id, at: new Date().toISOString(), by: nameOf(user) || '', claimed: null } }; });
       return send(res, 200, { bid, link: `https://t.me/${(await import('../lib/bot.js')).BOT()}?start=br_${tree.id}_${bid}` });
     }
+    const B = await import('../lib/branch.js');
     if (m === 'GET') {
       const byId = new Map(tree.persons.map((p) => [p.id, p]));
       const botName = (await import('../lib/bot.js')).BOT();
       const props = (await readJson(`props/${tree.id}.json`))?.data?.items || [];
       return send(res, 200, {
-        branches: Object.entries(tree.branches || {}).filter(([, b]) => !b.revoked).map(([bid, b]) => ({ bid, head: b.head, headName: byId.get(b.head)?.name || '?', claimedName: b.claimedName || null, at: b.at,
+        branches: Object.entries(tree.branches || {}).filter(([, b]) => !b.revoked && !(b.auto && !b.claimed)).map(([bid, b]) => ({ bid, head: b.head, headName: byId.get(b.head)?.name || '?', claimedName: b.claimedName || null, at: b.at,
+          parentName: b.parent ? byId.get(tree.branches[b.parent]?.head)?.name || null : null, pct: B.completeness(tree, branchScope(tree, b.head)).pct,
           link: `https://t.me/${botName}?start=br_${tree.id}_${bid}` })),
         proposals: props.filter((x) => x.status === 'pending').map((x) => ({ ...x, headName: byId.get(x.head)?.name || '?' })),
+        complete: (() => { const c = B.completeness(tree); return { pct: c.pct, total: c.total, missing: c.missing.slice(0, 300) }; })(),
       });
     }
     if (m === 'DELETE' && parts[1]) {
@@ -592,31 +602,21 @@ async function route(req, res) {
   if (parts[0] === 'br' && parts[1] && parts[2]) {
     const user = verifyInitData(req.headers['x-init-data']);
     if (!user) throw new HttpError(401, 'Havolani Telegram ichida oching');
-    const tree = await loadTree(parts[1]).catch(() => null);
-    const b = tree?.branches?.[parts[2]];
-    if (!tree || !b || b.revoked) throw new HttpError(404, 'Havola eskirgan yoki bekor qilingan');
-    const uid = String(user.id);
-    if (b.claimed && b.claimed !== uid) throw new HttpError(403, 'Bu havola boshqa kishiga biriktirilgan. Shajara egasidan yangi havola so‘rang');
-    if (!b.claimed) await mutateTree(tree.id, (t) => { t.branches[parts[2]].claimed = uid; t.branches[parts[2]].claimedName = nameOf(user); });
+    const B = await import('../lib/branch.js');
+    const { tree, b } = await B.claimBranch(parts[1], parts[2], user);
     if (m === 'GET') {
-      const scope = branchScope(tree, b.head);
-      const persons = tree.persons.filter((p) => scope.has(p.id)).map((p) => ({ id: p.id, name: p.name, gender: p.gender, birth: p.birth, death: p.death, deceased: !!p.deceased,
-        father_id: p.father_id, mother_id: p.mother_id, spouse_ids: p.spouse_ids || [] }));
+      const persons = B.scopePersons(tree, b.head);
       return send(res, 200, { title: tree.title, head: b.head, persons });
     }
-    if (m === 'POST') {
-      if (!await rateLimit('br:' + uid, 10, 60 * 60e3)) throw new HttpError(429, 'Juda ko‘p yuborildi. Birozdan so‘ng urinib ko‘ring');
+    if (m === 'POST' && parts[3] === 'sub') {
+      if (!await rateLimit('brsub:' + user.id, 20, 60 * 60e3)) throw new HttpError(429, 'Juda ko‘p urinish');
       const body = await readBody(req);
-      const ops = (Array.isArray(body.ops) ? body.ops : []).slice(0, 500);
-      if (!ops.length) throw new HttpError(400, 'O‘zgarish yo‘q');
-      const id = randomId(10);
-      const key = `props/${tree.id}.json`;
-      const item = { id, bid: parts[2], head: b.head, by: { id: uid, name: nameOf(user) }, at: new Date().toISOString(), status: 'pending', ops };
-      if (!(await updateJson(key, (d) => { d.items = [item, ...(d.items || [])].slice(0, 300); }))) await writeJson(key, { items: [item] });
-      const adds = ops.filter((o) => o.op === 'add').length;
-      const head = tree.persons.find((p) => p.id === b.head)?.name || '';
-      const { notifyEditors } = await import('../lib/notify.js');
-      await notifyEditors(tree, `📨 <b>${esc(head)}</b> shoxi bo‘yicha yangi taklif: +${adds} kishi, ${ops.length - adds} tuzatish.\n👤 ${esc(nameOf(user))}\n\nKo‘rib chiqish: Ko‘proq → «Shox havolalari va takliflar».`).catch(() => {});
+      return send(res, 200, await B.subBranch(tree, parts[2], b, user, body.head));
+    }
+    if (m === 'POST') {
+      if (!await rateLimit('br:' + user.id, 10, 60 * 60e3)) throw new HttpError(429, 'Juda ko‘p yuborildi. Birozdan so‘ng urinib ko‘ring');
+      const body = await readBody(req);
+      await B.submitProposal(tree, parts[2], b, user, body.ops);
       return send(res, 200, { ok: true });
     }
   }
@@ -771,6 +771,12 @@ async function route(req, res) {
       if (!tr) continue;
       if (!todayText(tr, 'uz')) continue;
       sent += await notify(tr, 'bday', (lang) => todayText(tr, lang));
+    }
+    // to'liq bo'lmagan ma'lumotlar haqida egasiga va shox mas'ullariga eslatma
+    const { dailyReminders } = await import('../lib/branch.js');
+    for (const key of await listKeys('trees/')) {
+      const tr = (await readJson(key).catch(() => null))?.data;
+      if (tr?.persons?.length) sent += await dailyReminders(tr).catch((e) => (console.error('remind', e), 0));
     }
     return send(res, 200, { ok: true, sent });
   }

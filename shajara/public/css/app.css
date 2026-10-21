@@ -632,3 +632,33 @@ body:has(#sheet-root > *) .ai-fab, body:has(.rv) .ai-fab { opacity: 0; pointer-e
 .pr-card { margin: 8px 0; }
 .pr-ops { margin: 8px 0; font-size: 13px; max-height: 220px; overflow: auto; }
 .pr-line { padding: 2px 0; border-bottom: 1px dashed color-mix(in srgb, var(--ink) 10%, transparent); }
+
+/* ---- Albom izohlari va ro'yxatlar */
+body:has(.rv) #sheet-root .backdrop { z-index: 85; }
+body:has(.rv) #sheet-root .sheet { z-index: 86; }
+.cm-sheet { max-height: 82vh; }
+.cm-list { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 4px 18px 8px; min-height: 120px; }
+.cm { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; }
+.cm.cm-reply { padding-left: 42px; }
+.cm-av { flex: none; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; color: var(--primary-ink); background: linear-gradient(135deg, var(--primary), var(--gold)); }
+.cm-reply .cm-av { width: 26px; height: 26px; font-size: 12px; }
+.cm-h { font-size: 13px; }
+.cm-name { border: 0; background: none; padding: 0; font: inherit; font-weight: 700; color: var(--ink); cursor: pointer; }
+.cm-t { white-space: pre-wrap; word-break: break-word; margin: 2px 0; }
+.cm-a { display: flex; gap: 14px; }
+.cm-a button { border: 0; background: none; padding: 0; font-size: 12px; font-weight: 600; color: var(--muted); cursor: pointer; }
+.cm-like { flex: none; border: 0; background: none; color: var(--muted); display: flex; flex-direction: column; align-items: center; font-size: 11px; cursor: pointer; padding: 4px; }
+.cm-like svg { width: 16px; height: 16px; }
+.cm-like.on { color: #e0245e; }
+.cm-bar { border-top: 1px solid var(--line); padding: 8px 14px 10px; }
+.cm-mode { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--muted); padding: 0 4px 6px; }
+.cm-mode button { border: 0; background: none; color: var(--muted); cursor: pointer; }
+.cm-in { display: flex; gap: 8px; align-items: flex-end; }
+.cm-in textarea { flex: 1; resize: none; max-height: 120px; margin: 0; }
+.cm-send { flex: none; padding: 0 16px; }
+.ppl { max-height: 65vh; overflow-y: auto; padding: 0 18px 16px; }
+.ppl-row { display: flex; gap: 10px; align-items: center; width: 100%; padding: 10px 2px; border: 0; border-bottom: 1px solid var(--line); background: none; color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
+.rv-b { -webkit-touch-callout: none; user-select: none; }
+.bw-death { margin-top: 6px; }
+.input.bad { border-color: var(--danger); box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 20%, transparent); }
+[data-pp] { cursor: pointer; }

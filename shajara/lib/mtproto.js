@@ -77,3 +77,27 @@ export async function mtprotoPart(fileId, start, end, size, ch) {
   const buf = Buffer.concat(chunks);
   return { buffer: buf.subarray(start - from, end - from + 1), total: size };
 }
+
+// ---- Kanal xabarlari matnini o'qish (albom izohlari uchun)
+const chHash = new Map(); // channelId -> access_hash (bot uchun 0 bilan getChannels haqiqiy hashni qaytaradi)
+async function inputChannel(c, chat) {
+  const id = String(chat).replace(/^-100/, '');
+  if (!chHash.has(id)) {
+    const r = await c.invoke(new Api.channels.GetChannels({ id: [new Api.InputChannel({ channelId: bigInt(id), accessHash: bigInt(0) })] }));
+    const ch = r.chats?.find((x) => String(x.id) === id);
+    chHash.set(id, ch?.accessHash ?? bigInt(0));
+  }
+  return new Api.InputChannel({ channelId: bigInt(id), accessHash: chHash.get(id) });
+}
+
+/** chat — kanal id (-100…), ids — xabar raqamlari. Qaytaradi: Map(mid -> matn). */
+export async function readChannelTexts(chat, ids) {
+  const c = await client();
+  const channel = await inputChannel(c, chat);
+  const out = new Map();
+  for (let i = 0; i < ids.length; i += 100) {
+    const r = await c.invoke(new Api.channels.GetMessages({ channel, id: ids.slice(i, i + 100).map((id) => new Api.InputMessageID({ id })) }));
+    for (const msg of r.messages || []) if (msg.className === 'Message') out.set(msg.id, msg.message || '');
+  }
+  return out;
+}

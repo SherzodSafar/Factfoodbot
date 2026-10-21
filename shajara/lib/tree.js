@@ -349,17 +349,17 @@ export function todaysEvents(tree, date = new Date()) {
   const memorials = [];
   for (const p of tree.persons) {
     if (p.birth?.length === 10 && p.birth.slice(5) === md && !p.deceased) {
-      births.push({ name: p.name, age: year - Number(p.birth.slice(0, 4)) });
+      births.push({ id: p.id, name: p.name, age: year - Number(p.birth.slice(0, 4)) });
     }
     if (p.death?.length === 10 && p.death.slice(5) === md) {
-      memorials.push({ name: p.name, years: year - Number(p.death.slice(0, 4)) });
+      memorials.push({ id: p.id, name: p.name, years: year - Number(p.death.slice(0, 4)) });
     }
   }
   return { births, memorials };
 }
 
 // ---------------------------------------------------------------- Fayldan import --
-function flexDate(v) {
+export function flexDate(v) {
   const s = String(v ?? '').trim();
   if (!s) return null;
   let m;
@@ -754,8 +754,8 @@ export function applyProposal(tree, headId, ops, who) {
     const f = o.f || {};
     if ('name' in f && cleanText(f.name, 80)) p.name = cleanText(f.name, 80);
     if ('gender' in f) p.gender = genderOf(f.gender);
-    if ('birth' in f) p.birth = date(f.birth);
-    if ('death' in f) p.death = date(f.death);
+    if ('birth' in f && date(f.birth)) p.birth = date(f.birth);
+    if ('death' in f && date(f.death)) p.death = date(f.death);
     if ('deceased' in f) p.deceased = !!f.deceased || !!p.death;
     updated++;
   }

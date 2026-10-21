@@ -61,8 +61,12 @@ async function onPrivate(msg) {
       const b = tr?.branches?.[br[2]];
       const head = b && !b.revoked && tr.persons.find((p) => p.id === b.head);
       if (!head) return send(from.id, t(lang, 'Havola eskirgan yoki bekor qilingan.'));
-      return send(from.id, t(lang, '🌳 <b>{title}</b>\n\nSizdan <b>{name}</b> oilasi ma’lumotlarini to‘ldirib berish so‘ralmoqda: ismlar, tug‘ilgan sanalar, turmush o‘rtoqlari va farzandlari. Bu 5–10 daqiqa oladi.\n\nPastdagi tugmani bosing 👇', { title: escapeHtml(tr.title), name: escapeHtml(head.name) }),
-        { reply_markup: { inline_keyboard: [[{ text: t(lang, '✍️ To‘ldirishni boshlash'), web_app: { url: `${URL_()}/?br=${br[1]}_${br[2]}` } }]] } });
+      return send(from.id, t(lang, '🌳 <b>{title}</b>\n\nSizdan <b>{name}</b> oilasi ma’lumotlarini to‘ldirib berish so‘ralmoqda: ismlar, tug‘ilgan sanalar, turmush o‘rtoqlari va farzandlari. Bu 5–10 daqiqa oladi.\n\nIlovada (savol-javob shaklida) yoki shu yerda bot bilan yozishib to‘ldirishingiz mumkin 👇', { title: escapeHtml(tr.title), name: escapeHtml(head.name) }),
+        { reply_markup: { inline_keyboard: [[{ text: t(lang, '✍️ Ilovada to‘ldirish'), web_app: { url: `${URL_()}/?br=${br[1]}_${br[2]}` } }],
+          [{ text: t(lang, '💬 Shu yerda yozishma orqali'), callback_data: `bc:go:${br[1]}_${br[2]}` }]] } });
+    }
+    if (pinv?.media) {
+      return send(from.id, t(lang, '💬 Izohlarni o‘qish uchun pastdagi tugmani bosing 👇'), { reply_markup: { inline_keyboard: [[{ text: t(lang, '💬 O‘qish'), web_app: { url: `${URL_()}/?inv=${payload}` } }]] } });
     }
     if (pinv?.person) {
       const tr = await loadTree(pinv.treeId).catch(() => null);
@@ -78,6 +82,11 @@ async function onPrivate(msg) {
       `<i>«${escapeHtml(q.t)}»</i>\n— ${escapeHtml(q.a)}\n\n` +
       t(lang, extra ? 'Sizni shajaraga taklif qilishdi — pastdagi tugmani bosing 👇' : 'Boshlash uchun pastdagi tugmani bosing 👇'),
       { reply_markup: appButton(lang, extra) });
+  }
+  // shox ma'lumotlarini bot yozishmasi orqali to'ldirish
+  if (user?.brchat && Date.now() - user.brchat < 3 * 864e5 && text && (!cmd || cmd === '/bekor' || cmd === '/cancel')) {
+    const { chatText } = await import('./branch.js');
+    if (await chatText(from, text)) return;
   }
   if (cmd === '/admin' && String(process.env.ADMIN_IDS || '').split(',').map((x) => x.trim()).includes(String(from.id))) {
     return send(from.id, '🛠 Admin panel', { reply_markup: { inline_keyboard: [[{ text: '🛠 Admin', web_app: { url: `${URL_()}/admin.html` } }]] } });
@@ -335,6 +344,7 @@ async function onCallback(cq) {
   const user = await getUser(from.id);
   const lang = user?.lang || normLang(from.language_code);
 
+  if (data.startsWith('bc:')) return (await import('./branch.js')).chatCallback(cq, lang);
   if (data.startsWith('lang:')) {
     const l = data.slice(5);
     if (!LANGS.includes(l)) return answer();
