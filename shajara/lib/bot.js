@@ -55,7 +55,7 @@ async function onPrivate(msg) {
     const q = randomQuote();
     let extra = '';
     const pinv = parseInvite(payload);
-    const br = /^br_([a-z0-9]{6,20})_([A-Za-z0-9]{4,16})$/.exec(payload);
+    const br = /^br_([a-z0-9]{6,20})_([A-Za-z0-9]{4,16})$/.exec(payload) || (payload.startsWith('d_') ? await (await import('./branch.js')).resolveDlg(payload) : null);
     if (br) {
       const tr = await loadTree(br[1]).catch(() => null);
       const b = tr?.branches?.[br[2]];

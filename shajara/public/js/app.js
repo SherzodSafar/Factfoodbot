@@ -414,15 +414,27 @@ function renderMain() {
   if (S.openProps && canEdit()) { S.openProps = false; setTimeout(branchesSheet, 300); }
 }
 
-function unreadCount() {
+// o'qilmaganlar: me — shaxsiy (server), fam — oila izohlari, log — shajara yangiliklari
+function unreadParts() {
   const seen = store.get('sh_seen_' + S.tree.id, null);
-  return (S.inboxUnread || 0) + (seen ? (S.tree.log || []).filter((l) => l.at > seen).length : 0);
+  return { me: S.inboxUnread || 0, fam: S.famUnread || 0, log: seen ? (S.tree.log || []).filter((l) => l.at > seen).length : 0 };
 }
-function refreshBell() { document.querySelector('#bell .dot')?.classList.toggle('hidden', !unreadCount()); }
-// shaxsiy bildirishnomalar soni (serverdan)
+function unreadCount() { const u = unreadParts(); return u.me + u.fam + u.log; }
+function refreshBell() {
+  const d = document.querySelector('#bell .dot');
+  if (!d) return;
+  const n = unreadCount();
+  d.classList.toggle('hidden', !n);
+  d.classList.toggle('n', n > 0);
+  d.textContent = n ? (n > 99 ? '99+' : n) : '';
+}
 async function fetchUnread() {
-  if (!inTelegram) return;
-  try { S.inboxUnread = (await api('inbox?n=1')).unread || 0; refreshBell(); } catch {}
+  const k = 'sh_fs_' + S.tree.id;
+  if (!store.get(k, null)) store.set(k, new Date().toISOString());
+  try {
+    const r = await api('inbox?n=1&fs=' + encodeURIComponent(store.get(k, '')));
+    S.inboxUnread = r.unread || 0; S.famUnread = r.fam || 0; refreshBell();
+  } catch {}
 }
 
 function refreshChrome() {
@@ -1466,7 +1478,9 @@ const ACT = {
 };
 
 // Bildirishnomalar bo'limi (Instagram uslubi): Menga · Oila izohlari · Yangiliklar · Sozlamalar
-function notificationsSheet(tab = 'me') {
+function notificationsSheet(tab) {
+  const U = unreadParts();
+  tab ||= U.me ? 'me' : U.fam ? 'fam' : U.log ? 'log' : 'me';
   const tr = S.tree;
   const seen = store.get('sh_seen_' + tr.id, '');
   const log = tr.log || [];
@@ -1474,7 +1488,7 @@ function notificationsSheet(tab = 'me') {
   const sw = (k, label) => `<label class="row card" style="padding:12px 14px;margin-bottom:8px"><div class="grow" style="font-weight:700">${label}</div><span class="switch"><input type="checkbox" data-n="${k}" ${(n[k] ?? true) ? 'checked' : ''}><span></span></span></label>`;
   const tabs = [['me', '🔔 ' + t('Menga')], ['fam', '💬 ' + t('Oila izohlari')], ['log', '🌳 ' + t('Yangiliklar')], ['set', '⚙️']];
   const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">🔔 ${t('Bildirishnomalar')}</div><button class="icon-btn" data-close>${I.close}</button></div>
-    <div class="chips ib-tabs">${tabs.map(([k, l]) => `<button class="chip" data-ib="${k}">${l}</button>`).join('')}</div>
+    <div class="chips ib-tabs">${tabs.map(([k, l]) => `<button class="chip" data-ib="${k}">${l}${U[k] ? `<span class="ib-n">${U[k]}</span>` : ''}</button>`).join('')}</div>
     <div class="sheet-body" id="ib-body"></div>`);
   const body = sh.querySelector('#ib-body');
   const KIND = { like: '❤️ {who} faylingizni yoqtirdi', cm: '💬 {who} faylingizga izoh yozdi', re: '↩️ {who} izohingizga javob yozdi', cmlike: '❤️ {who} izohingizni yoqtirdi' };
@@ -1484,7 +1498,8 @@ function notificationsSheet(tab = 'me') {
     const who = x.who || c?.by;
     const f = S.album?.items.find((y) => y.id === x.iid);
     const head = x.kind ? t(KIND[x.kind], { who: `<b>${esc(shortName(x.who.name))}</b>` }) : `<b>${esc(shortName(c.name))}</b>`;
-    return `<div class="ib ${x.isNew ? 'new' : ''}" data-i="${i}">
+    const isNew = x.isNew || (tab === 'fam' && S.famSeen && c?.at > S.famSeen && !c.mine);
+    return `<div class="ib ${isNew ? 'new' : ''}" data-i="${i}">
       <button class="cm-avb" data-who="${i}">${uAvatar(x.kind ? who : { ...c.by, name: c.name })}</button>
       <div class="grow ib-main" data-open="${i}"><div class="small">${head} <span class="muted">· ${relTime(x.at || c.at)}</span></div>
         <div class="small muted ellipsis">📁 ${esc(nm(x.album))}</div>
@@ -1499,6 +1514,9 @@ function notificationsSheet(tab = 'me') {
   const load = async (k) => {
     tab = k;
     sh.querySelectorAll('[data-ib]').forEach((b) => b.classList.toggle('on', b.dataset.ib === k));
+    // bo'lim ochildi — uning soni o'qilgan hisoblanadi (yangilari ro'yxatda belgilanib turadi)
+    sh.querySelector(`[data-ib="${k}"] .ib-n`)?.remove();
+    if (k === 'fam') { S.famSeen = store.get('sh_fs_' + tr.id, ''); store.set('sh_fs_' + tr.id, new Date().toISOString()); S.famUnread = 0; refreshBell(); }
     if (k === 'log') {
       body.innerHTML = `<div class="card" style="padding:6px 0">${log.length ? log.slice(0, 60).map((l) => {
         const [ic, tx] = ACT[l.action] || ['•', l.action];
@@ -2054,6 +2072,23 @@ function personSheet(id) {
     } catch (err) { toast(err.message, true); }
   });
   sh.querySelector('#ph')?.addEventListener('click', () => photoMenu(p));
+  // rasmga bosilsa — to'liq hajmda (albomdagi asl nusxa, bo'lmasa avatarning o'zi)
+  sh.querySelector('.p-hero .avatar img')?.closest('.avatar').addEventListener('click', () => openPortrait(p));
+}
+async function openPortrait(p) {
+  if (p.photoItem) {
+    try {
+      await loadAlbum(true);
+      if (S.album.items.some((x) => x.id === p.photoItem)) { viewerOpen?.(); return openViewer([p.photoItem], 0); }
+    } catch {}
+  }
+  const src = photoUrl(p);
+  if (!src) return;
+  const box = document.createElement('div');
+  box.className = 'pz';
+  box.innerHTML = `<img src="${src}" alt=""><button class="rv-x">${I.close}</button>`;
+  box.onclick = () => box.remove();
+  document.body.append(box);
 }
 
 // ------------------------------------------------------------ Surat --------
@@ -2069,7 +2104,8 @@ function photoMenu(p) {
     sh.querySelector('label.btn').innerHTML = `<span class="spin"></span> ${t('Yuklanmoqda…')}`;
     try {
       const data = await resizeImage(file, 640, true);
-      const r = await api(`person/${p.id}/photo`, { method: 'POST', body: { data } });
+      const full = await resizeImage(file, 1600, false).catch(() => null); // albomdagi «Portretlar» uchun
+      const r = await api(`person/${p.id}/photo`, { method: 'POST', body: { data, full } });
       closeAllSheets();
       onTreeChanged(r.tree);
       toast(t('Surat qo‘yildi 📸'));

@@ -219,6 +219,24 @@ async function route(req, res) {
     } else if (parts[2] === 'photo' && (m === 'POST' || m === 'DELETE')) {
       const body = m === 'POST' ? await readBody(req) : {};
       const file = m === 'POST' ? await savePhoto(t0.id, pid, body.data) : null;
+      // asl (to'liq) rasm albomning «Portretlar» papkasiga ham saqlanadi, izohi — shaxs ismi
+      let item = null;
+      if (file && body.full && t0.channel?.id) {
+        try {
+          const mm = /^data:image\/(jpeg|png|webp);base64,(.+)$/.exec(String(body.full));
+          const pname = t0.persons.find((x) => x.id === pid)?.name || '';
+          if (mm) {
+            const sent = await tgUpload('sendPhoto', { chat_id: t0.channel.id, caption: `📁 <b>Portretlar</b>\n${escapeHtml(pname)}\n— ${escapeHtml(actor || '')}`, parse_mode: 'HTML' }, 'photo', Buffer.from(mm[2], 'base64'), 'portrait.jpg', 'image/' + mm[1]);
+            const md = sent.ok && mediaOf(sent.result);
+            if (md) {
+              const doc0 = await loadAlbum(t0.id);
+              const albumId = doc0.albums.find((a) => a.name.trim().toLowerCase() === 'portretlar')?.id;
+              await addToAlbum(t0, { albumId, albumName: 'Portretlar', caption: pname, media: [{ ...md, ch: { chat: t0.channel.id, msg: sent.result.message_id } }], by: { id: uid, name: actor || 'Tahrirchi' }, inChannel: true });
+              item = (await loadAlbum(t0.id)).items.find((x) => x.ch?.msg === sent.result.message_id)?.id || null;
+            }
+          }
+        } catch (e) { console.error('portrait', e?.message); }
+      }
       let old = null;
       let name = '';
       r = await mutateTree(t0.id, (t) => {
@@ -228,6 +246,7 @@ async function route(req, res) {
         old = p.photo;
         name = p.name;
         p.photo = file;
+        p.photoItem = item; // albomdagi to'liq rasm (yo'q bo'lsa null)
         t.updatedAt = new Date().toISOString();
         t.log = t.log || [];
         t.log.unshift({ at: t.updatedAt, who: actor || 'Tahrirchi', action: file ? 'photo' : 'photo-del', name: p.name });
@@ -333,7 +352,7 @@ async function route(req, res) {
   if (path === 'inbox' && m === 'GET') {
     const { tree, uid } = await authTree(req);
     const { inboxRoute } = await import('../lib/comments.js');
-    return send(res, 200, await inboxRoute({ tree, uid, k: url.searchParams.get('k'), onlyCount: url.searchParams.get('n') === '1' }));
+    return send(res, 200, await inboxRoute({ tree, uid, k: url.searchParams.get('k'), onlyCount: url.searchParams.get('n') === '1', famSince: url.searchParams.get('fs') || null }));
   }
 
   // Telegram profil rasmi (izoh, like va ko'rganlar ro'yxatlari uchun)

@@ -2,7 +2,7 @@
 // zanjirli topshirish, to'liqlik hisobi va kunlik eslatmalar.
 import { readJson, writeJson, updateJson, deleteKey } from './store.js';
 import { loadTree, mutateTree, branchScope, flexDate, HttpError } from './tree.js';
-import { randomId } from './auth.js';
+import { randomId, signShort } from './auth.js';
 import { tg } from './telegram.js';
 import { escapeHtml as esc } from './notify.js';
 import { t } from './i18n.js';
@@ -12,6 +12,18 @@ const BOT = () => process.env.BOT_USERNAME || 'ShajaraAiBot';
 const URL_ = () => (process.env.PUBLIC_URL || '').replace(/\/$/, '');
 const nameOf = (u) => [u?.first_name, u?.last_name].filter(Boolean).join(' ') || u?.username || 'Telegram';
 export const fullDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''));
+/** Kechiktirilgan topshirish havolasi: d_<tree>_<bid>_<pid>_<imzo> — ochilganda zanjir shoxi yaratiladi. */
+export const dlgLink = (treeId, bid, pid) => `https://t.me/${BOT()}?start=d_${treeId}_${bid}_${pid}_${signShort(`${treeId}:${bid}:${pid}`)}`;
+export async function resolveDlg(payload) {
+  const m = /^d_([a-z0-9]{6,20})_([A-Za-z0-9]{4,16})_(p\d{1,8})_([A-Za-z0-9_-]{10})$/.exec(payload);
+  if (!m || signShort(`${m[1]}:${m[2]}:${m[3]}`) !== m[4]) return null;
+  const tree = await loadTree(m[1]).catch(() => null);
+  const b = tree?.branches?.[m[2]];
+  if (!b || b.revoked || !branchScope(tree, b.head).has(m[3])) return null;
+  const ex = Object.entries(tree.branches).find(([, x]) => !x.revoked && x.head === m[3] && x.parent === m[2]);
+  const nb = ex ? ex[0] : await createBranch(tree.id, m[3], b.claimedName || 'Telegram', { parent: m[2], byUid: b.claimed || null, ...(b.lang ? { lang: b.lang } : {}) });
+  return [null, tree.id, nb];
+}
 export const brLink = (treeId, bid) => `https://t.me/${BOT()}?start=br_${treeId}_${bid}`;
 
 // ---------------------------------------------------------------- to'liqlik --
@@ -214,7 +226,10 @@ async function step(from, s) {
   const kb = [
     [{ text: t(L, '✅ To‘g‘ri, keyingisi'), callback_data: 'bc:ok' }],
     [{ text: t(L, '➕ Farzand'), callback_data: 'bc:kid' }, { text: t(L, '➕ Turmush o‘rtog‘i'), callback_data: 'bc:sp' }],
-    [{ text: t(L, '✏️ Tuzatish'), callback_data: 'bc:edit' }, { text: t(L, '🔗 Boshqaga topshirish'), callback_data: 'bc:dlg' }],
+    [{ text: t(L, '✏️ Tuzatish'), callback_data: 'bc:edit' }, isNew(p.id) || p.id === s.head
+      ? { text: t(L, '🔗 Boshqaga topshirish'), callback_data: 'bc:dlg' }
+      // tugmaning o'zi Telegram chatlar ro'yxatini ochadi; havola ochilganda shox yaratiladi (lazyLink)
+      : { text: t(L, '🔗 Boshqaga topshirish'), url: `https://t.me/share/url?url=${encodeURIComponent(dlgLink(s.tree, s.bid, p.id))}&text=${encodeURIComponent(t(L, 'Assalomu alaykum! «{title}» shajarasidagi {name} oilasi ma’lumotlarini to‘ldirib bersangiz. Havola:', { title: s.title, name: p.name }))}` }],
     [...(s.i > 0 ? [{ text: t(L, '⬅️ Orqaga'), callback_data: 'bc:prev' }] : []), { text: t(L, '📨 Yakunlash'), callback_data: 'bc:fin' }],
   ];
   return send(from.id, text, kb);

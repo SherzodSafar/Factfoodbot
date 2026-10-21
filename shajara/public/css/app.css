@@ -690,3 +690,14 @@ body:has(.rv) #sheet-root .sheet { z-index: 86; }
 /* rasm/videoni bosib turganda tizim menyusi va belgilash chiqmasin */
 img, video { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; -webkit-user-drag: none; }
 .tile, .rv { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+
+/* Android Telegram uzoq bosishda rasm havolasini o'zi ko'rsatadi — rasm bosilmaydigan bo'lsa menyu chiqmaydi (bosish ota elementga o'tadi) */
+img { pointer-events: none; }
+/* o'qilmaganlar soni */
+.bell .dot.n { width: auto; height: auto; min-width: 18px; top: 3px; right: 2px; padding: 0 4px; border-radius: 10px; font: 800 10.5px/14px system-ui, sans-serif; color: #fff; text-align: center; font-style: normal; }
+.ib-n { display: inline-block; min-width: 18px; margin-left: 4px; padding: 0 5px; border-radius: 9px; background: var(--danger); color: #fff; font-size: 11px; font-weight: 800; line-height: 18px; text-align: center; }
+/* portret — to'liq hajm */
+.pz { position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.92); display: grid; place-items: center; animation: fadeIn .2s ease both; }
+.pz img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.pz .rv-x { position: absolute; top: calc(12px + env(safe-area-inset-top)); left: 12px; }
+.p-hero .avatar { cursor: zoom-in; }

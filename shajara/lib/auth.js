@@ -14,6 +14,8 @@ export function hashCode(code) {
 }
 
 const b64url = (buf) => Buffer.from(buf).toString('base64url');
+/** Qisqa imzo (start payload'lari uchun). */
+export const signShort = (s, len = 10) => mac('s:' + s, len);
 const mac = (s, len) => b64url(crypto.createHmac('sha256', SECRET).update(s).digest()).slice(0, len);
 
 function safeEqual(a, b) {

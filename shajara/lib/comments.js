@@ -124,7 +124,7 @@ export async function commentRoute({ tree, uid, role, user, nameOf, m, parts, re
 const fileOf = (doc, it) => ({ iid: it.id, album: doc.albums.find((a) => a.id === it.album)?.name || '', type: it.type, by: it.by || null });
 
 /** GET /api/inbox: k=me — shaxsiy hodisalar; k=fam — oiladagi barcha izohlar (yangisi tepada). */
-export async function inboxRoute({ tree, uid, k, onlyCount }) {
+export async function inboxRoute({ tree, uid, k, onlyCount, famSince }) {
   const doc = await loadAlbum(tree.id);
   const chat = tree.channel?.id;
   const byIid = new Map(doc.items.map((x) => [x.id, x]));
@@ -132,7 +132,9 @@ export async function inboxRoute({ tree, uid, k, onlyCount }) {
     if (!uid) return { unread: 0 };
     const ib = await getInbox(uid);
     const seen = ib.read?.[tree.id] || '';
-    return { unread: ib.items.filter((x) => x.tree === tree.id && x.at > seen).length };
+    const fs = famSince || '9';
+    const fam = doc.items.reduce((n, it) => n + (it.cm || []).filter((c) => c.at > fs && c.uid !== uid).length, 0);
+    return { unread: ib.items.filter((x) => x.tree === tree.id && x.at > seen).length, fam };
   }
   // izoh ma'lumoti (matn kanaldan)
   const view = async (pairs) => {
