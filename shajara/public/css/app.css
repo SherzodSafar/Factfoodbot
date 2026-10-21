@@ -615,3 +615,20 @@ body:has(#sheet-root > *) .ai-fab, body:has(.rv) .ai-fab { opacity: 0; pointer-e
 .logo-img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 22%; }
 #home .logo-img { width: 30px; height: 30px; border-radius: 9px; }
 .onb-legal { text-align: center; line-height: 1.4; } .onb-legal a { color: inherit; text-decoration: underline; }
+
+/* ---- Shox sehrgari va takliflar */
+.bw-prog { height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--ink) 10%, transparent); overflow: hidden; margin: 6px 0 12px; }
+.bw-prog i { display: block; height: 100%; background: var(--primary); transition: width .3s; }
+.bw-person { margin-bottom: 10px; }
+.bw-row { position: relative; padding: 10px; margin: 8px 0; border-radius: 12px; background: color-mix(in srgb, var(--ink) 5%, transparent); }
+.bw-row .input { margin-bottom: 6px; }
+.bw-sub { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.bw-sub > .input { flex: 1 1 120px; min-width: 0; margin-bottom: 0; }
+.bw-dec { display: flex; align-items: center; gap: 4px; font-size: 13px; white-space: nowrap; }
+.bw-del { position: absolute; top: 6px; right: 6px; border: 0; background: none; color: var(--muted, #888); font-size: 16px; cursor: pointer; padding: 4px; }
+.bw-warn { margin-top: 6px; font-size: 12px; color: #c77700; }
+.bw-nav { display: flex; gap: 8px; margin-top: 14px; }
+.bw-nav .btn { flex: 1; }
+.pr-card { margin: 8px 0; }
+.pr-ops { margin: 8px 0; font-size: 13px; max-height: 220px; overflow: auto; }
+.pr-line { padding: 2px 0; border-bottom: 1px dashed color-mix(in srgb, var(--ink) 10%, transparent); }

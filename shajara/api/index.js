@@ -6,11 +6,11 @@ import {
   verifyToken, signToken, verifyInitData, hashCode, normalizeCode, rateLimit, signInvite, parseInvite, checkInvite,
   signMedia, verifyMedia, randomCode, randomId,
 } from '../lib/auth.js';
-import { readJson, writeJson, getFile, deleteKey, listKeys } from '../lib/store.js';
+import { readJson, writeJson, getFile, deleteKey, listKeys, updateJson } from '../lib/store.js';
 import {
   HttpError, findTreeByCode, loadTree, createTree, mutateTree, publicTree, addPerson, updatePerson, deletePerson,
   savePhoto, changeSettings, upsertMember, importRows, replacePersons, importGraph, planGraph,
-  undoImport, findDuplicates, mergePersons,
+  undoImport, findDuplicates, mergePersons, branchScope, applyProposal,
 } from '../lib/tree.js';
 import { tg, tgUpload, sendDocument, sendStored, mediaOf, downloadFile, fetchFilePart } from '../lib/telegram.js';
 const MIME = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', heic: 'image/heic', mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', mkv: 'video/x-matroska', m4v: 'video/mp4', mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac', ogg: 'audio/ogg', oga: 'audio/ogg', opus: 'audio/ogg', wav: 'audio/wav', flac: 'audio/flac', pdf: 'application/pdf' };
@@ -46,6 +46,7 @@ function send(res, status, data, headers = {}) {
 
 const clientIp = (req) => String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'x').split(',')[0].trim();
 const nameOf = (u) => (u ? [u.first_name, u.last_name].filter(Boolean).join(' ') || (u.username ? '@' + u.username : 'Telegram') : null);
+const esc = (v) => String(v ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function tgUser(req) {
@@ -541,6 +542,83 @@ async function route(req, res) {
       } catch (e) { out.r2 = String(e.message).slice(0, 200); }
     }
     return send(res, 200, out);
+  }
+
+  // ---- Shox havolalari: oila tarmog'ini o'sha oiladagi kishi to'ldiradi (taklif → tasdiqlash)
+  if (parts[0] === 'branch') {
+    const { tok, tree, user, uid } = await authTree(req, 'edit');
+    if (m === 'POST' && !parts[1]) {
+      const body = await readBody(req);
+      const head = tree.persons.find((p) => p.id === body.head);
+      if (!head) throw new HttpError(404, 'Shaxs topilmadi');
+      const bid = randomId(8);
+      await mutateTree(tok.treeId, (t) => { t.branches = { ...(t.branches || {}), [bid]: { head: head.id, at: new Date().toISOString(), by: nameOf(user) || '', claimed: null } }; });
+      return send(res, 200, { bid, link: `https://t.me/${(await import('../lib/bot.js')).BOT()}?start=br_${tree.id}_${bid}` });
+    }
+    if (m === 'GET') {
+      const byId = new Map(tree.persons.map((p) => [p.id, p]));
+      const botName = (await import('../lib/bot.js')).BOT();
+      const props = (await readJson(`props/${tree.id}.json`))?.data?.items || [];
+      return send(res, 200, {
+        branches: Object.entries(tree.branches || {}).filter(([, b]) => !b.revoked).map(([bid, b]) => ({ bid, head: b.head, headName: byId.get(b.head)?.name || '?', claimedName: b.claimedName || null, at: b.at,
+          link: `https://t.me/${botName}?start=br_${tree.id}_${bid}` })),
+        proposals: props.filter((x) => x.status === 'pending').map((x) => ({ ...x, headName: byId.get(x.head)?.name || '?' })),
+      });
+    }
+    if (m === 'DELETE' && parts[1]) {
+      await mutateTree(tok.treeId, (t) => { if (t.branches?.[parts[1]]) t.branches[parts[1]].revoked = true; });
+      return send(res, 200, { ok: true });
+    }
+    if (m === 'POST' && parts[1] === 'proposal' && parts[2]) {
+      const body = await readBody(req);
+      const key = `props/${tree.id}.json`;
+      const doc = (await readJson(key))?.data || { items: [] };
+      const pr = doc.items.find((x) => x.id === parts[2] && x.status === 'pending');
+      if (!pr) throw new HttpError(404, 'Taklif topilmadi');
+      let result = null;
+      let data = tree;
+      if (body.action === 'apply') {
+        const r = await mutateTree(tok.treeId, (t) => (checkVer(t, tok), applyProposal(t, pr.head, pr.ops, pr.by?.name || nameOf(user))));
+        result = r.result;
+        data = r.data;
+      }
+      await updateJson(key, (d) => { const x = d.items.find((y) => y.id === parts[2]); if (x) { x.status = body.action === 'apply' ? 'applied' : 'rejected'; x.doneAt = new Date().toISOString(); } });
+      if (pr.by?.id) (await import('../lib/telegram.js')).tg('sendMessage', { chat_id: pr.by.id, text: body.action === 'apply' ? '✅ Shajaraga kiritgan ma’lumotlaringiz tasdiqlandi. Rahmat!' : 'ℹ️ Taklifingiz ko‘rib chiqildi va qabul qilinmadi.' }).catch(() => {});
+      return send(res, 200, { result, tree: out(data, 'edit', uid) });
+    }
+  }
+
+  // Shox havolasi orqali kirgan qarindosh (Telegram foydalanuvchisi) uchun
+  if (parts[0] === 'br' && parts[1] && parts[2]) {
+    const user = verifyInitData(req.headers['x-init-data']);
+    if (!user) throw new HttpError(401, 'Havolani Telegram ichida oching');
+    const tree = await loadTree(parts[1]).catch(() => null);
+    const b = tree?.branches?.[parts[2]];
+    if (!tree || !b || b.revoked) throw new HttpError(404, 'Havola eskirgan yoki bekor qilingan');
+    const uid = String(user.id);
+    if (b.claimed && b.claimed !== uid) throw new HttpError(403, 'Bu havola boshqa kishiga biriktirilgan. Shajara egasidan yangi havola so‘rang');
+    if (!b.claimed) await mutateTree(tree.id, (t) => { t.branches[parts[2]].claimed = uid; t.branches[parts[2]].claimedName = nameOf(user); });
+    if (m === 'GET') {
+      const scope = branchScope(tree, b.head);
+      const persons = tree.persons.filter((p) => scope.has(p.id)).map((p) => ({ id: p.id, name: p.name, gender: p.gender, birth: p.birth, death: p.death, deceased: !!p.deceased,
+        father_id: p.father_id, mother_id: p.mother_id, spouse_ids: p.spouse_ids || [] }));
+      return send(res, 200, { title: tree.title, head: b.head, persons });
+    }
+    if (m === 'POST') {
+      if (!await rateLimit('br:' + uid, 10, 60 * 60e3)) throw new HttpError(429, 'Juda ko‘p yuborildi. Birozdan so‘ng urinib ko‘ring');
+      const body = await readBody(req);
+      const ops = (Array.isArray(body.ops) ? body.ops : []).slice(0, 500);
+      if (!ops.length) throw new HttpError(400, 'O‘zgarish yo‘q');
+      const id = randomId(10);
+      const key = `props/${tree.id}.json`;
+      const item = { id, bid: parts[2], head: b.head, by: { id: uid, name: nameOf(user) }, at: new Date().toISOString(), status: 'pending', ops };
+      if (!(await updateJson(key, (d) => { d.items = [item, ...(d.items || [])].slice(0, 300); }))) await writeJson(key, { items: [item] });
+      const adds = ops.filter((o) => o.op === 'add').length;
+      const head = tree.persons.find((p) => p.id === b.head)?.name || '';
+      const { notifyEditors } = await import('../lib/notify.js');
+      await notifyEditors(tree, `📨 <b>${esc(head)}</b> shoxi bo‘yicha yangi taklif: +${adds} kishi, ${ops.length - adds} tuzatish.\n👤 ${esc(nameOf(user))}\n\nKo‘rib chiqish: Ko‘proq → «Shox havolalari va takliflar».`).catch(() => {});
+      return send(res, 200, { ok: true });
+    }
   }
 
   // ---- Takroriy odamlarni topish va birlashtirish

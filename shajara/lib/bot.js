@@ -55,6 +55,15 @@ async function onPrivate(msg) {
     const q = randomQuote();
     let extra = '';
     const pinv = parseInvite(payload);
+    const br = /^br_([a-z0-9]{6,20})_([A-Za-z0-9]{4,16})$/.exec(payload);
+    if (br) {
+      const tr = await loadTree(br[1]).catch(() => null);
+      const b = tr?.branches?.[br[2]];
+      const head = b && !b.revoked && tr.persons.find((p) => p.id === b.head);
+      if (!head) return send(from.id, t(lang, 'Havola eskirgan yoki bekor qilingan.'));
+      return send(from.id, t(lang, '🌳 <b>{title}</b>\n\nSizdan <b>{name}</b> oilasi ma’lumotlarini to‘ldirib berish so‘ralmoqda: ismlar, tug‘ilgan sanalar, turmush o‘rtoqlari va farzandlari. Bu 5–10 daqiqa oladi.\n\nPastdagi tugmani bosing 👇', { title: escapeHtml(tr.title), name: escapeHtml(head.name) }),
+        { reply_markup: { inline_keyboard: [[{ text: t(lang, '✍️ To‘ldirishni boshlash'), web_app: { url: `${URL_()}/?br=${br[1]}_${br[2]}` } }]] } });
+    }
     if (pinv?.person) {
       const tr = await loadTree(pinv.treeId).catch(() => null);
       const p = tr?.persons.find((x) => x.id === pinv.person);

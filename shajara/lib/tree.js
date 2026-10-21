@@ -720,3 +720,71 @@ export function replacePersons(tree, data, who) {
   addLog(tree, who, 'import', `${persons.length}`);
   return persons.length;
 }
+
+// ---------------------------------------------------------------- Shox havolalari --
+/** Shox doirasi: bosh, uning avlodlari va ularning juftlari (id lar to'plami). */
+export function branchScope(tree, headId) {
+  const kids = new Map();
+  for (const p of tree.persons) for (const pid of [p.father_id, p.mother_id]) if (pid) { if (!kids.has(pid)) kids.set(pid, []); kids.get(pid).push(p.id); }
+  const byId = new Map(tree.persons.map((p) => [p.id, p]));
+  const scope = new Set();
+  const stack = [headId];
+  while (stack.length) {
+    const id = stack.pop();
+    if (scope.has(id) || !byId.has(id)) continue;
+    scope.add(id);
+    for (const s of byId.get(id).spouse_ids || []) if (byId.has(s)) scope.add(s);
+    for (const c of kids.get(id) || []) stack.push(c);
+  }
+  return scope;
+}
+
+/**
+ * Shox taklifini qo'llash. ops: [{op:'update', id, f:{...}} | {op:'add', tmp, f:{...}, father, mother, spouse}]
+ * Faqat shox doirasidagi odamlarga tegadi; yangi odamlar doiradagi odamlarga bog'lanadi.
+ */
+export function applyProposal(tree, headId, ops, who) {
+  const scope = branchScope(tree, headId);
+  const byId = new Map(tree.persons.map((p) => [p.id, p]));
+  const date = (v) => { const s = String(v ?? '').trim(); if (!s) return null; try { return flexDate(s); } catch { return null; } };
+  let updated = 0;
+  for (const o of ops) {
+    if (o.op !== 'update' || !scope.has(o.id)) continue;
+    const p = byId.get(o.id);
+    const f = o.f || {};
+    if ('name' in f && cleanText(f.name, 80)) p.name = cleanText(f.name, 80);
+    if ('gender' in f) p.gender = genderOf(f.gender);
+    if ('birth' in f) p.birth = date(f.birth);
+    if ('death' in f) p.death = date(f.death);
+    if ('deceased' in f) p.deceased = !!f.deceased || !!p.death;
+    updated++;
+  }
+  const map = new Map();
+  const created = [];
+  for (const o of ops) {
+    if (o.op !== 'add' || !cleanText(o.f?.name, 80)) continue;
+    const death = date(o.f.death);
+    const p = {
+      id: nextId(tree), code: null, name: cleanText(o.f.name, 80), gender: genderOf(o.f.gender), birth: date(o.f.birth), death,
+      deceased: !!death || !!o.f.deceased, blood: !o.spouse || !!(o.father || o.mother), generation: null, father_id: null, mother_id: null,
+      spouse_ids: [], child_order: null, note: null, place: null, phone: null, source: 'branch', photo: null,
+    };
+    map.set(String(o.tmp), p);
+    created.push({ p, o });
+  }
+  const ref = (v) => (v == null || v === '' ? null : map.get(String(v)) || (scope.has(v) ? byId.get(v) : null));
+  for (const { p, o } of created) {
+    const f = ref(o.father);
+    const m = ref(o.mother);
+    if (f) p.father_id = f.id;
+    if (m) p.mother_id = m.id;
+    const s = ref(o.spouse);
+    if (s) {
+      p.spouse_ids = [s.id];
+      s.spouse_ids = [...new Set([...(s.spouse_ids || []), p.id])];
+    }
+  }
+  const n = created.length ? finishImport(tree, created, who) : 0;
+  addLog(tree, who, 'branch', `+${n} ✏️${updated}`);
+  return { created: n, updated };
+}

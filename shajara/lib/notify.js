@@ -31,3 +31,13 @@ export async function notify(tree, kind, text, { except, button = true } = {}) {
 }
 
 export const escapeHtml = (s) => String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+
+/** Shajara egasi va tahrirchilariga xabar (ilovani ochish tugmasi bilan). */
+export async function notifyEditors(tree, html) {
+  const url = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
+  const ids = new Set([tree.owner, ...Object.entries(tree.members || {}).filter(([, m]) => m.role === 'edit').map(([id]) => id)].filter(Boolean).map(String));
+  for (const id of ids) {
+    await tg('sendMessage', { chat_id: id, parse_mode: 'HTML', text: html, disable_web_page_preview: true,
+      reply_markup: url ? { inline_keyboard: [[{ text: '📨 Ko‘rib chiqish', web_app: { url: url + '/?props=1' } }]] } : undefined }).catch(() => {});
+  }
+}

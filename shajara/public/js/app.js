@@ -408,6 +408,7 @@ function renderMain() {
   switchTab(go ? 'tree' : S.tab || 'tree', true);
   updateBackButton();
   if (go) setTimeout(() => { S.treeView?.focus(go, { k: 1 }); personSheet(go); }, 250);
+  if (S.openProps && canEdit()) { S.openProps = false; setTimeout(branchesSheet, 300); }
 }
 
 function unreadCount() {
@@ -1246,6 +1247,7 @@ function renderMoreTab(el) {
     ${canEdit() ? `<div class="section"><h3 class="h3">${t('Tahrirchi uchun')}</h3></div><div class="card menu">
       ${item('m-edit', isEdit() ? '🔓' : '🔒', isEdit() ? t('Tahrir rejimini yopish') : t('Tahrir rejimini yoqish'), '', `<span class="switch"><input type="checkbox" ${isEdit() ? 'checked' : ''} tabindex="-1"><span></span></span>`)}
       ${item('m-channel', '🗄', t('Albom kanali'), tr.channel ? '✅ ' + esc(tr.channel.title) : t('Ulanmagan — fayllarni kanalda saqlang'))}
+      ${item('m-branches', '📨', t('Shox havolalari va takliflar'), t('Oilalarga to‘ldirtirish va kelgan ma’lumotlarni tasdiqlash'))}
       ${item('m-dupes', '🧹', t('Takroriy odamlar'), t('Ikkilangan yozuvlarni topish va birlashtirish'))}
       ${item('m-members', '👥', t('A’zolar va huquqlar'), t('{n} kishi kirgan', { n: tr.memberCount }))}
       ${item('m-settings', '⚙️', t('Shajara sozlamalari'), t('Nomi, kodlar, albom huquqlari'))}
@@ -1265,6 +1267,7 @@ function renderMoreTab(el) {
   on('m-ai', aiSheet);
   on('m-legal', () => openLink(location.origin + '/legal/privacy.html'));
   on('m-dupes', dupesSheet);
+  on('m-branches', branchesSheet);
   on('m-notif', notificationsSheet);
   on('m-lang', langSheet);
   on('m-group', () => linkSheet('group'));
@@ -1302,7 +1305,7 @@ const ACT = {
   add: ['🌱', '{name} qo‘shildi'], edit: ['✏️', '{name} tahrirlandi'], delete: ['🗑', '{name} o‘chirildi'], photo: ['🖼', '{name} surati qo‘yildi'],
   'photo-del': ['🖼', '{name} surati olib tashlandi'], settings: ['⚙️', 'Sozlamalar o‘zgardi'], create: ['🌱', 'Shajara boshlandi: {name}'],
   import: ['📥', 'Ma’lumotlar yuklandi: {name}'], album: ['📸', 'Albom: {name}'],
-  'undo-import': ['↩️', 'Import bekor qilindi: {name}'], merge: ['🧹', 'Takror birlashtirildi: {name}'],
+  branch: ['📨', 'Shox ma’lumotlari qo‘shildi: {name}'], 'undo-import': ['↩️', 'Import bekor qilindi: {name}'], merge: ['🧹', 'Takror birlashtirildi: {name}'],
 };
 
 function notificationsSheet() {
@@ -1805,6 +1808,7 @@ function personSheet(id) {
         <button class="btn btn-ghost btn-sm" data-add="child">👶 ${t('Farzand')}</button>
         <button class="btn btn-ghost btn-sm" data-add="spouse">💍 ${t('Turmush o‘rtog‘i')}</button>
         ${!fatherP || !motherP ? `<button class="btn btn-ghost btn-sm full" data-add="parent">👴 ${t(!fatherP && !motherP ? 'Ota yoki onasini qo‘shish' : !fatherP ? 'Otasini qo‘shish' : 'Onasini qo‘shish')}</button>` : ''}
+        <button class="btn btn-ghost btn-sm full" id="br-link">🔗 ${t('Shox havolasi — oilasiga to‘ldirtirish')}</button>
         <button class="btn btn-ghost btn-sm" id="edit">${I.edit} ${t('Tahrirlash')}</button>
         <button class="btn btn-danger btn-sm" id="del">${I.trash} ${t('O‘chirish')}</button>` : canEdit() ? '' : `<button class="btn btn-ghost btn-sm full" id="ask-edit">${I.lock} ${t('Tahrirlash uchun kod kiriting')}</button>`}
     </div><div style="height:8px"></div></div>`);
@@ -1817,6 +1821,7 @@ function personSheet(id) {
   sh.querySelector('#ask-edit')?.addEventListener('click', () => { closeTopSheet(); unlockSheet(); });
   sh.querySelector('#edit')?.addEventListener('click', () => personForm({ person: p }));
   sh.querySelectorAll('[data-add]').forEach((b) => (b.onclick = () => personForm({ relation: b.dataset.add, of: p })));
+  sh.querySelector('#br-link')?.addEventListener('click', () => branchLinkSheet(p));
   sh.querySelector('#del')?.addEventListener('click', async () => {
     if (!(await confirmBox(t('{name} shajaradan o‘chirilsinmi?', { name: nm(p.name) })))) return;
     try {
@@ -2016,6 +2021,209 @@ function settingsSheet() {
   };
 }
 
+// =================================================================== SHOX TO'LDIRISH (havola orqali)
+// Qarindosh oila boshidan boshlab har bir oilani ketma-ket tasdiqlaydi/to'ldiradi; oxirida taklif yuboriladi.
+async function renderBranchWizard(treeId, bid) {
+  showLoader();
+  let d;
+  try { d = await api(`br/${treeId}/${bid}`, { token: null }); } catch (err) {
+    $app.innerHTML = `<div class="empty" style="padding-top:80px"><div class="big">🔗</div><b>${esc(err.message)}</b></div>`;
+    return;
+  }
+  const orig = new Map(d.persons.map((p) => [p.id, p]));
+  const W = new Map(d.persons.map((p) => [p.id, { ...p, spouse_ids: [...p.spouse_ids] }]));
+  let seq = 0;
+  const newId = () => 'n' + (++seq);
+  const kidsOf = (id) => [...W.values()].filter((p) => p.father_id === id || p.mother_id === id);
+  const spousesOf = (id) => [...new Set([...(W.get(id)?.spouse_ids || []), ...[...W.values()].filter((p) => p.spouse_ids.includes(id)).map((p) => p.id)])].map((x) => W.get(x)).filter(Boolean);
+  // qadamlar: bosh va uning qon avlodlari (juftlar o'z jufti kartasida to'ldiriladi)
+  const order = () => {
+    const out = [];
+    const walk = (id) => { if (out.includes(id)) return; out.push(id); kidsOf(id).forEach((c) => walk(c.id)); };
+    walk(d.head);
+    return out;
+  };
+  let i = 0;
+  const yr = (v) => Number(String(v || '').slice(0, 4)) || 0;
+  const draw = () => {
+    const ids = order();
+    const p = W.get(ids[i]);
+    const sps = spousesOf(p.id);
+    const kids = kidsOf(p.id);
+    const row = (x, kind) => `<div class="bw-row" data-id="${x.id}" data-kind="${kind}">
+        <input class="input" name="name" value="${esc(x.name || '')}" placeholder="${t('Ismi')}">
+        <div class="bw-sub">${kind === 'kid' ? `<select class="input" name="gender"><option value="m" ${x.gender !== 'f' ? 'selected' : ''}>👦 ${t('O‘g‘il')}</option><option value="f" ${x.gender === 'f' ? 'selected' : ''}>👧 ${t('Qiz')}</option></select>` : ''}
+          <input class="input" name="birth" value="${esc(dateToInput(x.birth))}" placeholder="${t('Tug‘ilgan: 1958 yoki 20.03.1958')}" inputmode="numeric">
+          <label class="bw-dec"><input type="checkbox" name="deceased" ${x.deceased ? 'checked' : ''}> ${t('Marhum')}</label></div>
+        ${kind === 'kid' && sps.length > 1 ? `<select class="input" name="other">${sps.map((s) => `<option value="${s.id}" ${[x.father_id, x.mother_id].includes(s.id) ? 'selected' : ''}>${t(p.gender === 'f' ? 'Otasi' : 'Onasi')}: ${esc(s.name)}</option>`).join('')}</select>` : ''}
+        ${String(x.id).startsWith('n') ? `<button type="button" class="bw-del" data-del="${x.id}">✕</button>` : ''}
+        <div class="bw-warn hidden"></div></div>`;
+    $app.innerHTML = `<div class="screen"><div class="topbar"><div class="grow"><div class="title ellipsis">${esc(d.title)}</div>
+        <div class="sub">${t('{n} / {m} oila', { n: i + 1, m: ids.length })}</div></div></div>
+      <div class="bw-prog"><i style="width:${((i + 1) / ids.length) * 100}%"></i></div>
+      <div class="scroll pad"><form id="bw" autocomplete="off">
+        ${i === 0 ? `<div class="card note" style="margin-bottom:12px">${t('Har bir oilani tekshirib chiqing: to‘g‘ri bo‘lsa — «Keyingisi», noto‘g‘ri yoki yetishmasa — tuzating va qo‘shing. Bilmagan joyingizni bo‘sh qoldiring.')}</div>` : ''}
+        <div class="h3">👤 ${t('Shaxs')}</div>
+        <div class="bw-person">${row(p, 'self')}
+          <div class="seg" data-seg="g"><button type="button" data-v="m" class="${p.gender !== 'f' ? 'on' : ''}">👨 ${t('Erkak')}</button><button type="button" data-v="f" class="${p.gender === 'f' ? 'on' : ''}">👩 ${t('Ayol')}</button></div></div>
+        <div class="h3" style="margin-top:18px">💍 ${t('Turmush o‘rtog‘i')}</div>
+        <div id="bw-sp">${sps.map((s) => row(s, 'sp')).join('') || `<div class="small muted">${t('Kiritilmagan')}</div>`}</div>
+        <button type="button" class="btn btn-ghost btn-sm" id="add-sp">➕ ${t('Turmush o‘rtog‘i qo‘shish')}</button>
+        <div class="h3" style="margin-top:18px">👶 ${t('Farzandlari')} · ${kids.length}</div>
+        <div id="bw-kids">${kids.map((k) => row(k, 'kid')).join('') || `<div class="small muted">${t('Kiritilmagan')}</div>`}</div>
+        <button type="button" class="btn btn-ghost btn-sm" id="add-kid">➕ ${t('Farzand qo‘shish')}</button>
+        <div class="bw-nav">${i > 0 ? `<button type="button" class="btn btn-soft" id="prev">← ${t('Orqaga')}</button>` : ''}
+          <button class="btn btn-primary grow">${i < ids.length - 1 ? `${t('Keyingisi')} →` : `✅ ${t('Yuborish')}`}</button></div>
+        <div style="height:40px"></div></form></div></div>`;
+    bindSeg($app);
+    const form = $app.querySelector('#bw');
+    // ota-ona va farzand yoshi farqini tekshirish (ogohlantirish, to'smaydi)
+    const warn = () => form.querySelectorAll('.bw-row[data-kind="kid"]').forEach((r) => {
+      const b = yr(parseDateInput(r.querySelector('[name=birth]').value) || '');
+      const pb = yr(parseDateInput(form.querySelector('.bw-row[data-kind="self"] [name=birth]').value) || '');
+      const w = r.querySelector('.bw-warn');
+      const bad = b && pb && b - pb < 14;
+      w.classList.toggle('hidden', !bad);
+      w.textContent = bad ? t('Diqqat: farzand ota-onasidan 14 yoshdan kam kichik') : '';
+    });
+    form.oninput = warn;
+    warn();
+    const save = () => {
+      for (const r of form.querySelectorAll('.bw-row')) {
+        const x = W.get(r.dataset.id);
+        if (!x) continue;
+        const name = r.querySelector('[name=name]').value.trim();
+        const bi = r.querySelector('[name=birth]').value;
+        const birth = parseDateInput(bi);
+        if (birth === undefined) { toast(t('Sana formati noto‘g‘ri. Masalan: 1958 yoki 20.03.1958'), true); r.querySelector('[name=birth]').focus(); return false; }
+        x.name = name;
+        x.birth = birth;
+        x.deceased = r.querySelector('[name=deceased]').checked;
+        const g = r.querySelector('[name=gender]');
+        if (g) x.gender = g.value;
+        const o = r.querySelector('[name=other]');
+        if (o && String(x.id).startsWith('n')) { if (W.get(o.value)?.gender === 'f') x.mother_id = o.value; else x.father_id = o.value; }
+      }
+      p.gender = segVal($app, 'g') || p.gender;
+      // ismi bo'sh yangi qatorlar tashlab yuboriladi
+      for (const x of [...W.values()]) if (String(x.id).startsWith('n') && !x.name) W.delete(x.id);
+      return true;
+    };
+    const addRow = (kind) => {
+      if (!save()) return;
+      const x = { id: newId(), name: '', gender: kind === 'sp' ? (p.gender === 'f' ? 'm' : 'f') : 'm', birth: null, death: null, deceased: false, father_id: null, mother_id: null, spouse_ids: [] };
+      if (kind === 'sp') x.spouse_ids = [p.id];
+      else {
+        const sp = spousesOf(p.id);
+        const other = sp.length === 1 ? sp[0] : sp[sp.length - 1];
+        if (p.gender === 'f') { x.mother_id = p.id; x.father_id = other?.id || null; } else { x.father_id = p.id; x.mother_id = other?.id || null; }
+      }
+      W.set(x.id, x);
+      draw();
+      setTimeout(() => $app.querySelector(`.bw-row[data-id="${x.id}"] [name=name]`)?.focus(), 50);
+    };
+    $app.querySelector('#add-sp').onclick = () => addRow('sp');
+    $app.querySelector('#add-kid').onclick = () => addRow('kid');
+    $app.querySelectorAll('[data-del]').forEach((b) => (b.onclick = () => { save(); W.delete(b.dataset.del); draw(); }));
+    $app.querySelector('#prev')?.addEventListener('click', () => { if (save()) { i--; draw(); window.scrollTo(0, 0); } });
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      if (!save()) return;
+      if (i < order().length - 1) { i++; haptic('light'); draw(); return; }
+      submit();
+    };
+  };
+  const submit = async () => {
+    const ops = [];
+    for (const x of W.values()) {
+      if (String(x.id).startsWith('n')) {
+        ops.push({ op: 'add', tmp: x.id, f: { name: x.name, gender: x.gender, birth: x.birth, deceased: x.deceased }, father: x.father_id, mother: x.mother_id, spouse: x.spouse_ids[0] || null });
+        continue;
+      }
+      const o = orig.get(x.id);
+      const f = {};
+      if (x.name && x.name !== o.name) f.name = x.name;
+      if (x.gender !== o.gender) f.gender = x.gender;
+      if ((x.birth || null) !== (o.birth || null)) f.birth = x.birth;
+      if (!!x.deceased !== !!o.deceased) f.deceased = x.deceased;
+      if (Object.keys(f).length) ops.push({ op: 'update', id: x.id, f });
+    }
+    if (!ops.length) {
+      $app.innerHTML = `<div class="empty" style="padding-top:80px"><div class="big">✅</div><b>${t('Rahmat! Hamma ma’lumot to‘g‘ri ekan — o‘zgarish yo‘q.')}</b></div>`;
+      return;
+    }
+    showLoader();
+    try {
+      await api(`br/${treeId}/${bid}`, { method: 'POST', body: { ops }, token: null });
+      $app.innerHTML = `<div class="empty" style="padding-top:80px"><div class="big">🎉</div><b>${t('Rahmat! Ma’lumotlar yuborildi.')}</b>
+        <p class="small">${t('Shajara egasi tekshirib tasdiqlagach, ular shajaraga qo‘shiladi. Natija haqida bot xabar beradi.')}</p></div>`;
+      haptic('success');
+    } catch (err) {
+      toast(err.message, true);
+      i = order().length - 1;
+      draw();
+    }
+  };
+  draw();
+}
+
+// Tahrirchi: shox havolasini yaratish
+async function branchLinkSheet(p) {
+  let r;
+  try { r = await api('branch', { method: 'POST', body: { head: p.id } }); } catch (err) { return toast(err.message, true); }
+  const text = t('Assalomu alaykum! «{title}» shajarasidagi {name} oilasi ma’lumotlarini to‘ldirib bersangiz. Havola:', { title: S.tree.title, name: nm(p.name) });
+  const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">🔗 ${t('Shox havolasi')}</div><button class="icon-btn" data-close>${I.close}</button></div>
+    <div class="sheet-body"><p class="small muted">${t('Bu havolani {name} oilasidan bir kishiga yuboring. U shu oila va avlodlari ma’lumotlarini savol-javob orqali to‘ldiradi. Siz tasdiqlagach, shajaraga qo‘shiladi.', { name: `<b>${esc(nm(p.name))}</b>` })}</p>
+    <div class="card note" style="word-break:break-all;font-weight:700">${esc(r.link)}</div>
+    <button class="btn btn-primary btn-block" id="bl-share" style="margin-top:10px">📤 ${t('Ulashish')}</button>
+    <button class="btn btn-soft btn-block" id="bl-copy" style="margin-top:8px">📋 ${t('Nusxa olish')}</button></div>`);
+  sh.querySelector('#bl-copy').onclick = () => copyText(r.link);
+  sh.querySelector('#bl-share').onclick = () => openLink(`https://t.me/share/url?url=${encodeURIComponent(r.link)}&text=${encodeURIComponent(text)}`);
+}
+
+// Tahrirchi: kelgan takliflar va faol havolalar
+async function branchesSheet() {
+  const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">📨 ${t('Shox havolalari va takliflar')}</div><button class="icon-btn" data-close>${I.close}</button></div>
+    <div class="sheet-body" id="bsb"><div class="empty"><span class="spin" style="color:var(--primary)"></span></div></div>`);
+  const body = sh.querySelector('#bsb');
+  const load = async () => {
+    let r;
+    try { r = await api('branch'); } catch (err) { body.innerHTML = `<div class="empty">${esc(err.message)}</div>`; return; }
+    const pname = (id) => nm(S.fam.get(id)?.name || '?');
+    const fmt = (v) => (v ? dateToInput(v) : '—');
+    const line = (o, pr) => {
+      if (o.op === 'add') {
+        const rel = o.father || o.mother ? t('farzandi: {name}', { name: [o.father, o.mother].map((x) => (String(x).startsWith('n') ? pr.ops.find((y) => y.tmp === x)?.f.name : S.fam.get(x) && pname(x))).filter(Boolean).join(' + ') })
+          : o.spouse ? t('turmush o‘rtog‘i: {name}', { name: String(o.spouse).startsWith('n') ? pr.ops.find((y) => y.tmp === o.spouse)?.f.name : pname(o.spouse) }) : '';
+        return `<div class="pr-line add">➕ <b>${esc(o.f.name)}</b> ${o.f.birth ? esc(fmt(o.f.birth)) : ''}${o.f.deceased ? ' †' : ''} <span class="muted">${esc(rel)}</span></div>`;
+      }
+      const p = S.fam.get(o.id);
+      const ch = Object.entries(o.f).map(([k, v]) => `${{ name: t('ism'), gender: t('jins'), birth: t('tug‘ilgan'), deceased: t('marhum') }[k] || k}: ${esc(k === 'birth' ? `${fmt(p?.birth)} → ${fmt(v)}` : k === 'deceased' ? (v ? t('ha') : t('yo‘q')) : k === 'gender' ? (v === 'f' ? t('ayol') : t('erkak')) : `${p?.name || ''} → ${v}`)}`).join('; ');
+      return `<div class="pr-line">✏️ <b>${esc(pname(o.id))}</b> <span class="muted">${ch}</span></div>`;
+    };
+    body.innerHTML = `${r.proposals.length ? r.proposals.map((pr, i) => `<div class="card pr-card"><div><b>${esc(nm(pr.headName))}</b> ${t('shoxi')} · 👤 ${esc(pr.by?.name || '')} · <span class="muted">${esc(pr.at.slice(0, 10))}</span></div>
+        <div class="pr-ops">${pr.ops.map((o) => line(o, pr)).join('')}</div>
+        <div class="row" style="gap:8px;margin-top:8px"><button class="btn btn-primary btn-sm grow" data-ok="${i}">✅ ${t('Tasdiqlash')}</button><button class="btn btn-soft btn-sm" data-no="${i}">${t('Rad etish')}</button></div></div>`).join('')
+      : `<div class="empty" style="padding:20px"><b>${t('Yangi takliflar yo‘q')}</b></div>`}
+      <div class="h3" style="margin:18px 0 8px">🔗 ${t('Faol havolalar')}</div>
+      ${r.branches.length ? r.branches.map((b) => `<div class="dp-row"><div class="grow"><b>${esc(nm(b.headName))}</b><div class="small muted">${b.claimedName ? '👤 ' + esc(b.claimedName) : t('Hali ochilmagan')}</div></div>
+        <button class="btn btn-soft btn-sm" data-copy="${esc(b.link)}">📋</button><button class="btn btn-ghost btn-sm" data-rev="${b.bid}">${t('Bekor qilish')}</button></div>`).join('')
+      : `<div class="small muted">${t('Havola yaratish: daraxtda oila boshini oching → «Shox havolasi».')}</div>`}`;
+    const act = async (pr, action, btn) => {
+      btn.disabled = true;
+      try { const x = await api(`branch/proposal/${pr.id}`, { method: 'POST', body: { action } }); if (x.tree) onTreeChanged(x.tree); toast(action === 'apply' ? t('Shajaraga qo‘shildi ✓') : t('Rad etildi')); load(); } catch (err) { toast(err.message, true); btn.disabled = false; }
+    };
+    body.querySelectorAll('[data-ok]').forEach((b) => (b.onclick = () => act(r.proposals[Number(b.dataset.ok)], 'apply', b)));
+    body.querySelectorAll('[data-no]').forEach((b) => (b.onclick = () => act(r.proposals[Number(b.dataset.no)], 'reject', b)));
+    body.querySelectorAll('[data-copy]').forEach((b) => (b.onclick = () => copyText(b.dataset.copy)));
+    body.querySelectorAll('[data-rev]').forEach((b) => (b.onclick = async () => {
+      if (!(await confirmBox(t('Havola bekor qilinsinmi?')))) return;
+      try { await api('branch/' + b.dataset.rev, { method: 'DELETE' }); load(); } catch (err) { toast(err.message, true); }
+    }));
+  };
+  load();
+}
+
 // =================================================================== ISHGA TUSHIRISH
 function boot() {
   initTelegram();
@@ -2026,6 +2234,9 @@ function boot() {
   const inv = params.get('inv') || (sp.startsWith('inv_') ? sp : '');
   S.goPerson = /_(p\d{1,8})$/.exec(inv.slice(30))?.[1] || null;
   const startCode = params.get('code') || (!inv ? sp : '');
+  const br = /^([a-z0-9]{6,20})_([A-Za-z0-9]{4,16})$/.exec(params.get('br') || '');
+  if (br) return renderBranchWizard(br[1], br[2]);
+  S.openProps = params.get('props') === '1';
   const afterOnb = () => {
     mountAiFab();
     if (inv) return joinByInvite(inv);
