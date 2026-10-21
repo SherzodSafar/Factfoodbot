@@ -51,7 +51,7 @@ let oldOff = null; // eski botni uzish (bir marta)
 let capFix = null;
 // Bir martalik: avval saqlangan portretlar izohini to'liq ism sharifga almashtirish (albom va kanalda)
 async function portraitCaptions() {
-  if (await readJson('sys/portrait-cap-v3.json').catch(() => null)) return;
+  if (await readJson('sys/portrait-cap-v4.json').catch(() => null)) return;
   let n = 0;
   for (const key of await listKeys('trees/')) {
     const tr = (await readJson(key).catch(() => null))?.data;
@@ -68,12 +68,12 @@ async function portraitCaptions() {
       n++;
     }
   }
-  await writeJson('sys/portrait-cap-v3.json', { at: new Date().toISOString(), n });
+  await writeJson('sys/portrait-cap-v4.json', { at: new Date().toISOString(), n });
   console.log('portrait captions', n);
 }
-// Ism sharif (otasining ismi asosida). 1991-yildan oldin tug'ilganlar — «Jumaboy Saparboyevich» / «… Saparboyevna»,
+// Ism sharif (otasining ismi asosida). 2000-yildan oldin tug'ilganlar — «Jumaboy Saparboyevich» / «… Saparboyevna»,
 // keyingi avlod — «Sherzod Iskandar o'g'li». Ismda familiya allaqachon bo'lsa — o'zgarishsiz.
-const NEW_STYLE_FROM = 1991;
+const NEW_STYLE_FROM = 2000;
 const ovEv = (n, fem) => { const l = n.slice(-1).toLowerCase(); return n + (/[aeiou]/.test(l) ? 'yev' : l === 'y' ? 'ev' : 'ov') + (fem ? 'na' : 'ich'); };
 const fullName = (tree, p) => {
   const name = String(p.name || '').trim();
