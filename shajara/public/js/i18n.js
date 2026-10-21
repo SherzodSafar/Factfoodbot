@@ -527,7 +527,7 @@ const D = [
   ["Shox havolasi", "Ссылка на ветвь", "Branch link"],
   ["Shox havolasi — oilasiga to‘ldirtirish", "Ссылка на ветвь — пусть семья заполнит", "Branch link — let the family fill in"],
   ["Tasdiqlash", "Подтвердить", "Approve"],
-  ["Tug‘ilgan: 1958 yoki 20.03.1958", "Рождение: 1958 или 20.03.1958", "Born: 1958 or 20.03.1958"],
+  ["Tug‘ilgan sana: 20.03.1958", "Дата рождения: 20.03.1958", "Born: 20.03.1958"],
   ["Turmush o‘rtog‘i qo‘shish", "Добавить супруга", "Add spouse"],
   ["Yangi takliflar yo‘q", "Новых предложений нет", "No new proposals"],
   ["Yuborish", "Отправить", "Send"],
@@ -554,18 +554,35 @@ const D = [
   ["Javob berish", "Ответить", "Reply"],
   ["Hali izoh yo‘q. Birinchi bo‘lib yozing!", "Комментариев пока нет. Будьте первым!", "No comments yet. Be the first!"],
   ["Izoh o‘chirilsinmi?", "Удалить комментарий?", "Delete this comment?"],
-  ["Har bir oilani tekshirib chiqing: to‘g‘ri bo‘lsa — «Keyingisi», noto‘g‘ri yoki yetishmasa — tuzating va qo‘shing. Barcha maydonlar to‘ldirilishi shart — aniq sanani bilmasangiz, taxminiy yilni yozing.", "Проверьте каждую семью: если верно — «Далее», если ошибка или чего-то нет — исправьте и добавьте. Все поля обязательны — если не знаете точную дату, укажите примерный год.", "Check each family: if correct — «Next», if wrong or missing — fix and add. All fields are required — if you don't know the exact date, enter an approximate year."],
-  ["Vafot sanasi: 2001 yoki 05.06.2001", "Дата смерти: 2001 или 05.06.2001", "Date of death: 2001 or 05.06.2001"],
+  ["Har bir oilani tekshirib chiqing: to‘g‘ri bo‘lsa — «Keyingisi», noto‘g‘ri yoki yetishmasa — tuzating va qo‘shing. Barcha maydonlar to‘ldirilishi shart — sanalarni to‘liq (kun.oy.yil) yozing.", "Проверьте каждую семью: если всё верно — «Далее», если нет или чего-то не хватает — исправьте и добавьте. Все поля обязательны — даты полностью (дд.мм.гггг).", "Check each family: if correct — “Next”, if wrong or missing — fix and add. All fields are required — full dates (dd.mm.yyyy)."],
+  ["Vafot sanasi: 05.06.2001", "Дата смерти: 05.06.2001", "Date of death: 05.06.2001"],
   ["Bu oilani boshqa kishiga topshirish", "Передать эту семью другому человеку", "Hand this family over to someone else"],
   ["Ismni kiriting", "Введите имя", "Enter the name"],
-  ["Tug‘ilgan sanani kiriting (taxminiy yil ham bo‘ladi)", "Введите дату рождения (можно примерный год)", "Enter the birth date (approximate year is fine)"],
-  ["Vafot sanasini kiriting (taxminiy yil ham bo‘ladi)", "Введите дату смерти (можно примерный год)", "Enter the date of death (approximate year is fine)"],
+  ["Tug‘ilgan sanani to‘liq kiriting (kun.oy.yil)", "Введите полную дату рождения (дд.мм.гггг)", "Enter the full date of birth (dd.mm.yyyy)"],
+  ["Vafot sanasini to‘liq kiriting (kun.oy.yil)", "Введите полную дату смерти (дд.мм.гггг)", "Enter the full date of death (dd.mm.yyyy)"],
   ["vafot", "смерть", "death"],
   ["To‘liqlik", "Заполненность", "Completeness"],
   ["Ma’lumoti to‘liq bo‘lmagan: {n} kishi", "Неполные данные: {n} чел.", "Incomplete data: {n} people"],
   ["Barcha ma’lumotlar to‘liq ✓", "Все данные заполнены ✓", "All data is complete ✓"],
   ["Ro‘yxatni ko‘rish", "Показать список", "Show list"],
   ["To‘liqlik paneli, oilalarga to‘ldirtirish va tasdiqlash", "Панель заполненности, заполнение семьями и подтверждение", "Completeness panel, family filling and approval"],
+  ['Havola tili', 'Язык ссылки', 'Link language'],
+  ['Telegramda ochish', 'Открыть в Telegram', 'Open in Telegram'],
+  ['Albomga joylagan fayllari', 'Файлы в альбоме', 'Files posted to the album'],
+  ['Hozircha fayl yo‘q', 'Пока нет файлов', 'No files yet'],
+  ['{n} ta yoqtirish', 'Нравится: {n}', '{n} likes'],
+  ['Menga', 'Мне', 'For me'],
+  ['Oila izohlari', 'Комментарии семьи', 'Family comments'],
+  ['Yangiliklar', 'Новости', 'News'],
+  ['❤️ {who} faylingizni yoqtirdi', '❤️ {who}: нравится ваш файл', '❤️ {who} liked your file'],
+  ['💬 {who} faylingizga izoh yozdi', '💬 {who} прокомментировал(а) ваш файл', '💬 {who} commented on your file'],
+  ['↩️ {who} izohingizga javob yozdi', '↩️ {who} ответил(а) на ваш комментарий', '↩️ {who} replied to your comment'],
+  ['❤️ {who} izohingizni yoqtirdi', '❤️ {who}: нравится ваш комментарий', '❤️ {who} liked your comment'],
+  ['Hozircha bildirishnoma yo‘q. Kimdir faylingizga yoki izohingizga like bossa yoki izoh yozsa, shu yerda ko‘rinadi.', 'Пока нет уведомлений. Здесь появятся лайки и комментарии к вашим файлам и комментариям.', 'No notifications yet. Likes and comments on your files and comments will appear here.'],
+  ['Hali izoh yo‘q', 'Комментариев пока нет', 'No comments yet'],
+  ['Like va izohlar (menga tegishli)', 'Лайки и комментарии (мне)', 'Likes and comments (for me)'],
+  ['Javobingiz:', 'Ваш ответ:', 'Your reply:'],
+  ['Yuborildi ✓', 'Отправлено ✓', 'Sent ✓'],
 ];
 
 const RU = new Map(D.map((r) => [r[0], r[1]]));
@@ -576,6 +593,13 @@ export function t(key, vars) {
   if (LANG === 'uzc') s = toCyrillic(s);
   if (!vars) return s;
   return s.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? '');
+}
+
+/** Boshqa tildagi matn (masalan, havola matni tanlangan tilda). */
+export function tIn(lang, key, vars) {
+  const o = LANG;
+  LANG = LANG_NAMES[lang] ? lang : o;
+  try { return [t(key, vars), nm(vars?.name)]; } finally { LANG = o; }
 }
 
 /** Ism va nomlarni joriy alifboda ko'rsatish (kirillda transliteratsiya). */

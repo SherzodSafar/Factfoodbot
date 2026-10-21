@@ -45,7 +45,7 @@ export async function handleUpdate(u) {
 async function onPrivate(msg) {
   const from = msg.from;
   const user = await getUser(from.id);
-  const lang = user?.lang || normLang(from.language_code);
+  let lang = user?.lang || normLang(from.language_code);
   const text = (msg.text || '').trim();
   const cmd = text.startsWith('/') ? text.split(/[\s@]/)[0].toLowerCase() : null;
 
@@ -61,9 +61,13 @@ async function onPrivate(msg) {
       const b = tr?.branches?.[br[2]];
       const head = b && !b.revoked && tr.persons.find((p) => p.id === b.head);
       if (!head) return send(from.id, t(lang, 'Havola eskirgan yoki bekor qilingan.'));
+      if (b.lang) lang = b.lang; // havola yuborilgan til
       return send(from.id, t(lang, '🌳 <b>{title}</b>\n\nSizdan <b>{name}</b> oilasi ma’lumotlarini to‘ldirib berish so‘ralmoqda: ismlar, tug‘ilgan sanalar, turmush o‘rtoqlari va farzandlari. Bu 5–10 daqiqa oladi.\n\nIlovada (savol-javob shaklida) yoki shu yerda bot bilan yozishib to‘ldirishingiz mumkin 👇', { title: escapeHtml(tr.title), name: escapeHtml(head.name) }),
         { reply_markup: { inline_keyboard: [[{ text: t(lang, '✍️ Ilovada to‘ldirish'), web_app: { url: `${URL_()}/?br=${br[1]}_${br[2]}` } }],
           [{ text: t(lang, '💬 Shu yerda yozishma orqali'), callback_data: `bc:go:${br[1]}_${br[2]}` }]] } });
+    }
+    if (pinv?.inbox) {
+      return send(from.id, t(lang, '🔔 Bildirishnomalarni ko‘rish uchun pastdagi tugmani bosing 👇'), { reply_markup: { inline_keyboard: [[{ text: t(lang, '👀 Ko‘rish'), web_app: { url: `${URL_()}/?inv=${payload}` } }]] } });
     }
     if (pinv?.media) {
       return send(from.id, t(lang, '💬 Izohlarni o‘qish uchun pastdagi tugmani bosing 👇'), { reply_markup: { inline_keyboard: [[{ text: t(lang, '💬 O‘qish'), web_app: { url: `${URL_()}/?inv=${payload}` } }]] } });
@@ -490,20 +494,6 @@ export async function refreshAlbumFiles(treeId, notifyUid) {
   }
   await send(target, `✅ ${t('uz', 'Albom yangi botga ko‘chirildi: {n} ta fayl.', { n })}`).catch(() => {});
   return n;
-}
-
-// ---------------------------------------------------------------- eski bot (@Shajara_iBot) — yangisiga yo'naltirish --
-export async function handleOldBot(u) {
-  const msg = u.message || u.callback_query?.message;
-  const chat = msg?.chat;
-  if (!chat || chat.type !== 'private') return;
-  const payload = (u.message?.text || '').startsWith('/start ') ? u.message.text.split(' ')[1] : '';
-  const lang = normLang(u.message?.from?.language_code || u.callback_query?.from?.language_code);
-  const text = t(lang, '🌳 <b>Shajara iBot</b> endi <b>Shajara AI</b> nomi bilan ishlaydi!\n\nBarcha shajaralar va albomlar saqlangan. Davom etish uchun yangi botni oching 👇');
-  await fetch(`https://api.telegram.org/bot${process.env.OLD_BOT_TOKEN}/sendMessage`, {
-    method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ chat_id: chat.id, text, parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: '✨ @ShajaraAiBot', url: `https://t.me/${BOT()}${payload ? '?start=' + payload : ''}` }]] } }),
-  });
 }
 
 // ---------------------------------------------------------------- to'lovlar (Telegram Stars) --

@@ -645,7 +645,7 @@ body:has(.rv) #sheet-root .sheet { z-index: 86; }
 .cm-h { font-size: 13px; }
 .cm-name { border: 0; background: none; padding: 0; font: inherit; font-weight: 700; color: var(--ink); cursor: pointer; }
 .cm-t { white-space: pre-wrap; word-break: break-word; margin: 2px 0; }
-.cm-a { display: flex; gap: 14px; }
+.cm-a { display: flex; flex-wrap: wrap; gap: 4px 14px; }
 .cm-a button { border: 0; background: none; padding: 0; font-size: 12px; font-weight: 600; color: var(--muted); cursor: pointer; }
 .cm-like { flex: none; border: 0; background: none; color: var(--muted); display: flex; flex-direction: column; align-items: center; font-size: 11px; cursor: pointer; padding: 4px; }
 .cm-like svg { width: 16px; height: 16px; }
@@ -662,3 +662,27 @@ body:has(.rv) #sheet-root .sheet { z-index: 86; }
 .bw-death { margin-top: 6px; }
 .input.bad { border-color: var(--danger); box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 20%, transparent); }
 [data-pp] { cursor: pointer; }
+
+/* Profil rasmlari, albom hisoblagichlari, bildirishnomalar bo'limi */
+.cm-av { position: relative; overflow: hidden; }
+.cm-av .av-img, .prof-av .av-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.cm-avb { flex: none; border: 0; padding: 0; background: none; cursor: pointer; }
+.ppl-row b { min-width: 0; }
+.prof { display: flex; flex-direction: column; align-items: center; padding: 4px 0 6px; }
+.prof-av { position: relative; overflow: hidden; width: 92px; height: 92px; border-radius: 50%; display: grid; place-items: center; font-size: 38px; font-weight: 800; color: var(--primary-ink); background: linear-gradient(135deg, var(--primary), var(--gold)); }
+.tile-w { min-width: 0; }
+.tile-w .tile { width: 100%; display: block; }
+.tile-st { display: flex; justify-content: space-between; gap: 2px; padding: 3px 2px 0; font-size: 10.5px; font-weight: 700; color: var(--muted); }
+.tile-st span { display: inline-flex; align-items: center; gap: 2px; min-width: 0; }
+.tile-st svg { width: 11px; height: 11px; flex: none; }
+.tile-st .on { color: #e0245e; }
+.ib-tabs { padding: 0 16px 8px; }
+.ib { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.ib:last-child { border-bottom: 0; }
+.ib.new { background: color-mix(in srgb, var(--primary) 7%, transparent); margin: 0 -12px; padding: 10px 12px; }
+.ib-main { min-width: 0; cursor: pointer; }
+.ib-th { flex: none; width: 46px; height: 46px; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); background: var(--surface-2); padding: 0; display: grid; place-items: center; font-size: 20px; cursor: pointer; }
+.ib-th img { width: 100%; height: 100%; object-fit: cover; }
+.ib-lk { display: inline-flex; align-items: center; gap: 3px; }
+.ib-lk svg { width: 13px; height: 13px; }
+.ib-lk.on { color: #e0245e; }

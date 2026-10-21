@@ -11,6 +11,7 @@ import { updateUser } from './users.js';
 const BOT = () => process.env.BOT_USERNAME || 'ShajaraAiBot';
 const URL_ = () => (process.env.PUBLIC_URL || '').replace(/\/$/, '');
 const nameOf = (u) => [u?.first_name, u?.last_name].filter(Boolean).join(' ') || u?.username || 'Telegram';
+export const fullDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''));
 export const brLink = (treeId, bid) => `https://t.me/${BOT()}?start=br_${treeId}_${bid}`;
 
 // ---------------------------------------------------------------- to'liqlik --
@@ -18,8 +19,8 @@ export const brLink = (treeId, bid) => `https://t.me/${BOT()}?start=br_${treeId}
 export function missingOf(p) {
   const m = [];
   if (!String(p.name || '').trim()) m.push('name');
-  if (!p.birth) m.push('birth');
-  if (p.deceased && !p.death) m.push('death');
+  if (!fullDate(p.birth)) m.push('birth');
+  if (p.deceased && !fullDate(p.death)) m.push('death');
   return m;
 }
 export function completeness(tree, ids) {
@@ -64,7 +65,7 @@ export async function subBranch(tree, bid, b, user, head) {
 }
 
 // ---------------------------------------------------------------- takliflar --
-const dateOk = (v) => { try { return !!flexDate(v); } catch { return false; } };
+const dateOk = (v) => { try { return fullDate(flexDate(v)); } catch { return false; } };
 /** Hech qaysi maydon bo'sh qolmasin: ism, tug'ilgan sana, marhum bo'lsa — vafot sanasi. */
 export function validateOps(ops, persons) {
   const byId = new Map(persons.map((p) => [p.id, p]));
@@ -72,15 +73,15 @@ export function validateOps(ops, persons) {
     const f = o.f || {};
     if (o.op === 'add') {
       if (!String(f.name || '').trim()) throw new HttpError(400, 'Ism kiritilmagan');
-      if (!dateOk(f.birth)) throw new HttpError(400, `${f.name}: tug‘ilgan sana kiritilmagan`);
-      if (f.deceased && !dateOk(f.death)) throw new HttpError(400, `${f.name}: vafot sanasi kiritilmagan`);
+      if (!dateOk(f.birth)) throw new HttpError(400, `${f.name}: tug‘ilgan sana to‘liq kiritilmagan (kun.oy.yil)`);
+      if (f.deceased && !dateOk(f.death)) throw new HttpError(400, `${f.name}: vafot sanasi to‘liq kiritilmagan (kun.oy.yil)`);
     } else if (o.op === 'update') {
       const p = byId.get(o.id);
       if (!p) continue;
       if ('name' in f && !String(f.name || '').trim()) throw new HttpError(400, 'Ism bo‘sh bo‘lishi mumkin emas');
-      if ('birth' in f && !dateOk(f.birth)) throw new HttpError(400, `${p.name}: tug‘ilgan sana kiritilmagan`);
+      if ('birth' in f && !dateOk(f.birth)) throw new HttpError(400, `${p.name}: tug‘ilgan sana to‘liq kiritilmagan (kun.oy.yil)`);
       const dec = 'deceased' in f ? f.deceased : p.deceased;
-      if (dec && !dateOk('death' in f ? f.death : p.death)) throw new HttpError(400, `${p.name}: vafot sanasi kiritilmagan`);
+      if (dec && !dateOk('death' in f ? f.death : p.death)) throw new HttpError(400, `${p.name}: vafot sanasi to‘liq kiritilmagan (kun.oy.yil)`);
     }
   }
 }
@@ -148,7 +149,7 @@ export async function dailyReminders(tree) {
       const head = tree.persons.find((p) => p.id === b.head)?.name || '';
       const r = await tg('sendMessage', { chat_id: b.claimed, parse_mode: 'HTML',
         text: t(l, '🌳 <b>{name}</b> oilasida hali {n} kishining ma’lumoti yetishmaydi (to‘liqlik {pct}%). Bir necha daqiqa ajratib to‘ldirib bersangiz — avlodlar uchun katta xizmat bo‘ladi 🙏', { name: esc(head), n: cc.missing.length, pct: cc.pct }),
-        reply_markup: { inline_keyboard: [[{ text: t(l, '✍️ Ilovada to‘ldirish'), web_app: { url: `${URL_()}/?br=${tree.id}_${bid}` } }], [{ text: t(l, '💬 Shu yerda yozishma orqali'), callback_data: `bc:go:${tree.id}_${bid}` }]] } }).catch(() => null);
+        reply_markup: { inline_keyboard: [[{ text: t(l, '✍️ Ilovada to‘ldirish'), web_app: { url: `${URL_()}/?br=${tree.id}_${bid}` } }], [{ text: t(l, '💬 Shu yerda to‘ldirish'), callback_data: `bc:go:${tree.id}_${bid}` }]] } }).catch(() => null);
       if (r?.ok) sent++;
     }
   }
@@ -160,6 +161,8 @@ const sKey = (uid) => `brchat/${uid}.json`;
 const send = (chat_id, text, kb) => tg('sendMessage', { chat_id, text, parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: kb ? { inline_keyboard: kb } : undefined });
 const isNew = (id) => String(id).startsWith('n');
 const yr = (d) => (d ? String(d).slice(0, 4) : '—');
+// to'liq sana: 20.03.1958; to'liq bo'lmasa — ❗ bilan
+const fd = (d) => (!d ? '❓' : fullDate(d) ? String(d).split('-').reverse().join('.') : `${String(d).split('-').reverse().join('.')} ❗`);
 const fmtD = (d) => (!d ? '—' : d.length === 10 ? `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)}` : d.length === 7 ? `${d.slice(5, 7)}.${d.slice(0, 4)}` : d);
 
 function W_(s) { return new Map(Object.entries(s.W)); }
@@ -172,17 +175,18 @@ function order(s) {
   walk(s.head);
   return out;
 }
-const line = (p) => `${esc(p.name || '?')} (${yr(p.birth)}${p.deceased ? ` – ✝ ${yr(p.death)}` : ''})`;
+const line = (p) => `${esc(p.name || '?')} (${fd(p.birth)}${p.deceased ? ` – ✝ ${fd(p.death)}` : ''})`;
 
 async function save(uid, s) { s.at = Date.now(); await writeJson(sKey(uid), s); }
 
 export async function chatStart(from, lang, treeId, bid) {
   const { tree, b } = await claimBranch(treeId, bid, from);
+  if (b.lang) lang = b.lang;
   const persons = scopePersons(tree, b.head);
   const s = { tree: tree.id, bid, head: b.head, title: tree.title, lang, i: 0, seq: 0, ask: null, W: Object.fromEntries(persons.map((p) => [p.id, p])), O: Object.fromEntries(persons.map((p) => [p.id, p])) };
   await save(from.id, s);
   await updateUser(from.id, from, (d) => { d.brchat = Date.now(); d.aimode = null; d.pending = null; });
-  await send(from.id, t(lang, '💬 Boshladik! Har bir oila uchun savol beraman. Javobni oddiy xabar qilib yozing yoki tugmalarni bosing. Barcha maydonlar to‘ldirilishi shart — aniq sanani bilmasangiz, taxminiy yilni yozing.\n\nTo‘xtatish: /bekor'));
+  await send(from.id, t(lang, '💬 Boshladik! Har bir oila uchun savol beraman. Javobni oddiy xabar qilib yozing yoki tugmalarni bosing. Barcha maydonlar to‘ldirilishi shart — sanalarni to‘liq (kun.oy.yil) yozing.\n\nTo‘xtatish: /bekor'));
   return step(from, s);
 }
 
@@ -219,9 +223,9 @@ async function ask(from, s) {
   const Q = {
     name: [t(L, '✍️ Ismini yozing:'), null],
     gender: [t(L, '<b>{who}</b> — o‘g‘ilmi yoki qiz?', { who }), [[{ text: t(L, '👦 O‘g‘il'), callback_data: 'bc:g:m' }, { text: t(L, '👧 Qiz'), callback_data: 'bc:g:f' }]]],
-    birth: [t(L, '📅 <b>{who}</b> qachon tug‘ilgan? Yil yoki to‘liq sana yozing (masalan: 1958 yoki 20.03.1958). Aniq bilmasangiz — taxminiy yilni yozing.', { who }), null],
+    birth: [t(L, '📅 <b>{who}</b> qachon tug‘ilgan? To‘liq sanani yozing: kun.oy.yil (masalan: 20.03.1958).', { who }), null],
     alive: [t(L, '<b>{who}</b> hozir hayotmi?', { who }), [[{ text: t(L, '💚 Hayot'), callback_data: 'bc:al:1' }, { text: t(L, '🤲 Vafot etgan'), callback_data: 'bc:al:0' }]]],
-    death: [t(L, '🤲 <b>{who}</b> qachon vafot etgan? Yil yoki to‘liq sana (masalan: 2001 yoki 05.06.2001).', { who }), null],
+    death: [t(L, '🤲 <b>{who}</b> qachon vafot etgan? To‘liq sanani yozing: kun.oy.yil (masalan: 05.06.2001).', { who }), null],
     other: [t(L, '<b>{who}</b> — onasi/otasi kim?', { who }), spousesOf(W_(s), a.parent).map((sp) => [{ text: sp.name, callback_data: `bc:op:${sp.id}` }])],
   }[a.k];
   return send(from.id, Q[0], Q[1] ? [...Q[1], [{ text: t(L, '✖️ Bekor qilish'), callback_data: 'bc:cancel' }]] : undefined);
@@ -271,7 +275,7 @@ export async function chatText(from, text) {
   } else {
     let d = null;
     try { d = flexDate(v); } catch {}
-    if (!d) { await send(from.id, t(L, 'Sana formati noto‘g‘ri. Masalan: 1958 yoki 20.03.1958')); return true; }
+    if (!fullDate(d)) { await send(from.id, t(L, 'Sana to‘liq emas yoki noto‘g‘ri. Kun.oy.yil shaklida yozing, masalan: 20.03.1958')); return true; }
     x[s.ask.k] = d;
   }
   await answered(from, s);
@@ -414,7 +418,7 @@ async function finish(from, s) {
   // bo'sh maydon qolmasin
   for (const x of Object.values(s.W)) {
     const miss = missingOf(x);
-    if (miss.length && (isNew(x.id) || ops.some((o) => o.id === x.id))) {
+    if (miss.length) {
       s.ask = { k: miss[0], pid: x.id };
       await save(from.id, s);
       await send(from.id, t(L, 'Yuborishdan oldin yetishmayotgan ma’lumotni to‘ldiring:'));

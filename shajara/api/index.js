@@ -321,13 +321,29 @@ async function route(req, res) {
       if (lang) mem.lang = lang;
       if (body.notify && typeof body.notify === 'object') {
         mem.notify = { ...(mem.notify || {}) };
-        for (const k of ['tree', 'album', 'bday']) if (k in body.notify) mem.notify[k] = !!body.notify[k];
+        for (const k of ['tree', 'album', 'bday', 'social']) if (k in body.notify) mem.notify[k] = !!body.notify[k];
       }
     });
     return send(res, 200, { ok: true });
   }
 
   // ---- Albom
+  // Shaxsiy bildirishnomalar bo'limi: ?k=me|fam, ?n=1 — faqat o'qilmaganlar soni
+  if (path === 'inbox' && m === 'GET') {
+    const { tree, uid } = await authTree(req);
+    const { inboxRoute } = await import('../lib/comments.js');
+    return send(res, 200, await inboxRoute({ tree, uid, k: url.searchParams.get('k'), onlyCount: url.searchParams.get('n') === '1' }));
+  }
+
+  // Telegram profil rasmi (izoh, like va ko'rganlar ro'yxatlari uchun)
+  if (parts[0] === 'uphoto' && /^\d{1,15}$/.test(parts[1] || '') && m === 'GET') {
+    if (!verifyMedia('u:' + parts[1], url.searchParams.get('e'), url.searchParams.get('s'))) throw new HttpError(403, 'Havola eskirgan');
+    const ph = (await tg('getUserProfilePhotos', { user_id: Number(parts[1]), limit: 1 })).result?.photos?.[0];
+    const f = ph && await downloadFile(ph[0].file_id);
+    if (!f) return send(res, 404, { ok: false }, { 'cache-control': 'public, max-age=21600' });
+    return send(res, 200, f.buffer, { 'content-type': 'image/jpeg', 'cache-control': 'private, max-age=86400' });
+  }
+
   if (parts[0] === 'album') {
     const ctx = await authTree(req);
     const { tree, uid, role, user } = ctx;
@@ -417,6 +433,10 @@ async function route(req, res) {
           }
           return { views: x.views || 0, likes: (x.likes || []).length, liked: (x.likes || []).includes(uid) };
         });
+        if (parts[3] === 'like' && r.result && it.by?.id) {
+          const { pushEvent } = await import('../lib/inbox.js');
+          await pushEvent(tree, it.by.id, { kind: 'like', iid, album: doc.albums.find((a) => a.id === it.album)?.name || '', by, off: !r.result.liked });
+        }
         return send(res, 200, r.result || {});
       }
       if (role !== 'edit') throw new HttpError(403, 'Albomni faqat tahrir rejimidagilar o‘zgartira oladi');
@@ -559,7 +579,7 @@ async function route(req, res) {
       const head = tree.persons.find((p) => p.id === body.head);
       if (!head) throw new HttpError(404, 'Shaxs topilmadi');
       const bid = randomId(8);
-      await mutateTree(tok.treeId, (t) => { t.branches = { ...(t.branches || {}), [bid]: { head: head.id, at: new Date().toISOString(), by: nameOf(user) || '', claimed: null } }; });
+      await mutateTree(tok.treeId, (t) => { t.branches = { ...(t.branches || {}), [bid]: { head: head.id, at: new Date().toISOString(), by: nameOf(user) || '', claimed: null, ...(LANGS.includes(body.lang) ? { lang: body.lang } : {}) } }; });
       return send(res, 200, { bid, link: `https://t.me/${(await import('../lib/bot.js')).BOT()}?start=br_${tree.id}_${bid}` });
     }
     const B = await import('../lib/branch.js');
@@ -606,7 +626,7 @@ async function route(req, res) {
     const { tree, b } = await B.claimBranch(parts[1], parts[2], user);
     if (m === 'GET') {
       const persons = B.scopePersons(tree, b.head);
-      return send(res, 200, { title: tree.title, head: b.head, persons });
+      return send(res, 200, { title: tree.title, head: b.head, persons, lang: b.lang || null });
     }
     if (m === 'POST' && parts[3] === 'sub') {
       if (!await rateLimit('brsub:' + user.id, 20, 60 * 60e3)) throw new HttpError(429, 'Juda ko‘p urinish');
@@ -737,16 +757,6 @@ async function route(req, res) {
     try { return send(res, 200, await (await import('../lib/ai.js')).aiHealth()); } catch (e) { return send(res, 200, { ok: false, error: String(e.message || e).slice(0, 300) }); }
   }
 
-  // Eski bot (@Shajara_iBot): foydalanuvchilarni yangi botga yo'naltiradi
-  if (path === 'oldbot' && m === 'POST') {
-    const oldSecret = hashCode('oldbot:' + (process.env.OLD_BOT_TOKEN || '')).slice(0, 48);
-    if (!process.env.OLD_BOT_TOKEN || req.headers['x-telegram-bot-api-secret-token'] !== oldSecret) return send(res, 401, { ok: false });
-    const update = await readBody(req);
-    const { handleOldBot } = await import('../lib/bot.js');
-    await handleOldBot(update).catch((e) => console.error('oldbot', e));
-    return send(res, 200, { ok: true });
-  }
-
   if (path === 'webhook' && m === 'POST') {
     if (req.headers['x-telegram-bot-api-secret-token'] !== webhookSecret()) return send(res, 401, { ok: false });
     const update = await readBody(req);
@@ -761,6 +771,15 @@ async function route(req, res) {
     const secret = process.env.CRON_SECRET;
     if (!secret || req.headers.authorization !== `Bearer ${secret}`) throw new HttpError(401, 'Ruxsat yo‘q');
     let sent = 0;
+    // 19:00 (Toshkent): bugungi izohlar haqida oila guruhlariga bitta umumiy xabar
+    if (url.searchParams.get('k') === 'digest') {
+      const { commentDigest } = await import('../lib/inbox.js');
+      for (const key of await listKeys('trees/')) {
+        const tr = (await readJson(key).catch(() => null))?.data;
+        if (tr?.groups?.length) sent += await commentDigest(tr, await loadAlbum(tr.id)).catch((e) => (console.error('digest', e), 0));
+      }
+      return send(res, 200, { ok: true, sent });
+    }
     // eski AI vazifalarini tozalash (1 kundan eski)
     for (const key of await listKeys('aijobs/')) {
       const d = (await readJson(key).catch(() => null))?.data;

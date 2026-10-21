@@ -1,6 +1,6 @@
 # Shajara AI — ishlab chiquvchi eslatmalari
 
-Telegram bot **@ShajaraAiBot** + Mini App (oila shajarasi). Eski bot @Shajara_iBot → yangisiga yo'naltiradi.
+Telegram bot **@ShajaraAiBot** + Mini App (oila shajarasi). Eski bot (@Shajara_iBot) kodi butunlay olib tashlangan.
 
 ## Infratuzilma
 - **Vercel** loyiha `prj_yUPhgxNxhcH39Ch7uNy6R8QkJBAd`, team `team_9O94SCoMljTHLcdStVP5qvnf`, region fra1.
@@ -10,7 +10,7 @@ Telegram bot **@ShajaraAiBot** + Mini App (oila shajarasi). Eski bot @Shajara_iB
   Push: `git push origin ccr-29541463-1vn1md && git push origin ccr-29541463-1vn1md:shajara-main`.
   Avto-deploy ba'zan ishlamaydi → Vercel MCP `create_deployment` (gitSource github, org SherzodSafar, repo Factfoodbot, ref shajara-main, sha, target production).
 - Bu muhitdan shajara-ai.vercel.app ga curl bloklangan → tekshirish uchun Vercel MCP (`get_deployment`, `get_runtime_logs`, `web_fetch_vercel_url`).
-- Bitta funksiya `api/index.js` (route=path rewrite), cron `/api/cron` har kuni 04:00 UTC (09:00 Toshkent).
+- Bitta funksiya `api/index.js` (route=path rewrite), cron `/api/cron` har kuni 04:00 UTC (09:00 Toshkent) va `/api/cron?k=digest` 14:00 UTC (19:00).
 
 ## Saqlash
 - `lib/store.js`: Neon Postgres `kv(key, data jsonb, ver)` (optimistik qulf), `rl` jadval — rate limit. Yo'q kalit Vercel Blob'dan ko'chiriladi. Shaxs rasmlari Blob'da.
@@ -21,7 +21,9 @@ Telegram bot **@ShajaraAiBot** + Mini App (oila shajarasi). Eski bot @Shajara_iB
 ## Asosiy modullar
 - `lib/tree.js` — shajara modeli, import (planGraph/importGraph/undo), dublikat/merge, `branchScope`, `applyProposal`, `flexDate`.
 - `lib/branch.js` — shox havolalari: claim, zanjir (`subBranch`), `submitProposal` (bo'sh maydon taqiqlangan), to'liqlik (`completeness`), kunlik eslatmalar (`dailyReminders`), bot yozishmasi orqali to'ldirish (`chatStart/chatText/chatCallback`, callback `bc:*`).
-- `lib/comments.js` — albom izohlari: matn albom kanalida (reply), JSONda faqat indeks `it.cm`; like/seen ro'yxatlari.
+- `lib/comments.js` — albom izohlari: matn albom kanalida (reply), JSONda faqat indeks `it.cm`; like/seen ro'yxatlari (izoh like'lari ham: `people?k=likes&mid=`), `inboxRoute` (`/api/inbox?k=me|fam`, `?n=1`).
+- `lib/inbox.js` — shaxsiy bildirishnomalar `inbox/<uid>.json` (like, cm, re, cmlike) + Telegram DM (`notify.social`), kunlik izoh dayjesti guruhlarga (cron `/api/cron?k=digest` 14:00 UTC = 19:00). Avatar: `/api/uphoto/<uid>` (imzoli, getUserProfilePhotos).
+- Start payload suffikslari: `_n` — bildirishnomalar (Menga), `_f` — oila izohlari.
 - `lib/bot.js` — bot (start payloadlar: invite, `br_<tree>_<bid>`, `<inv>_<pid>`, `<inv>_m<itemId>`), albom yuklash, AI.
 - `lib/ai.js` — Gemini (flash-lite asosiy), fayldan import.
 - `lib/notify.js`, `lib/events.js` — bildirishnomalar, tug'ilgan kunlar (ismlar profil havolasi bilan).
@@ -36,6 +38,7 @@ Telegram bot **@ShajaraAiBot** + Mini App (oila shajarasi). Eski bot @Shajara_iB
 ## Holat (2026-10-21)
 - Bajarilgan: shox havolasi + sehrgar + tasdiqlash, zanjir, bot-yozishma, to'liqlik paneli, eslatmalar, albom izohlari/like/ko'rganlar ro'yxati.
 - Prod'da tekshirilmagan: izoh matnini MTProto orqali kanaldan o'qish (`accessHash 0`); bot kanalda admin (post/edit/delete) bo'lishi shart.
+- 2-bosqich: Instagram uslubi — bildirishnomalar bo'limi (Menga/Oila izohlari/Yangiliklar/Sozlamalar), profil oynasi (rasm + yuklagan fayllari), albom plitkalarida 👁❤💬, shox havolasi tilini tanlash (`branches[bid].lang`), shoxda sanalar faqat to'liq (kun.oy.yil), eski bot kodi olib tashlandi.
 - Keyingi g'oyalar: ovozli javob (bot chat), AI bilan Q&A.
 
 ## Foydalanuvchi afzalliklari

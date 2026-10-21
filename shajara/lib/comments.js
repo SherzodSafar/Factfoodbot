@@ -4,10 +4,10 @@
 import { tg } from './telegram.js';
 import { mtprotoOn, readChannelTexts } from './mtproto.js';
 import { HttpError } from './tree.js';
-import { rateLimit, signInvite } from './auth.js';
+import { rateLimit } from './auth.js';
 import { loadAlbum, mutateAlbum } from './album.js';
 import { escapeHtml } from './notify.js';
-import { t } from './i18n.js';
+import { pushEvent, avatarUrl, getInbox, mutateInbox } from './inbox.js';
 
 const cache = new Map(); // `${chat}:${mid}` -> matn
 const ck = (chat, mid) => `${chat}:${mid}`;
@@ -30,7 +30,7 @@ async function texts(chat, list) {
 
 function person(tree, uid) {
   const m = tree.members?.[uid];
-  return { id: uid, name: m?.name || 'Telegram', username: m?.username || null };
+  return { id: uid, name: m?.name || 'Telegram', username: m?.username || null, ph: avatarUrl(uid) };
 }
 
 /** /api/album/i/:iid/(c|people) so'rovlari. parts = ['album','i',iid, ...]. */
@@ -42,7 +42,8 @@ export async function commentRoute({ tree, uid, role, user, nameOf, m, parts, re
 
   if (parts[3] === 'people' && m === 'GET') {
     const k = url.searchParams.get('k') === 'likes' ? 'likes' : 'seen';
-    return { people: [...(it[k] || [])].reverse().slice(0, 300).map((id) => person(tree, String(id))) };
+    const c = url.searchParams.get('mid') && (it.cm || []).find((x) => x.mid === Number(url.searchParams.get('mid')));
+    return { people: [...((c ? c.likes : it[k]) || [])].reverse().slice(0, 300).map((id) => person(tree, String(id))) };
   }
   if (parts[3] !== 'c') return null;
   const chat = tree.channel?.id || it.ch?.chat;
@@ -76,7 +77,12 @@ export async function commentRoute({ tree, uid, role, user, nameOf, m, parts, re
     const c = { mid: r.result.message_id, uid, name, at: new Date().toISOString(), re, likes: [] };
     cache.set(ck(chat, c.mid), text);
     await mutateAlbum(tree.id, (d) => { const x = d.items.find((y) => y.id === iid); if (x) (x.cm ||= []).push(c); });
-    notifyGroups(tree, doc, it).catch(() => {});
+    // fayl egasi va (javob bo'lsa) izoh egasiga bildirishnoma
+    const album = doc.albums.find((a) => a.id === it.album)?.name || '';
+    const by = { id: uid, name };
+    const parent = re && cm.find((x) => x.mid === re);
+    if (parent) await pushEvent(tree, parent.uid, { kind: 're', iid, mid: c.mid, album, by, text });
+    if (it.by?.id && String(it.by.id) !== String(parent?.uid)) await pushEvent(tree, it.by.id, { kind: 'cm', iid, mid: c.mid, album, by, text });
     return { ok: true, item: { ...c, text, likes: 0, liked: false, mine: true, by: person(tree, uid) } };
   }
 
@@ -91,6 +97,7 @@ export async function commentRoute({ tree, uid, role, user, nameOf, m, parts, re
       if (i < 0) a.push(uid); else a.splice(i, 1);
       return { likes: a.length, liked: i < 0 };
     });
+    if (r.result) await pushEvent(tree, c.uid, { kind: 'cmlike', iid, mid, album: doc.albums.find((a) => a.id === it.album)?.name || '', by: { id: uid, name: nameOf(user) || 'Telegram' }, off: !r.result.liked });
     return r.result || {};
   }
   if (m === 'PATCH') {
@@ -113,16 +120,48 @@ export async function commentRoute({ tree, uid, role, user, nameOf, m, parts, re
   throw new HttpError(404, 'Topilmadi');
 }
 
-// Oila guruhlariga qisqa xabar — izoh matnisiz, o'qish uchun ilovaga chaqiradi.
-async function notifyGroups(tree, doc, it) {
-  if (!tree.groups?.length) return;
-  const { BOT } = await import('./bot.js');
-  const album = doc.albums.find((a) => a.id === it.album)?.name || '';
-  const link = `https://t.me/${BOT()}?start=${signInvite(tree.id, tree.ver || 1)}_m${it.id}`;
-  for (const g of tree.groups) {
-    const lang = g.lang || 'uz';
-    await tg('sendMessage', { chat_id: g.id, parse_mode: 'HTML', disable_web_page_preview: true,
-      text: t(lang, '💬 «{album}» albomidagi faylga yangi izoh qoldirildi', { album: escapeHtml(album) }),
-      reply_markup: { inline_keyboard: [[{ text: t(lang, '💬 O‘qish'), url: link }]] } }).catch(() => {});
+// ---------------------------------------------------------------- bildirishnomalar bo'limi --
+const fileOf = (doc, it) => ({ iid: it.id, album: doc.albums.find((a) => a.id === it.album)?.name || '', type: it.type, by: it.by || null });
+
+/** GET /api/inbox: k=me — shaxsiy hodisalar; k=fam — oiladagi barcha izohlar (yangisi tepada). */
+export async function inboxRoute({ tree, uid, k, onlyCount }) {
+  const doc = await loadAlbum(tree.id);
+  const chat = tree.channel?.id;
+  const byIid = new Map(doc.items.map((x) => [x.id, x]));
+  if (onlyCount) {
+    if (!uid) return { unread: 0 };
+    const ib = await getInbox(uid);
+    const seen = ib.read?.[tree.id] || '';
+    return { unread: ib.items.filter((x) => x.tree === tree.id && x.at > seen).length };
   }
+  // izoh ma'lumoti (matn kanaldan)
+  const view = async (pairs) => {
+    const list = pairs.map(([it, c]) => c).filter(Boolean);
+    const ch = chat || pairs.find(([it]) => it?.ch?.chat)?.[0].ch.chat;
+    const tx = ch ? await texts(ch, list).catch(() => list.map(() => null)) : list.map(() => null);
+    const T = new Map(list.map((c, i) => [c.mid, tx[i]]));
+    return (c) => c && { mid: c.mid, re: c.re || null, at: c.at, name: c.name, by: person(tree, c.uid), text: T.get(c.mid) ?? null,
+      likes: (c.likes || []).length, liked: !!uid && (c.likes || []).includes(uid), mine: c.uid === uid };
+  };
+  if (k === 'fam') {
+    const all = [];
+    for (const it of doc.items) for (const c of it.cm || []) all.push([it, c]);
+    all.sort((a, b) => (a[1].at < b[1].at ? 1 : -1));
+    const top = all.slice(0, 80);
+    const V = await view(top);
+    return { items: top.map(([it, c]) => ({ ...fileOf(doc, it), c: V(c) })) };
+  }
+  if (!uid) return { items: [] };
+  const ib = await getInbox(uid);
+  const seen = ib.read?.[tree.id] || '';
+  const mine = ib.items.filter((x) => x.tree === tree.id).slice(0, 100);
+  const pairs = mine.map((x) => { const it = byIid.get(x.iid); return [it, x.mid && it ? (it.cm || []).find((c) => c.mid === x.mid) : null]; });
+  const V = await view(pairs.filter(([it]) => it));
+  const items = mine.map((x, i) => {
+    const [it, c] = pairs[i];
+    if (!it || (x.mid && !c)) return null; // fayl yoki izoh o'chirilgan
+    return { kind: x.kind, at: x.at, isNew: x.at > seen, who: { ...person(tree, String(x.by.id)), name: x.by.name }, ...fileOf(doc, it), c: V(c) };
+  }).filter(Boolean);
+  await mutateInbox(uid, (d) => { d.read = { ...(d.read || {}), [tree.id]: new Date().toISOString() }; }).catch(() => {});
+  return { items };
 }

@@ -1,6 +1,6 @@
-# 🌳 Shajara iBot — Telegram Mini App
+# 🌳 Shajara AI — Telegram Mini App
 
-Oila shajarasini qurish, ko'rish va avlodlarga yetkazish uchun bot: [@Shajara_iBot](https://t.me/Shajara_iBot)
+Oila shajarasini qurish, ko'rish va avlodlarga yetkazish uchun bot: [@ShajaraAiBot](https://t.me/ShajaraAiBot)
 
 ## Imkoniyatlar
 
