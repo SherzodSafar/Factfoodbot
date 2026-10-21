@@ -787,7 +787,7 @@ async function renderAlbumTab(el) {
 function tile(it) {
   const img = it.thumb ? `<img src="${it.thumb}" alt="" loading="lazy">` : `<div class="tile-ic">${TYPE_ICON[it.type] || '📄'}</div>`;
   const badge = it.type === 'video' || it.type === 'animation' || it.type === 'video_note' ? `<span class="tile-badge">▶ ${fmtDur(it.dur)}</span>`
-    : it.type !== 'photo' ? `<span class="tile-badge">${TYPE_ICON[it.type] || ''} ${esc((it.name || '').slice(0, 14))}</span>` : '';
+    : it.type !== 'photo' && it.kind !== 'image' ? `<span class="tile-badge">${TYPE_ICON[it.type] || ''} ${esc((it.name || '').slice(0, 14))}</span>` : '';
   return `<div class="tile-w"><button class="tile" data-item="${it.id}">${img}${badge}</button>
     <div class="tile-st"><span>${VI.eye}${fmtN(it.views)}</span><span class="${it.liked ? 'on' : ''}">${VI.heart(it.liked)}${fmtN(it.likes)}</span><span>${VI.cm}${fmtN(it.cm)}</span></div></div>`;
 }
@@ -810,7 +810,7 @@ const FILE_IC = { pdf: '📕', doc: '📘', docx: '📘', xls: '📗', xlsx: '�
 const fmtT = (s) => (isFinite(s) ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}` : '0:00');
 const fmtN = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : String(n || 0));
 
-function openViewer(ids, index) {
+function openViewer(ids, index, opts = {}) {
   const A = S.album;
   const items = ids.map((id) => A.items.find((x) => x.id === id)).filter(Boolean);
   if (!items.length) return;
@@ -823,7 +823,10 @@ function openViewer(ids, index) {
   document.body.append(box);
   const feed = box.querySelector('.rv-feed');
   const slides = [...feed.children];
-  const close = () => { io.disconnect(); box.querySelectorAll('video,audio').forEach((m) => m.pause()); box.remove(); viewerOpen = null; updateBackButton(); };
+  // over: ochiq oynalar (masalan, shaxs oynasi) ustida ochiladi — yopilganda ular qaytadi
+  const hidden = opts.over ? [...$sheets.children].filter((w) => w.style.visibility !== 'hidden') : [];
+  hidden.forEach((w) => (w.style.visibility = 'hidden'));
+  const close = () => { io.disconnect(); box.querySelectorAll('video,audio').forEach((m) => m.pause()); box.remove(); hidden.forEach((w) => (w.style.visibility = '')); viewerOpen = null; updateBackButton(); };
   viewerOpen = close;
   box.querySelector('#rv-x').onclick = close;
   box.querySelector('#rv-ed')?.addEventListener('click', () => { const it = items[cur]; close(); itemEditSheet(it); });
@@ -837,6 +840,18 @@ function openViewer(ids, index) {
   let tapT = null;
   feed.addEventListener('click', (e) => {
     if (e.target.closest('button, input, .rv-seek, .rv-audio')) return;
+    // videoning markazi bosilsa — pauza/davom; boshqa joyi — yozuvlarni yashirish
+    const vid = e.target.closest('.rv-slide')?.querySelector('video.rv-vid');
+    if (vid) {
+      const r = vid.getBoundingClientRect();
+      const R = Math.min(r.width, r.height) * 0.25;
+      if (Math.hypot(e.clientX - (r.left + r.width / 2), e.clientY - (r.top + r.height / 2)) < Math.max(R, 60)) {
+        clearTimeout(tapT); tapT = null;
+        vid.paused ? vid.play().catch(() => {}) : vid.pause();
+        haptic('light');
+        return;
+      }
+    }
     const img = e.target.closest('.rv-slide')?.querySelector('img.rv-img');
     if (tapT) {
       clearTimeout(tapT); tapT = null;
@@ -860,10 +875,11 @@ function openViewer(ids, index) {
         <div class="rv-big-play">${VI.play}</div>`;
     } else if (it.kind === 'audio' && it.src) {
       media = `<div class="rv-audio"><div class="rv-disc">${it.thumb ? `<img src="${it.thumb}" alt="">` : '🎵'}</div>
-        <div class="rv-a-name">${esc(it.name || t('Audio'))}</div>
+        <div class="rv-a-name">${esc(it.caption || it.name || t('Audio'))}</div>
         <div class="rv-seek big"><i></i></div><div class="rv-a-time"><span class="c">0:00</span><span class="d">${fmtDur(it.dur) || '0:00'}</span></div>
         <div class="rv-a-ctl"><button data-a="-10">${VI.back10}</button><button class="rv-a-play" data-a="play">${VI.play}</button><button data-a="10">${VI.fwd10}</button></div>
-        <button class="rv-a-spd" data-a="spd">1×</button><audio preload="metadata" src="${it.src}"></audio></div>`;
+        <div class="rv-a-row"><button class="rv-a-spd" data-a="spd">1×</button><button class="rv-a-spd rv-a-loop ${store.get('sh_loop', false) ? 'on' : ''}" data-a="loop">🔁</button></div>
+        <audio preload="metadata" src="${it.src}" ${store.get('sh_loop', false) ? 'loop' : ''}></audio></div>`;
     } else {
       const ext = (it.name || '').split('.').pop().toLowerCase();
       media = `<div class="rv-file">${it.thumb ? `<img class="bg" src="${it.thumb}" alt="">` : ''}<div class="ic">${it.kind === 'file' ? FILE_IC[ext] || '📄' : TYPE_ICON[it.type] || '📄'}</div>
@@ -882,7 +898,7 @@ function openViewer(ids, index) {
       </div>
       ${land ? `<button class="rv-full rv-ui" data-act="full">${VI.full}</button>` : ''}
       <div class="rv-info rv-ui">
-        <div class="rv-meta">📁 ${esc(nm(a?.name || ''))} · ${fmtDate(it.at.slice(0, 10))}</div>
+        <div class="rv-meta">📁 ${esc(nm(a?.name || ''))} · ${fmtDate(it.at.slice(0, 10))} ${new Date(it.at).toTimeString().slice(0, 5)}${it.size ? ' · ' + fmtSize(it.size) : ''}</div>
         ${it.by?.name ? `<button class="rv-by" data-act="by">👤 ${esc(it.by.name)}</button>` : ''}
         ${it.caption ? `<div class="rv-cap">${esc(it.caption)}</div>` : ''}
         ${it.kind === 'video' && it.src ? `<div class="rv-vbar"><div class="rv-seek"><i></i></div><span class="rv-vt">0:00</span><button data-act="pp">${VI.pause}</button></div>` : ''}
@@ -977,6 +993,7 @@ function openViewer(ids, index) {
       const k = b.dataset.a;
       if (k === 'play') au.paused ? au.play().catch(() => {}) : au.pause();
       else if (k === 'spd') speedPop(b, au, (v) => (b.textContent = v + '×'));
+      else if (k === 'loop') { au.loop = !au.loop; b.classList.toggle('on', au.loop); store.set('sh_loop', au.loop); toast(au.loop ? t('Takrorlash yoqildi 🔁') : t('Takrorlash o‘chirildi')); }
       else au.currentTime = Math.max(0, au.currentTime + Number(k));
     }));
     seekable(sl.querySelector('.rv-seek'), au);
@@ -1057,6 +1074,7 @@ function openViewer(ids, index) {
       const m = sl.querySelector('video, audio');
       if (!m) return;
       if (j === i && m.tagName === 'VIDEO') m.play().catch(() => { m.muted = true; m.play().catch(() => {}); });
+      else if (j === i) m.play().catch(() => {}); // audio ham avtomatik
       else if (j !== i) m.pause();
       if (j !== i && sl.classList.contains('land')) { sl.classList.remove('land'); feed.style.overflowY = ''; }
     });
@@ -2104,7 +2122,7 @@ async function openPortrait(p) {
     if (!box.isConnected || !S.album.items.some((x) => x.id === p.photoItem)) return box.querySelector('.pz-spin')?.remove();
     box.remove();
     viewerOpen?.();
-    openViewer([p.photoItem], 0);
+    openViewer([p.photoItem], 0, { over: true });
   } catch { box.querySelector('.pz-spin')?.remove(); }
 }
 

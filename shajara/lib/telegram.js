@@ -106,3 +106,16 @@ export async function fetchFilePart(fileId, start, end) {
   }
   return { buffer: buf, path, total };
 }
+
+// Guruhdan ham to'g'ridan-to'g'ri Mini App'ni ochadigan havola (BotFather'da Main Mini App yoqilgan bo'lsa),
+// aks holda botga /start bilan.
+let meP = null;
+export async function botMe() {
+  meP ||= tg('getMe', {}).then((r) => (r.ok ? r.result : (meP = null, {}))).catch(() => (meP = null, {}));
+  return meP;
+}
+export async function appLink(payload) {
+  const me = await botMe();
+  const bot = me.username || process.env.BOT_USERNAME || 'ShajaraAiBot';
+  return me.has_main_web_app ? `https://t.me/${bot}?startapp=${payload}` : `https://t.me/${bot}?start=${payload}`;
+}

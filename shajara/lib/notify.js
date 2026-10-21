@@ -1,5 +1,5 @@
 // Shajara a'zolari va ulangan guruhlarga bildirishnoma yuborish.
-import { tg } from './telegram.js';
+import { tg, appLink } from './telegram.js';
 import { t } from './i18n.js';
 import { signInvite } from './auth.js';
 
@@ -13,8 +13,8 @@ export async function notify(tree, kind, text, { except, button = true, open = n
   const inv = open ? signInvite(tree.id, tree.ver || 1) + open : null;
   const markup = (lang) =>
     button && url ? { inline_keyboard: [[inv ? { text: t(lang, '👀 Ko‘rish'), web_app: { url: `${url}/?inv=${inv}` } } : { text: t(lang, '🌳 Shajarani ochish'), web_app: { url: url + '/' } }]] } : undefined;
-  const BOT = process.env.BOT_USERNAME || 'ShajaraAiBot';
-  const gmarkup = (lang) => (inv ? { inline_keyboard: [[{ text: t(lang, '👀 Ko‘rish'), url: `https://t.me/${BOT}?start=${inv}` }]] } : undefined);
+  const glink = inv && (tree.groups || []).length ? await appLink(inv) : null;
+  const gmarkup = (lang) => (glink ? { inline_keyboard: [[{ text: t(lang, '👀 Ko‘rish'), url: glink }]] } : undefined);
   const jobs = [];
   for (const [uid, m] of Object.entries(tree.members || {})) {
     if (uid === String(except) || m.blocked || (tree.banned || []).includes(uid)) continue;

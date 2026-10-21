@@ -704,3 +704,6 @@ img { pointer-events: none; }
 .sheet.sheet-full { height: 92vh; height: 92dvh; }
 .pz-spin { position: absolute; bottom: 40px; color: #fff; }
 .sheet-full .sheet-body { flex: 1; }
+.rv-a-row { display: flex; gap: 8px; justify-content: center; }
+.rv-a-loop { opacity: .55; }
+.rv-a-loop.on { opacity: 1; background: color-mix(in srgb, var(--primary) 55%, transparent) !important; }

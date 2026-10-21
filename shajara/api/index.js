@@ -618,8 +618,8 @@ async function route(req, res) {
     await readJson('users/0.json').catch(() => null);
     const blobMs = Date.now() - t;
     t = Date.now();
-    await tg('getMe', {});
-    const out = { blobMs, telegramMs: Date.now() - t, region: process.env.VERCEL_REGION || null, db: !!process.env.DATABASE_URL };
+    const me = (await tg('getMe', {})).result || {};
+    const out = { blobMs, telegramMs: Date.now() - t, mainApp: !!me.has_main_web_app, region: process.env.VERCEL_REGION || null, db: !!process.env.DATABASE_URL };
     const r2 = await import('../lib/r2.js');
     if (r2.r2On() && url.searchParams.get('r2')) {
       // R2 tekshiruvi: kichik faylni yozib, imzolangan havola orqali o'qish

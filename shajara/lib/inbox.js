@@ -84,7 +84,8 @@ export async function commentDigest(tree, doc) {
   }
   if (!n) return 0;
   const { BOT } = await import('./bot.js');
-  const link = `https://t.me/${BOT()}?start=${signInvite(tree.id, tree.ver || 1)}_f`;
+  const { appLink } = await import('./telegram.js');
+  const link = await appLink(`${signInvite(tree.id, tree.ver || 1)}_f`);
   const names = [...albums.keys()].filter(Boolean).slice(0, 5).map((a) => `«${escapeHtml(a)}»`).join(', ');
   let sent = 0;
   for (const g of tree.groups) {

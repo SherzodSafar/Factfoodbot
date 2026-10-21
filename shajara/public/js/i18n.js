@@ -587,6 +587,8 @@ const D = [
   ['Turmush o‘rtog‘ining familiyasini ham yozing', 'Укажите и фамилию супруга(и)', 'Enter the spouse’s last name too'],
   ['Asl nusxa albomga saqlanmoqda…', 'Оригинал сохраняется в альбом…', 'Saving the original to the album…'],
   ['Fayl juda katta (50 MB gacha)', 'Файл слишком большой (до 50 МБ)', 'File is too large (up to 50 MB)'],
+  ['Takrorlash yoqildi 🔁', 'Повтор включён 🔁', 'Repeat on 🔁'],
+  ['Takrorlash o‘chirildi', 'Повтор выключен', 'Repeat off'],
 ];
 
 const RU = new Map(D.map((r) => [r[0], r[1]]));
