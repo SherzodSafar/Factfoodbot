@@ -410,6 +410,7 @@ function renderMain() {
   if (go) setTimeout(() => { S.treeView?.focus(go, { k: 1 }); personSheet(go); }, 250);
   fetchUnread();
   if (S.goInbox) { const k = S.goInbox === 'f' ? 'fam' : 'me'; S.goInbox = null; setTimeout(() => notificationsSheet(k), 300); }
+  if (S.goItem) { const id = S.goItem; S.goItem = null; setTimeout(() => openMediaComments(id, false), 300); }
   if (S.goMedia) { const mid = S.goMedia; S.goMedia = null; setTimeout(() => openMediaComments(mid), 300); }
   if (S.openProps && canEdit()) { S.openProps = false; setTimeout(branchesSheet, 300); }
 }
@@ -1281,7 +1282,7 @@ async function refreshAlbum() {
 function uploadSheet() {
   const sh = openSheet(`<div class="sheet-head"><div class="h2">${t('Albomga qo‘shish')}</div><button class="icon-btn" data-close>${I.close}</button></div>
     <form class="sheet-body" id="uf">
-      <label class="drop">${I.image}<b>${t('Rasmlarni tanlang')}</b><span class="small muted">${t('Bir nechta rasmni birdaniga tanlash mumkin')}</span><input type="file" accept="image/*" multiple hidden name="files"></label>
+      <label class="drop">${I.image}<b>${t('Rasmlarni tanlang')}</b><span class="small muted">${t('Bir nechta rasmni birdaniga tanlash mumkin')}</span><input type="file" accept="image/*,video/*" multiple hidden name="files"></label>
       <div class="thumbs" id="pv"></div>
       <div class="field"><label>${t('Albom')}</label>${albumSelect(S.albumFilter !== 'all' ? S.albumFilter : S.album.albums[0]?.id)}</div>
       <div class="field"><label>${t('Izoh — kim, qachon, qayerda?')}</label><textarea class="input" name="caption" maxlength="900" placeholder="${t('Masalan: Bobomning 80 yillik yubileyi, 2019')}"></textarea></div>
@@ -1294,7 +1295,7 @@ function uploadSheet() {
   let files = [];
   input.onchange = () => {
     files = [...input.files].slice(0, 20);
-    sh.querySelector('#pv').innerHTML = files.map((f) => `<img src="${URL.createObjectURL(f)}" alt="">`).join('');
+    sh.querySelector('#pv').innerHTML = files.map((f) => (/^video/.test(f.type) ? `<div class="tile-ic">🎬</div>` : `<img src="${URL.createObjectURL(f)}" alt="">`)).join('');
     sh.querySelector('#ub').disabled = !files.length;
     sh.querySelector('#ub').textContent = t('Yuklash ({n})', { n: files.length });
   };
@@ -1310,8 +1311,7 @@ function uploadSheet() {
     for (const file of files) {
       btn.innerHTML = `<span class="spin"></span> ${ok + 1}/${files.length}`;
       try {
-        const data = await resizeImage(file, 2048, false);
-        const r = await api('album/upload', { method: 'POST', body: { ...body, data } });
+        const r = await uploadOriginal(file, body, (k) => (btn.innerHTML = `<span class="spin"></span> ${ok + 1}/${files.length} · ${Math.round(k * 100)}%`));
         if (body.albumName) { body.album = r.album.id; delete body.albumName; }
         ok++;
       } catch (err) {
@@ -1490,6 +1490,7 @@ function notificationsSheet(tab) {
   const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">🔔 ${t('Bildirishnomalar')}</div><button class="icon-btn" data-close>${I.close}</button></div>
     <div class="chips ib-tabs">${tabs.map(([k, l]) => `<button class="chip" data-ib="${k}">${l}${U[k] ? `<span class="ib-n">${U[k]}</span>` : ''}</button>`).join('')}</div>
     <div class="sheet-body" id="ib-body"></div>`);
+  sh.classList.add('sheet-full');
   const body = sh.querySelector('#ib-body');
   const KIND = { like: '❤️ {who} faylingizni yoqtirdi', cm: '💬 {who} faylingizga izoh yozdi', re: '↩️ {who} izohingizga javob yozdi', cmlike: '❤️ {who} izohingizni yoqtirdi' };
   let L = [];
@@ -1739,6 +1740,19 @@ const AI_TIPS = ['Qanday qilib odam qo‘shaman?', 'Albomga qanday rasm qo‘sha
 const SPARK = '<svg viewBox="0 0 24 24" class="spark" aria-hidden="true"><path d="M12 2c.7 5 2.3 7.3 7.5 8-5.2.7-6.8 3-7.5 8-.7-5-2.3-7.3-7.5-8 5.2-.7 6.8-3 7.5-8z"/></svg>';
 const CLIP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 11-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.6-8.6a3.7 3.7 0 0 1 5.2 5.2l-8.6 8.6a1.8 1.8 0 0 1-2.6-2.6l7.9-7.9"/></svg>';
 
+// Asl sifatda yuklash: fayl o'zgartirilmaydi, 2.5 MB bo'laklarda yuboriladi va kanalga «fayl» sifatida saqlanadi
+async function uploadOriginal(file, meta = {}, onProgress) {
+  const CH = 2.5 * 1024 * 1024;
+  const n = Math.max(1, Math.ceil(file.size / CH));
+  if (file.size > 50 * 1024 * 1024) throw new Error(t('Fayl juda katta (50 MB gacha)'));
+  const u = Math.random().toString(36).slice(2, 12) + Date.now().toString(36);
+  for (let i = 0; i < n; i++) {
+    onProgress?.(i / n);
+    await api('album/up/chunk', { method: 'POST', body: { u, i, data: await fileB64(file.slice(i * CH, (i + 1) * CH)) } });
+  }
+  onProgress?.(1);
+  return api('album/up/finish', { method: 'POST', body: { u, n, name: file.name || 'photo.jpg', mime: file.type || 'application/octet-stream', ...meta } });
+}
 const fileB64 = (blob) => new Promise((ok, bad) => {
   const r = new FileReader();
   r.onload = () => ok(String(r.result).split(',')[1] || '');
@@ -2074,21 +2088,24 @@ function personSheet(id) {
   sh.querySelector('#ph')?.addEventListener('click', () => photoMenu(p));
   // rasmga bosilsa — to'liq hajmda (albomdagi asl nusxa, bo'lmasa avatarning o'zi)
   sh.querySelector('.p-hero .avatar img')?.closest('.avatar').addEventListener('click', () => openPortrait(p));
+  if (p.photoItem && !S.album?.items.some((x) => x.id === p.photoItem)) loadAlbum(true).catch(() => {});
 }
 async function openPortrait(p) {
-  if (p.photoItem) {
-    try {
-      await loadAlbum(true);
-      if (S.album.items.some((x) => x.id === p.photoItem)) { viewerOpen?.(); return openViewer([p.photoItem], 0); }
-    } catch {}
-  }
+  // darhol avatar ko'rinadi, albomdagi asl nusxa tayyor bo'lgach o'sha ochiladi
   const src = photoUrl(p);
-  if (!src) return;
   const box = document.createElement('div');
   box.className = 'pz';
-  box.innerHTML = `<img src="${src}" alt=""><button class="rv-x">${I.close}</button>`;
+  box.innerHTML = `${src ? `<img src="${src}" alt="">` : ''}${p.photoItem ? '<span class="spin pz-spin"></span>' : ''}<button class="rv-x">${I.close}</button>`;
   box.onclick = () => box.remove();
   document.body.append(box);
+  if (!p.photoItem) return;
+  try {
+    if (!S.album?.items.some((x) => x.id === p.photoItem)) await loadAlbum(true);
+    if (!box.isConnected || !S.album.items.some((x) => x.id === p.photoItem)) return box.querySelector('.pz-spin')?.remove();
+    box.remove();
+    viewerOpen?.();
+    openViewer([p.photoItem], 0);
+  } catch { box.querySelector('.pz-spin')?.remove(); }
 }
 
 // ------------------------------------------------------------ Surat --------
@@ -2103,9 +2120,14 @@ function photoMenu(p) {
     if (!file) return;
     sh.querySelector('label.btn').innerHTML = `<span class="spin"></span> ${t('Yuklanmoqda…')}`;
     try {
-      const data = await resizeImage(file, 640, true);
-      const full = await resizeImage(file, 1600, false).catch(() => null); // albomdagi «Portretlar» uchun
-      const r = await api(`person/${p.id}/photo`, { method: 'POST', body: { data, full } });
+      const data = await resizeImage(file, 640, true); // kichik avatar (ko'rsatish uchun)
+      let r = await api(`person/${p.id}/photo`, { method: 'POST', body: { data } });
+      // asl nusxa — albomning «Portretlar» papkasiga, siqilmagan holda (kanal ulanmagan bo'lsa o'tkazib yuboriladi)
+      try {
+        sh.querySelector('label.btn').innerHTML = `<span class="spin"></span> ${t('Asl nusxa albomga saqlanmoqda…')}`;
+        const up = await uploadOriginal(file, { pid: p.id });
+        if (up.item) { S.album = null; const q = r.tree.persons.find((x) => x.id === p.id); if (q) q.photoItem = up.item; }
+      } catch {}
       closeAllSheets();
       onTreeChanged(r.tree);
       toast(t('Surat qo‘yildi 📸'));
@@ -2544,6 +2566,7 @@ function boot() {
   S.goPerson = /_(p\d{1,8})$/.exec(inv.slice(30))?.[1] || null;
   S.goMedia = /_m([a-z0-9]{10})$/.exec(inv.slice(30))?.[1] || null;
   S.goInbox = /_([nf])$/.exec(inv.slice(30))?.[1] || null;
+  S.goItem = /_a([a-z0-9]{10})$/.exec(inv.slice(30))?.[1] || null;
   const startCode = params.get('code') || (!inv ? sp : '');
   const br = /^([a-z0-9]{6,20})_([A-Za-z0-9]{4,16})$/.exec(params.get('br') || '');
   if (br) return renderBranchWizard(br[1], br[2]);

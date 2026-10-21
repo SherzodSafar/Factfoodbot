@@ -1,15 +1,20 @@
 // Shajara a'zolari va ulangan guruhlarga bildirishnoma yuborish.
 import { tg } from './telegram.js';
 import { t } from './i18n.js';
+import { signInvite } from './auth.js';
 
 /**
  * kind: 'tree' | 'album' | 'bday'. text(lang) — matn yasovchi.
  * except — yuboruvchining o'zi (unga xabar bormaydi).
  */
-export async function notify(tree, kind, text, { except, button = true } = {}) {
+export async function notify(tree, kind, text, { except, button = true, open = null } = {}) {
   const url = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
+  // open: '_p0007' (shaxs) yoki '_a<itemId>' (albom fayli) — tugma aynan shuni ochadi
+  const inv = open ? signInvite(tree.id, tree.ver || 1) + open : null;
   const markup = (lang) =>
-    button && url ? { inline_keyboard: [[{ text: t(lang, '🌳 Shajarani ochish'), web_app: { url: url + '/' } }]] } : undefined;
+    button && url ? { inline_keyboard: [[inv ? { text: t(lang, '👀 Ko‘rish'), web_app: { url: `${url}/?inv=${inv}` } } : { text: t(lang, '🌳 Shajarani ochish'), web_app: { url: url + '/' } }]] } : undefined;
+  const BOT = process.env.BOT_USERNAME || 'ShajaraAiBot';
+  const gmarkup = (lang) => (inv ? { inline_keyboard: [[{ text: t(lang, '👀 Ko‘rish'), url: `https://t.me/${BOT}?start=${inv}` }]] } : undefined);
   const jobs = [];
   for (const [uid, m] of Object.entries(tree.members || {})) {
     if (uid === String(except) || m.blocked || (tree.banned || []).includes(uid)) continue;
@@ -19,7 +24,7 @@ export async function notify(tree, kind, text, { except, button = true } = {}) {
   }
   for (const g of tree.groups || []) {
     if (kind === 'tree' && g.quiet) continue;
-    jobs.push(() => tg('sendMessage', { chat_id: g.id, parse_mode: 'HTML', text: text(g.lang || 'uz'), disable_web_page_preview: true }));
+    jobs.push(() => tg('sendMessage', { chat_id: g.id, parse_mode: 'HTML', text: text(g.lang || 'uz'), disable_web_page_preview: true, reply_markup: gmarkup(g.lang || 'uz') }));
   }
   // Telegram cheklovi: sekundiga ~30 xabar. 10 tadan parallel yuboramiz.
   let sent = 0;

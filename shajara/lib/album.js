@@ -4,13 +4,16 @@ import { readJson, writeJson, updateJson, ConflictError } from './store.js';
 import { sendStored, mediaOf } from './telegram.js';
 import { signMedia, randomId } from './auth.js';
 import { mtprotoOn } from './mtproto.js';
+import { r2On } from './r2.js';
 import { HttpError, PAYWALL, LIMITS, isPremium, mutateTree, addLog } from './tree.js';
 import { notify, escapeHtml } from './notify.js';
 import { t } from './i18n.js';
 
 export const albumKey = (treeId) => `albums/${treeId}.json`;
 const INLINE_MAX = 20 * 1024 * 1024; // Bot API yuklab olish chegarasi — kattaroqlari chat orqali ochiladi
-const IMG_MAX = 4 * 1024 * 1024; // rasm bir bo'lakda qaytadi
+// rasm bir bo'lakda qaytadi; R2 kesh bo'lsa katta (asl) rasmlar ham u orqali ochiladi
+const IMG_MAX = 4 * 1024 * 1024;
+const imgMax = () => (r2On() ? INLINE_MAX : IMG_MAX);
 
 export async function loadAlbum(treeId) {
   return (await readJson(albumKey(treeId)))?.data || { albums: [], items: [] };
@@ -75,7 +78,7 @@ export function publicAlbum(doc, tree, uid) {
       const kind = kindOf(it);
       // 20 MB dan katta video/audio — MTProto orqali bo'laklab (kalitlar sozlangan bo'lsa)
       const big = (kind === 'video' || kind === 'audio') && it.size > INLINE_MAX && mtprotoOn() && it.ch?.msg;
-      const ok = kind === 'image' ? !it.size || it.size <= IMG_MAX : kind !== 'file' && (!it.size || it.size <= INLINE_MAX || big);
+      const ok = kind === 'image' ? !it.size || it.size <= imgMax() : kind !== 'file' && (!it.size || it.size <= INLINE_MAX || big);
       return {
         byUser: it.by?.id ? users[it.by.id]?.username || null : null,
         id: it.id, album: it.album, type: it.type, kind, mime: it.mime || null, caption: it.caption, name: it.name, w: it.w, h: it.h, dur: it.dur,
@@ -92,7 +95,7 @@ export function publicAlbum(doc, tree, uid) {
  * Yuklamani albomga yozish: kanal ulangan bo'lsa avval kanalga yuboriladi (asosiy saqlash joyi).
  * media: mediaOf() natijalari ro'yxati. by: { id, name }.
  */
-export async function addToAlbum(tree, { albumId, albumName, caption, media, by, inChannel }) {
+export async function addToAlbum(tree, { albumId, albumName, caption, media, by, inChannel, silent }) {
   if (!media.length) throw new HttpError(400, 'Fayl yo‘q');
   if (!tree.channel) throw new HttpError(400, 'Avval albom kanalini ulang');
   const doc0 = await loadAlbum(tree.id);
@@ -126,6 +129,6 @@ export async function addToAlbum(tree, { albumId, albumName, caption, media, by,
   await mutateTree(tree.id, (tr) => {
     addLog(tr, by?.name, 'album', `${album.name} · ${stored.length}`);
   });
-  await notify(tree, 'album', (lang) => t(lang, '📸 <b>{who}</b> «{album}» albomiga {n} ta fayl qo‘shdi', { who: escapeHtml(by?.name || ''), album: escapeHtml(album.name), n: stored.length }), { except: by?.id }).catch(() => {});
+  if (!silent) await notify(tree, 'album', (lang) => t(lang, '📸 <b>{who}</b> «{album}» albomiga {n} ta fayl qo‘shdi', { who: escapeHtml(by?.name || ''), album: escapeHtml(album.name), n: stored.length }), { except: by?.id, open: `_a${stored[0].id}` }).catch(() => {});
   return { album, count: stored.length };
 }

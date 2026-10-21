@@ -66,6 +66,9 @@ async function onPrivate(msg) {
         { reply_markup: { inline_keyboard: [[{ text: t(lang, '✍️ Ilovada to‘ldirish'), web_app: { url: `${URL_()}/?br=${br[1]}_${br[2]}` } }],
           [{ text: t(lang, '💬 Shu yerda yozishma orqali'), callback_data: `bc:go:${br[1]}_${br[2]}` }]] } });
     }
+    if (pinv?.item) {
+      return send(from.id, t(lang, '📸 Faylni ko‘rish uchun pastdagi tugmani bosing 👇'), { reply_markup: { inline_keyboard: [[{ text: t(lang, '👀 Ko‘rish'), web_app: { url: `${URL_()}/?inv=${payload}` } }]] } });
+    }
     if (pinv?.inbox) {
       return send(from.id, t(lang, '🔔 Bildirishnomalarni ko‘rish uchun pastdagi tugmani bosing 👇'), { reply_markup: { inline_keyboard: [[{ text: t(lang, '👀 Ko‘rish'), web_app: { url: `${URL_()}/?inv=${payload}` } }]] } });
     }
@@ -287,7 +290,9 @@ async function startUpload({ from, chatId, lang, msg, media, tree, replyTo }) {
   const doc = await loadAlbum(treeId);
   const rows = doc.albums.slice(-8).reverse().map((a) => [{ text: `📁 ${a.name}`, callback_data: `alb:${a.id}:${from.id}` }]);
   rows.push([{ text: t(lang, '➕ Yangi albom'), callback_data: `alb:new:${from.id}` }, { text: t(lang, '✖️ Bekor qilish'), callback_data: `alb:x:${from.id}` }]);
-  return send(chatId, t(lang, '📁 <b>{tree}</b>\nQaysi albomga qo‘shamiz?', { tree: escapeHtml(tree.title) }), {
+  // Telegram «rasm» sifatida yuborilganini siqadi — asl sifat faqat «fayl» sifatida saqlanadi
+  const hint = media.type === 'photo' ? '\n\n' + t(lang, '💡 Rasm siqilgan holda keldi. Asl sifatda saqlash uchun uni «Fayl» sifatida yuboring (📎 → Fayl).') : '';
+  return send(chatId, t(lang, '📁 <b>{tree}</b>\nQaysi albomga qo‘shamiz?', { tree: escapeHtml(tree.title) }) + hint, {
     reply_markup: { inline_keyboard: rows }, reply_to_message_id: replyTo,
   });
 }

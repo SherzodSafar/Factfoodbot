@@ -6,7 +6,7 @@ import {
   verifyToken, signToken, verifyInitData, hashCode, normalizeCode, rateLimit, signInvite, parseInvite, checkInvite,
   signMedia, verifyMedia, randomCode, randomId,
 } from '../lib/auth.js';
-import { readJson, writeJson, getFile, deleteKey, listKeys, updateJson } from '../lib/store.js';
+import { readJson, writeJson, getFile, putFile, deleteKey, listKeys, updateJson } from '../lib/store.js';
 import {
   HttpError, findTreeByCode, loadTree, createTree, mutateTree, publicTree, addPerson, updatePerson, deletePerson,
   savePhoto, changeSettings, upsertMember, importRows, replacePersons, importGraph, planGraph,
@@ -206,6 +206,7 @@ async function route(req, res) {
     const pid = parts[1];
     let r;
     let note = null;
+    let open = null; // bildirishnoma tugmasi nimani ochadi
     if (parts.length === 1 && m === 'POST') {
       const body = await readBody(req);
       r = await mutateTree(t0.id, (t) => (checkVer(t, tok), addPerson(t, body, actor)));
@@ -219,24 +220,6 @@ async function route(req, res) {
     } else if (parts[2] === 'photo' && (m === 'POST' || m === 'DELETE')) {
       const body = m === 'POST' ? await readBody(req) : {};
       const file = m === 'POST' ? await savePhoto(t0.id, pid, body.data) : null;
-      // asl (to'liq) rasm albomning «Portretlar» papkasiga ham saqlanadi, izohi — shaxs ismi
-      let item = null;
-      if (file && body.full && t0.channel?.id) {
-        try {
-          const mm = /^data:image\/(jpeg|png|webp);base64,(.+)$/.exec(String(body.full));
-          const pname = t0.persons.find((x) => x.id === pid)?.name || '';
-          if (mm) {
-            const sent = await tgUpload('sendPhoto', { chat_id: t0.channel.id, caption: `📁 <b>Portretlar</b>\n${escapeHtml(pname)}\n— ${escapeHtml(actor || '')}`, parse_mode: 'HTML' }, 'photo', Buffer.from(mm[2], 'base64'), 'portrait.jpg', 'image/' + mm[1]);
-            const md = sent.ok && mediaOf(sent.result);
-            if (md) {
-              const doc0 = await loadAlbum(t0.id);
-              const albumId = doc0.albums.find((a) => a.name.trim().toLowerCase() === 'portretlar')?.id;
-              await addToAlbum(t0, { albumId, albumName: 'Portretlar', caption: pname, media: [{ ...md, ch: { chat: t0.channel.id, msg: sent.result.message_id } }], by: { id: uid, name: actor || 'Tahrirchi' }, inChannel: true });
-              item = (await loadAlbum(t0.id)).items.find((x) => x.ch?.msg === sent.result.message_id)?.id || null;
-            }
-          }
-        } catch (e) { console.error('portrait', e?.message); }
-      }
       let old = null;
       let name = '';
       r = await mutateTree(t0.id, (t) => {
@@ -246,15 +229,15 @@ async function route(req, res) {
         old = p.photo;
         name = p.name;
         p.photo = file;
-        p.photoItem = item; // albomdagi to'liq rasm (yo'q bo'lsa null)
+        p.photoItem = null; // yangi asl nusxa alohida (bo'laklab) yuklanadi va shu yerga bog'lanadi
         t.updatedAt = new Date().toISOString();
         t.log = t.log || [];
         t.log.unshift({ at: t.updatedAt, who: actor || 'Tahrirchi', action: file ? 'photo' : 'photo-del', name: p.name });
       });
       if (old && old !== file) await deleteKey(`photos/${t0.id}/${old}`);
-      if (file) note = (lang) => t(lang, '🖼 <b>{who}</b> {name} suratini yangiladi', { who: escapeHtml(actor || ''), name: escapeHtml(name) });
+      if (file) { note = (lang) => t(lang, '🖼 <b>{who}</b> {name} suratini yangiladi', { who: escapeHtml(actor || ''), name: escapeHtml(name) }); open = '_' + pid; }
     } else throw new HttpError(404, 'Topilmadi');
-    if (note) await notify(r.data, 'tree', note, { except: uid }).catch(() => {});
+    if (note) await notify(r.data, 'tree', note, { except: uid, open }).catch(() => {});
     return send(res, 200, { person: r.result?.id ? r.result : undefined, tree: out(r.data, 'edit', uid) });
   }
 
@@ -377,6 +360,54 @@ async function route(req, res) {
       const body = await readBody(req);
       const r = await mutateAlbum(tree.id, (doc) => ensureAlbum(doc, body.name, by));
       return send(res, 200, { album: r.result });
+    }
+    // Asl sifatda yuklash: fayl 2.5 MB bo'laklarda keladi, so'ng kanalga «fayl» (document) sifatida — siqilmaydi
+    if (parts[1] === 'up' && m === 'POST') {
+      if (!canUpload(tree, uid, role)) throw new HttpError(403, 'Ruxsat yo‘q');
+      const body = await readBody(req);
+      const u = String(body.u || '');
+      if (!/^[a-z0-9]{8,24}$/.test(u)) throw new HttpError(400, 'Noto‘g‘ri so‘rov');
+      const dir = `tmp/up/${uid || 'x'}-${u}/`;
+      if (parts[2] === 'chunk') {
+        const i = Number(body.i);
+        if (!(i >= 0 && i < 24)) throw new HttpError(413, 'Fayl juda katta (50 MB gacha)');
+        const buf = Buffer.from(String(body.data || ''), 'base64');
+        if (!buf.length || buf.length > 3 * 1024 * 1024) throw new HttpError(400, 'Bo‘lak noto‘g‘ri');
+        await putFile(dir + i, buf, 'application/octet-stream');
+        return send(res, 200, { ok: true });
+      }
+      if (parts[2] === 'finish') {
+        const n = Number(body.n);
+        if (!(n > 0 && n <= 24)) throw new HttpError(400, 'Noto‘g‘ri so‘rov');
+        const bufs = [];
+        for (let i = 0; i < n; i++) {
+          const f = await getFile(dir + i);
+          if (!f) throw new HttpError(400, 'Fayl to‘liq yetib kelmadi. Qayta urinib ko‘ring');
+          bufs.push(f.buffer);
+        }
+        for (let i = 0; i < n; i++) await deleteKey(dir + i).catch(() => {});
+        const buf = Buffer.concat(bufs);
+        if (buf.length > 50 * 1024 * 1024) throw new HttpError(413, 'Fayl juda katta (50 MB gacha)');
+        const target = tree.channel?.id;
+        if (!target) throw new HttpError(400, 'Avval albom kanalini ulang');
+        const pid = body.pid && role === 'edit' ? String(body.pid) : null; // shaxs portreti
+        const person = pid && tree.persons.find((p) => p.id === pid);
+        const doc = await loadAlbum(tree.id);
+        const albumName = person ? 'Portretlar' : cleanName(body.albumName);
+        const albumId = person ? doc.albums.find((a) => a.name.trim().toLowerCase() === 'portretlar')?.id : body.album;
+        const aName = doc.albums.find((a) => a.id === albumId)?.name || albumName || 'Umumiy';
+        const caption = person ? person.name : cleanName(body.caption, 900);
+        const name = cleanName(body.name, 120).replace(/[\\/]/g, '_') || 'file';
+        const mime = /^[a-z]+\/[a-z0-9.+-]+$/i.test(body.mime || '') ? body.mime : 'application/octet-stream';
+        const cap = `📁 <b>${escapeHtml(aName)}</b>${caption ? '\n' + escapeHtml(caption) : ''}\n— ${escapeHtml(by.name)}`;
+        const sent = await tgUpload('sendDocument', { chat_id: target, caption: cap, parse_mode: 'HTML', disable_content_type_detection: true }, 'document', buf, name, mime);
+        if (!sent.ok) throw new HttpError(502, 'Telegramga yuklab bo‘lmadi');
+        const media = mediaOf(sent.result);
+        const r = await addToAlbum(tree, { inChannel: true, albumId, albumName, caption, media: [{ ...media, ch: { chat: target, msg: sent.result.message_id } }], by, silent: !!person });
+        const item = (await loadAlbum(tree.id)).items.find((x) => x.ch?.msg === sent.result.message_id)?.id || null;
+        if (person && item) await mutateTree(tree.id, (t) => { const p = t.persons.find((x) => x.id === pid); if (p) p.photoItem = item; });
+        return send(res, 200, { ok: true, album: r.album, item });
+      }
     }
     if (parts[1] === 'upload' && m === 'POST') {
       if (!canUpload(tree, uid, role)) throw new HttpError(403, 'Ruxsat yo‘q');
@@ -520,6 +551,15 @@ async function route(req, res) {
         ? (await (await import('../lib/mtproto.js')).mtprotoPart(f, a, b, file.total, ch)).buffer
         : (await fetchFilePart(f, a, b)).buffer);
       const job = r2.r2Store(r2.mediaKey(f, xext), file.total, type, readPart).catch((e) => console.error('r2', e));
+      const whole0 = file.buffer.length >= file.total;
+      // katta (asl sifatli) rasm bir javobga sig'maydi — R2 ga ko'chirib bo'lgach o'sha yerga yo'naltiramiz
+      if (!rg && !whole0 && !/^(video|audio)/.test(type)) {
+        await job;
+        res.statusCode = 302;
+        res.setHeader('location', await r2.r2Url(r2.mediaKey(f, xext)));
+        res.setHeader('cache-control', 'private, max-age=3600');
+        return res.end();
+      }
       try { waitUntil(job); } catch {}
     }
     const whole = start === 0 && file.buffer.length >= file.total;

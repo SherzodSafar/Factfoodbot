@@ -254,4 +254,6 @@ for (const [k, r, e] of [
   ["Turmush o‘rtog‘ining familiyasi ham yozilishi shart. Ism va familiyasini yozing (masalan: Xadicha Rahimova):", "Фамилия супруга(и) обязательна. Напишите имя и фамилию (например: Хадича Рахимова):", "The spouse's last name is required. Enter first and last name (e.g. Khadicha Rakhimova):"],
   ["🔗 <b>{name}</b> oilasini shu oiladagi kishiga topshiring. Pastdagi tugmani bosib, kimga yuborishni tanlang 👇", "🔗 Передайте семью <b>{name}</b> человеку из этой семьи. Нажмите кнопку ниже и выберите, кому отправить 👇", "🔗 Hand the <b>{name}</b> family to someone in it. Tap the button below and choose who to send it to 👇"],
   ["📤 Kimga yuborishni tanlash", "📤 Выбрать, кому отправить", "📤 Choose who to send to"],
+  ["💡 Rasm siqilgan holda keldi. Asl sifatda saqlash uchun uni «Fayl» sifatida yuboring (📎 → Fayl).", "💡 Фото пришло в сжатом виде. Чтобы сохранить оригинал, отправьте его как «Файл» (📎 → Файл).", "💡 The photo arrived compressed. To keep the original quality, send it as a “File” (📎 → File)."],
+  ["📸 Faylni ko‘rish uchun pastdagi tugmani bosing 👇", "📸 Нажмите кнопку ниже, чтобы посмотреть файл 👇", "📸 Tap the button below to view the file 👇"],
 ]) { RU[k] = r; EN[k] = e; }

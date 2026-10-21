@@ -701,3 +701,6 @@ img { pointer-events: none; }
 .pz img { max-width: 100%; max-height: 100%; object-fit: contain; }
 .pz .rv-x { position: absolute; top: calc(12px + env(safe-area-inset-top)); left: 12px; }
 .p-hero .avatar { cursor: zoom-in; }
+.sheet.sheet-full { height: 92vh; height: 92dvh; }
+.pz-spin { position: absolute; bottom: 40px; color: #fff; }
+.sheet-full .sheet-body { flex: 1; }

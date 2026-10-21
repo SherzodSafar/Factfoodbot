@@ -39,6 +39,8 @@ Telegram bot **@ShajaraAiBot** + Mini App (oila shajarasi). Eski bot (@Shajara_i
 - Bajarilgan: shox havolasi + sehrgar + tasdiqlash, zanjir, bot-yozishma, to'liqlik paneli, eslatmalar, albom izohlari/like/ko'rganlar ro'yxati.
 - Prod'da tekshirilmagan: izoh matnini MTProto orqali kanaldan o'qish (`accessHash 0`); bot kanalda admin (post/edit/delete) bo'lishi shart.
 - 2-bosqich: Instagram uslubi — bildirishnomalar bo'limi (Menga/Oila izohlari/Yangiliklar/Sozlamalar), profil oynasi (rasm + yuklagan fayllari), albom plitkalarida 👁❤💬, shox havolasi tilini tanlash (`branches[bid].lang`), shoxda sanalar faqat to'liq (kun.oy.yil), eski bot kodi olib tashlandi.
+- Asl sifat: mini app yuklamalari `album/up/chunk` (2.5 MB bo'laklar, `tmp/up/`) + `album/up/finish` → kanalga sendDocument (siqilmaydi). Avatar: 640px kvadrat ko'rsatish uchun + asl nusxa «Portretlar» albomiga (`person.photoItem`). Katta rasmlar `/api/media` da R2 ga ko'chirilib 302. Botga «rasm» sifatida yuborilganlar siqilgan — bot «Fayl» sifatida yuborishni maslahat beradi.
+- Bildirishnoma tugmalari: `notify(..., { open })` — `_p<id>` shaxs, `_a<itemId>` albom fayli.
 - Keyingi g'oyalar: ovozli javob (bot chat), AI bilan Q&A.
 
 ## Foydalanuvchi afzalliklari
