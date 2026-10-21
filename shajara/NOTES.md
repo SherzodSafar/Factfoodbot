@@ -1,0 +1,42 @@
+# Shajara AI — ishlab chiquvchi eslatmalari
+
+Telegram bot **@ShajaraAiBot** + Mini App (oila shajarasi). Eski bot @Shajara_iBot → yangisiga yo'naltiradi.
+
+## Infratuzilma
+- **Vercel** loyiha `prj_yUPhgxNxhcH39Ch7uNy6R8QkJBAd`, team `team_9O94SCoMljTHLcdStVP5qvnf`, region fra1.
+  Domen: https://shajara-ai.vercel.app (PUBLIC_URL), shajara-ibot.vercel.app.
+  Git: SherzodSafar/Factfoodbot, Root Directory `shajara`, Production Branch `shajara-main`.
+- **Branchlar:** ish — `ccr-29541463-1vn1md`; prod — `shajara-main`.
+  Push: `git push origin ccr-29541463-1vn1md && git push origin ccr-29541463-1vn1md:shajara-main`.
+  Avto-deploy ba'zan ishlamaydi → Vercel MCP `create_deployment` (gitSource github, org SherzodSafar, repo Factfoodbot, ref shajara-main, sha, target production).
+- Bu muhitdan shajara-ai.vercel.app ga curl bloklangan → tekshirish uchun Vercel MCP (`get_deployment`, `get_runtime_logs`, `web_fetch_vercel_url`).
+- Bitta funksiya `api/index.js` (route=path rewrite), cron `/api/cron` har kuni 04:00 UTC (09:00 Toshkent).
+
+## Saqlash
+- `lib/store.js`: Neon Postgres `kv(key, data jsonb, ver)` (optimistik qulf), `rl` jadval — rate limit. Yo'q kalit Vercel Blob'dan ko'chiriladi. Shaxs rasmlari Blob'da.
+- `lib/r2.js`: Cloudflare R2 (`shajara-media`) media kesh; `/api/media` keshda bo'lsa 302 presigned URL.
+- `lib/mtproto.js`: GramJS, bot o'z tokeni bilan; 20MB+ fayllar va kanal matnlarini o'qish (`readChannelTexts`).
+- Kalitlar: `trees/<id>.json`, `albums/<id>.json`, `users/<uid>.json`, `props/<treeId>.json` (takliflar), `brchat/<uid>.json` (bot-yozishma holati), `aijobs/`.
+
+## Asosiy modullar
+- `lib/tree.js` — shajara modeli, import (planGraph/importGraph/undo), dublikat/merge, `branchScope`, `applyProposal`, `flexDate`.
+- `lib/branch.js` — shox havolalari: claim, zanjir (`subBranch`), `submitProposal` (bo'sh maydon taqiqlangan), to'liqlik (`completeness`), kunlik eslatmalar (`dailyReminders`), bot yozishmasi orqali to'ldirish (`chatStart/chatText/chatCallback`, callback `bc:*`).
+- `lib/comments.js` — albom izohlari: matn albom kanalida (reply), JSONda faqat indeks `it.cm`; like/seen ro'yxatlari.
+- `lib/bot.js` — bot (start payloadlar: invite, `br_<tree>_<bid>`, `<inv>_<pid>`, `<inv>_m<itemId>`), albom yuklash, AI.
+- `lib/ai.js` — Gemini (flash-lite asosiy), fayldan import.
+- `lib/notify.js`, `lib/events.js` — bildirishnomalar, tug'ilgan kunlar (ismlar profil havolasi bilan).
+- `public/js/app.js` — Mini App (daraxt: standart real-tree, `sh_tv='cards'` — tarmoq), reels albom, shox sehrgari (`renderBranchWizard`), `branchesSheet` (takliflar + to'liqlik paneli).
+- i18n: `public/js/i18n.js` (D massiv [uz,ru,en]), `lib/i18n.js` (bot). Kirill avtomatik.
+- Kesh versiyasi: `public/index.html` `?v=N` — har klient o'zgarishida oshiring.
+
+## Sinov
+- `BOT_TOKEN=TEST PORT=3111 node scripts/dev-server.js` (lokal store `.data/`).
+- Playwright: `/opt/node22/lib/node_modules/playwright/index.mjs`, executablePath `/opt/pw-browsers/chromium`; Telegram WebApp stub + initData HMAC (BOT_TOKEN=TEST).
+
+## Holat (2026-10-21)
+- Bajarilgan: shox havolasi + sehrgar + tasdiqlash, zanjir, bot-yozishma, to'liqlik paneli, eslatmalar, albom izohlari/like/ko'rganlar ro'yxati.
+- Prod'da tekshirilmagan: izoh matnini MTProto orqali kanaldan o'qish (`accessHash 0`); bot kanalda admin (post/edit/delete) bo'lishi shart.
+- Keyingi g'oyalar: ovozli javob (bot chat), AI bilan Q&A.
+
+## Foydalanuvchi afzalliklari
+O'zbekcha, qisqa javob, tokenlarni tejash, tez bajarish. Ruxsat umumiy berilgan ("hammasini o'zing qil").
