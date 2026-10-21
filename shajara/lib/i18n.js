@@ -248,4 +248,10 @@ for (const [k, r, e] of [
   ["👀 Ko‘rish", "👀 Смотреть", "👀 View"],
   ["💬 Bugun {albums} albomlaridagi fayllarga <b>{n} ta</b> izoh yozildi", "💬 Сегодня к файлам альбомов {albums} написано комментариев: <b>{n}</b>", "💬 Today <b>{n}</b> comments were written on files in the {albums} albums"],
   ["🔔 Bildirishnomalarni ko‘rish uchun pastdagi tugmani bosing 👇", "🔔 Нажмите кнопку ниже, чтобы посмотреть уведомления 👇", "🔔 Tap the button below to see notifications 👇"],
+  ["💍 Turmush o‘rtog‘ining ism va familiyasini yozing (masalan: Xadicha Rahimova):", "💍 Напишите имя и фамилию супруга(и) (например: Хадича Рахимова):", "💍 Enter the spouse's first and last name (e.g. Khadicha Rakhimova):"],
+  ["✍️ Ism va familiyasini yozing (masalan: Xadicha Rahimova):", "✍️ Напишите имя и фамилию (например: Хадича Рахимова):", "✍️ Enter first and last name (e.g. Khadicha Rakhimova):"],
+  ["✍️ <b>{who}</b> — familiyasi ham kerak. Ism va familiyasini to‘liq yozing (masalan: Xadicha Rahimova):", "✍️ <b>{who}</b> — нужна и фамилия. Напишите имя и фамилию (например: Хадича Рахимова):", "✍️ <b>{who}</b> — the last name is needed too. Enter first and last name (e.g. Khadicha Rakhimova):"],
+  ["Turmush o‘rtog‘ining familiyasi ham yozilishi shart. Ism va familiyasini yozing (masalan: Xadicha Rahimova):", "Фамилия супруга(и) обязательна. Напишите имя и фамилию (например: Хадича Рахимова):", "The spouse's last name is required. Enter first and last name (e.g. Khadicha Rakhimova):"],
+  ["🔗 <b>{name}</b> oilasini shu oiladagi kishiga topshiring. Pastdagi tugmani bosib, kimga yuborishni tanlang 👇", "🔗 Передайте семью <b>{name}</b> человеку из этой семьи. Нажмите кнопку ниже и выберите, кому отправить 👇", "🔗 Hand the <b>{name}</b> family to someone in it. Tap the button below and choose who to send it to 👇"],
+  ["📤 Kimga yuborishni tanlash", "📤 Выбрать, кому отправить", "📤 Choose who to send to"],
 ]) { RU[k] = r; EN[k] = e; }

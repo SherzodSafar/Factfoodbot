@@ -1,10 +1,10 @@
 # Shajara AI — ishlab chiquvchi eslatmalari
 
-Telegram bot **@ShajaraAiBot** + Mini App (oila shajarasi). Eski bot (@Shajara_iBot) kodi butunlay olib tashlangan.
+Telegram bot **@ShajaraAiBot** + Mini App (oila shajarasi). Eski bot (@Shajara_iBot) loyihadan uzilgan: `oldBotOff()` (bot.js) bir marta webhook'ni o'chiradi, kanal/guruhlardan chiqadi, natija `sys/oldbot-off.json`.
 
 ## Infratuzilma
 - **Vercel** loyiha `prj_yUPhgxNxhcH39Ch7uNy6R8QkJBAd`, team `team_9O94SCoMljTHLcdStVP5qvnf`, region fra1.
-  Domen: https://shajara-ai.vercel.app (PUBLIC_URL), shajara-ibot.vercel.app.
+  Domen: https://shajara-ai.vercel.app (PUBLIC_URL); shajara-ibot.vercel.app → 308 yo'naltiriladi (vercel.json redirects).
   Git: SherzodSafar/Factfoodbot, Root Directory `shajara`, Production Branch `shajara-main`.
 - **Branchlar:** ish — `ccr-29541463-1vn1md`; prod — `shajara-main`.
   Push: `git push origin ccr-29541463-1vn1md && git push origin ccr-29541463-1vn1md:shajara-main`.

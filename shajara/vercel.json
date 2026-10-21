@@ -5,6 +5,19 @@
   "regions": [
     "fra1"
   ],
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "shajara-ibot.vercel.app"
+        }
+      ],
+      "destination": "https://shajara-ai.vercel.app/:path*",
+      "permanent": true
+    }
+  ],
   "functions": {
     "api/index.js": {
       "includeFiles": "data/**",

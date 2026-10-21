@@ -686,3 +686,7 @@ body:has(.rv) #sheet-root .sheet { z-index: 86; }
 .ib-lk { display: inline-flex; align-items: center; gap: 3px; }
 .ib-lk svg { width: 13px; height: 13px; }
 .ib-lk.on { color: #e0245e; }
+
+/* rasm/videoni bosib turganda tizim menyusi va belgilash chiqmasin */
+img, video { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; -webkit-user-drag: none; }
+.tile, .rv { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }

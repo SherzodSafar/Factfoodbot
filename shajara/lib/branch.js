@@ -16,9 +16,12 @@ export const brLink = (treeId, bid) => `https://t.me/${BOT()}?start=br_${treeId}
 
 // ---------------------------------------------------------------- to'liqlik --
 /** Shaxsda yetishmayotgan maydonlar. */
-export function missingOf(p) {
+// kelin/kuyov (turmush o'rtog'i, ota-onasi shoxda yo'q): familiyasi ham yozilishi shart
+const words = (n) => String(n || '').trim().split(/\s+/).filter(Boolean).length;
+export function missingOf(p, inLaw = false) {
   const m = [];
   if (!String(p.name || '').trim()) m.push('name');
+  else if (inLaw && words(p.name) < 2) m.push('surname');
   if (!fullDate(p.birth)) m.push('birth');
   if (p.deceased && !fullDate(p.death)) m.push('death');
   return m;
@@ -73,6 +76,7 @@ export function validateOps(ops, persons) {
     const f = o.f || {};
     if (o.op === 'add') {
       if (!String(f.name || '').trim()) throw new HttpError(400, 'Ism kiritilmagan');
+      if (o.spouse && !o.father && !o.mother && words(f.name) < 2) throw new HttpError(400, `${f.name}: turmush o‘rtog‘ining familiyasi ham yozilishi shart`);
       if (!dateOk(f.birth)) throw new HttpError(400, `${f.name}: tug‘ilgan sana to‘liq kiritilmagan (kun.oy.yil)`);
       if (f.deceased && !dateOk(f.death)) throw new HttpError(400, `${f.name}: vafot sanasi to‘liq kiritilmagan (kun.oy.yil)`);
     } else if (o.op === 'update') {
@@ -175,6 +179,7 @@ function order(s) {
   walk(s.head);
   return out;
 }
+const inLaw = (s, x) => !!x && x.id !== s.head && !x.father_id && !x.mother_id && spousesOf(W_(s), x.id).length > 0;
 const line = (p) => `${esc(p.name || '?')} (${fd(p.birth)}${p.deceased ? ` – ✝ ${fd(p.death)}` : ''})`;
 
 async function save(uid, s) { s.at = Date.now(); await writeJson(sKey(uid), s); }
@@ -197,7 +202,7 @@ async function step(from, s) {
   if (s.i >= ids.length) s.i = ids.length - 1;
   const p = W.get(ids[s.i]);
   for (const x of [p, ...spousesOf(W, p.id)]) {
-    const miss = missingOf(x);
+    const miss = missingOf(x, inLaw(s, x));
     if (miss.length) { s.ask = { k: miss[0], pid: x.id }; await save(from.id, s); return ask(from, s); }
   }
   s.ask = null;
@@ -221,7 +226,8 @@ async function ask(from, s) {
   const x = s.W[a.pid];
   const who = esc(x?.name || '');
   const Q = {
-    name: [t(L, '✍️ Ismini yozing:'), null],
+    name: [inLaw(s, x) ? t(L, '✍️ Ism va familiyasini yozing (masalan: Xadicha Rahimova):') : t(L, '✍️ Ismini yozing:'), null],
+    surname: [t(L, '✍️ <b>{who}</b> — familiyasi ham kerak. Ism va familiyasini to‘liq yozing (masalan: Xadicha Rahimova):', { who }), null],
     gender: [t(L, '<b>{who}</b> — o‘g‘ilmi yoki qiz?', { who }), [[{ text: t(L, '👦 O‘g‘il'), callback_data: 'bc:g:m' }, { text: t(L, '👧 Qiz'), callback_data: 'bc:g:f' }]]],
     birth: [t(L, '📅 <b>{who}</b> qachon tug‘ilgan? To‘liq sanani yozing: kun.oy.yil (masalan: 20.03.1958).', { who }), null],
     alive: [t(L, '<b>{who}</b> hozir hayotmi?', { who }), [[{ text: t(L, '💚 Hayot'), callback_data: 'bc:al:1' }, { text: t(L, '🤲 Vafot etgan'), callback_data: 'bc:al:0' }]]],
@@ -265,12 +271,13 @@ export async function chatText(from, text) {
     await send(from.id, t(L, 'To‘xtatildi. Kiritganlaringiz yuborilmadi. Qayta boshlash uchun havolani yana oching.'));
     return true;
   }
-  if (!s.ask || !['name', 'birth', 'death'].includes(s.ask.k)) { await send(from.id, t(L, 'Iltimos, tugmalardan birini bosing 👆')); return true; }
+  if (!s.ask || !['name', 'surname', 'birth', 'death'].includes(s.ask.k)) { await send(from.id, t(L, 'Iltimos, tugmalardan birini bosing 👆')); return true; }
   const x = s.W[s.ask.pid];
   const v = String(text || '').trim();
-  if (s.ask.k === 'name') {
-    const name = v.replace(/[\u0000-\u001f]/g, ' ').slice(0, 80);
+  if (s.ask.k === 'name' || s.ask.k === 'surname') {
+    const name = v.replace(/[\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').slice(0, 80);
     if (!name || name.startsWith('/')) { await send(from.id, t(L, 'Ism bo‘sh bo‘lmasin. Qayta yozing:')); return true; }
+    if (inLaw(s, x) && words(name) < 2) { await send(from.id, t(L, 'Turmush o‘rtog‘ining familiyasi ham yozilishi shart. Ism va familiyasini yozing (masalan: Xadicha Rahimova):')); return true; }
     x.name = name;
   } else {
     let d = null;
@@ -351,7 +358,7 @@ export async function chatCallback(cq, lang) {
     s.W[id] = x;
     s.ask = { k: 'name', pid: id, add: act, parent: p.id };
     await save(from.id, s);
-    return send(from.id, act === 'kid' ? t(L, '👶 Farzandning ismini yozing:') : t(L, '💍 Turmush o‘rtog‘ining ismini yozing:'), [[{ text: t(L, '✖️ Bekor qilish'), callback_data: 'bc:cancel' }]]);
+    return send(from.id, act === 'kid' ? t(L, '👶 Farzandning ismini yozing:') : t(L, '💍 Turmush o‘rtog‘ining ism va familiyasini yozing (masalan: Xadicha Rahimova):'), [[{ text: t(L, '✖️ Bekor qilish'), callback_data: 'bc:cancel' }]]);
   }
   if (act === 'edit') {
     const list = [p, ...spousesOf(W, p.id), ...kidsOf(W, p.id)];
@@ -405,8 +412,10 @@ export async function chatCallback(cq, lang) {
       const b = tree.branches?.[s.bid];
       if (!b || b.claimed !== String(from.id)) throw new HttpError(403, 'Havola bekor qilingan');
       const r = await subBranch(tree, s.bid, b, from, p.id);
-      await send(from.id, t(L, '🔗 <b>{name}</b> oilasini shu oiladagi kishiga topshiring. Quyidagi xabarni unga yuboring (forward):', { name: esc(p.name) }));
-      await send(from.id, t(L, 'Assalomu alaykum! «{title}» shajarasidagi {name} oilasi ma’lumotlarini to‘ldirib bersangiz. Havola:', { title: esc(s.title), name: esc(p.name) }) + `\n${r.link}`);
+      // tugma Telegram chatlar ro'yxatini ochadi — kimga yuborishni tanlaydi
+      const msg = t(L, 'Assalomu alaykum! «{title}» shajarasidagi {name} oilasi ma’lumotlarini to‘ldirib bersangiz. Havola:', { title: s.title, name: p.name });
+      await send(from.id, t(L, '🔗 <b>{name}</b> oilasini shu oiladagi kishiga topshiring. Pastdagi tugmani bosib, kimga yuborishni tanlang 👇', { name: esc(p.name) }),
+        [[{ text: t(L, '📤 Kimga yuborishni tanlash'), url: `https://t.me/share/url?url=${encodeURIComponent(r.link)}&text=${encodeURIComponent(msg)}` }]]);
       return step(from, s);
     } catch (e) { return send(from.id, '⚠️ ' + t(L, e.message)); }
   }
@@ -417,7 +426,7 @@ async function finish(from, s) {
   const ops = diffOps(s);
   // bo'sh maydon qolmasin
   for (const x of Object.values(s.W)) {
-    const miss = missingOf(x);
+    const miss = missingOf(x, inLaw(s, x));
     if (miss.length) {
       s.ask = { k: miss[0], pid: x.id };
       await save(from.id, s);

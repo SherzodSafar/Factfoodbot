@@ -5,7 +5,7 @@ const ai = () => import('./ai.js'); // og'ir SDK faqat kerak bo'lganda yuklanadi
 import { importGraph, planGraph } from './tree.js';
 import { t, normLang, LANGS } from './i18n.js';
 import { randomQuote } from './quotes.js';
-import { readJson, writeJson, deleteKey } from './store.js';
+import { readJson, writeJson, deleteKey, listKeys } from './store.js';
 import { signInvite, parseInvite } from './auth.js';
 import { loadTree, mutateTree } from './tree.js';
 import { getUser, updateUser } from './users.js';
@@ -494,6 +494,31 @@ export async function refreshAlbumFiles(treeId, notifyUid) {
   }
   await send(target, `✅ ${t('uz', 'Albom yangi botga ko‘chirildi: {n} ta fayl.', { n })}`).catch(() => {});
   return n;
+}
+
+// ---------------------------------------------------------------- eski botni (@Shajara_iBot) uzish --
+/**
+ * Bir martalik: OLD_BOT_TOKEN bo'lsa — eski botning webhook'i o'chiriladi, menyu/buyruqlar tozalanadi,
+ * shajaralarning kanal va guruhlaridan chiqib ketadi. Natija `sys/oldbot-off.json` ga yoziladi.
+ */
+export async function oldBotOff() {
+  const tok = process.env.OLD_BOT_TOKEN;
+  if (!tok || (await readJson('sys/oldbot-off.json').catch(() => null))) return null;
+  const call = (m, b = {}) => fetch(`https://api.telegram.org/bot${tok}/${m}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) })
+    .then((r) => r.json()).catch((e) => ({ ok: false, description: String(e?.message || e) }));
+  const out = { at: new Date().toISOString(), me: (await call('getMe')).result?.username || null };
+  out.webhook = (await call('deleteWebhook', { drop_pending_updates: true })).ok;
+  out.menu = (await call('setChatMenuButton', { menu_button: { type: 'default' } })).ok;
+  out.commands = (await call('deleteMyCommands')).ok;
+  let left = 0;
+  for (const key of await listKeys('trees/')) {
+    const tr = (await readJson(key).catch(() => null))?.data;
+    for (const id of [tr?.channel?.id, ...(tr?.groups || []).map((g) => g.id)].filter(Boolean)) if ((await call('leaveChat', { chat_id: id })).ok) left++;
+  }
+  out.left = left;
+  await writeJson('sys/oldbot-off.json', out);
+  console.log('oldbot off', out);
+  return out;
 }
 
 // ---------------------------------------------------------------- to'lovlar (Telegram Stars) --

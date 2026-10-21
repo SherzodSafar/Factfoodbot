@@ -1077,6 +1077,9 @@ const shortName = (n, max = 24) => { const x = String(n || '?').trim(); return x
 function uAvatar(u, cls = 'cm-av') {
   return `<span class="${cls}">${esc((u?.name || '?').slice(0, 1))}${u?.ph ? `<img class="av-img" src="${u.ph}" alt="" loading="lazy">` : ''}</span>`;
 }
+// Mini App ichida rasm/videoni bosib turganda brauzer menyusi (havola, yuklash) chiqmasin
+document.addEventListener('contextmenu', (e) => { if (e.target.closest?.('img, video, audio, a, .tile, .rv')) e.preventDefault(); });
+document.addEventListener('dragstart', (e) => { if (e.target.tagName === 'IMG') e.preventDefault(); });
 document.addEventListener('error', (e) => { if (e.target?.classList?.contains('av-img')) e.target.remove(); }, true);
 
 // Foydalanuvchi profili (ilova ichida): rasmi, ismi, albomga yuklagan fayllari
@@ -2271,7 +2274,7 @@ async function renderBranchWizard(treeId, bid) {
     const sps = spousesOf(p.id);
     const kids = kidsOf(p.id);
     const row = (x, kind) => `<div class="bw-row" data-id="${x.id}" data-kind="${kind}">
-        <input class="input" name="name" value="${esc(x.name || '')}" placeholder="${t('Ismi')}">
+        <input class="input" name="name" value="${esc(x.name || '')}" placeholder="${kind === 'sp' ? t('Ism va familiyasi') : t('Ismi')}">
         <div class="bw-sub">${kind === 'kid' ? `<select class="input" name="gender"><option value="m" ${x.gender !== 'f' ? 'selected' : ''}>👦 ${t('O‘g‘il')}</option><option value="f" ${x.gender === 'f' ? 'selected' : ''}>👧 ${t('Qiz')}</option></select>` : ''}
           <input class="input" name="birth" value="${esc(dateToInput(x.birth))}" placeholder="${t('Tug‘ilgan sana: 20.03.1958')}" inputmode="numeric">
           <label class="bw-dec"><input type="checkbox" name="deceased" ${x.deceased ? 'checked' : ''}> ${t('Marhum')}</label></div>
@@ -2325,8 +2328,11 @@ async function renderBranchWizard(treeId, bid) {
         if (death === undefined) { toast(t('Sana formati noto‘g‘ri. Masalan: 1958 yoki 20.03.1958'), true); r.querySelector('[name=death]').focus(); return false; }
         if (strict && !(String(x.id).startsWith('n') && !name && !bi.trim())) {
           const full = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
-          const bad = !name ? 'name' : !full(birth) ? 'birth' : dec && !full(death) ? 'death' : null;
+          // turmush o'rtog'i (ota-onasi shoxda yo'q) — familiyasi ham shart
+          const inLaw = r.dataset.kind === 'sp' && !x.father_id && !x.mother_id;
+          const bad = !name ? 'name' : inLaw && name.split(/\s+/).length < 2 ? 'surname' : !full(birth) ? 'birth' : dec && !full(death) ? 'death' : null;
           if (bad) {
+            if (bad === 'surname') { toast(t('Turmush o‘rtog‘ining familiyasini ham yozing'), true); const el = r.querySelector('[name=name]'); el.classList.add('bad'); el.focus(); return false; }
             toast(t(bad === 'name' ? 'Ismni kiriting' : bad === 'birth' ? 'Tug‘ilgan sanani to‘liq kiriting (kun.oy.yil)' : 'Vafot sanasini to‘liq kiriting (kun.oy.yil)'), true);
             const el = r.querySelector(`[name=${bad}]`); el.classList.add('bad'); el.focus(); return false;
           }

@@ -583,6 +583,8 @@ const D = [
   ['Like va izohlar (menga tegishli)', 'Лайки и комментарии (мне)', 'Likes and comments (for me)'],
   ['Javobingiz:', 'Ваш ответ:', 'Your reply:'],
   ['Yuborildi ✓', 'Отправлено ✓', 'Sent ✓'],
+  ['Ism va familiyasi', 'Имя и фамилия', 'First and last name'],
+  ['Turmush o‘rtog‘ining familiyasini ham yozing', 'Укажите и фамилию супруга(и)', 'Enter the spouse’s last name too'],
 ];
 
 const RU = new Map(D.map((r) => [r[0], r[1]]));

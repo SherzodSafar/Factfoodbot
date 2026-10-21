@@ -47,6 +47,7 @@ function send(res, status, data, headers = {}) {
 const clientIp = (req) => String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'x').split(',')[0].trim();
 const nameOf = (u) => (u ? [u.first_name, u.last_name].filter(Boolean).join(' ') || (u.username ? '@' + u.username : 'Telegram') : null);
 const esc = (v) => String(v ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+let oldOff = null; // eski botni uzish (bir marta)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function tgUser(req) {
@@ -762,7 +763,8 @@ async function route(req, res) {
     const update = await readBody(req);
     // Telegram'ga darhol javob beramiz, ishni fonda davom ettiramiz — keyingi xabarlar navbatda kutib qolmaydi
     const job = handleUpdate(update).catch((e) => console.error('webhook', e));
-    try { waitUntil(job); } catch { await job; }
+    if (!oldOff) oldOff = import('../lib/bot.js').then((b) => b.oldBotOff()).catch((e) => console.error('oldbot', e)); // bir martalik
+    try { waitUntil(Promise.all([job, oldOff])); } catch { await job; }
     return send(res, 200, { ok: true });
   }
 
