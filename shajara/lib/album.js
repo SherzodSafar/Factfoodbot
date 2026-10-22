@@ -2,7 +2,7 @@
 // bu yerda faqat ro'yxat — file_id, izoh, albom nomi, kim yuborgani.
 import { readJson, writeJson, updateJson, ConflictError } from './store.js';
 import { sendStored, mediaOf } from './telegram.js';
-import { signMedia, randomId, signShort } from './auth.js';
+import { signMedia, randomId } from './auth.js';
 import { mtprotoOn } from './mtproto.js';
 import { r2On } from './r2.js';
 import { HttpError, PAYWALL, LIMITS, isPremium, mutateTree, addLog, branchScope } from './tree.js';
@@ -71,17 +71,14 @@ export function kindOf(it) {
 const EXT = { 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/x-m4a': 'm4a', 'audio/ogg': 'ogg', 'audio/aac': 'aac', 'audio/wav': 'wav', 'audio/x-wav': 'wav', 'audio/flac': 'flac', 'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
 
 /**
- * Shox oilasining maxfiy albomi (a.priv = { head }): faqat a'zolar ko'radi —
- * albomni ochgan/taklif bilan qo'shilganlar (a.members) va shu shox ichidagi havolalarni egallaganlar.
+ * Shox oilasining maxfiy albomi (a.priv = { head }): faqat a'zolar ko'radi (a.members).
+ * Kimni qo'shishni albomni ochgan kishi (a.owner) hal qiladi: bir martalik taklif yoki so'rovni qabul qilish.
  */
 export function albumAccess(tree, a, uid) {
   if (!a?.priv) return true;
-  if (!uid) return false;
-  if ((a.members || []).includes(String(uid))) return true;
-  const scope = branchScope(tree, a.priv.head);
-  return Object.values(tree.branches || {}).some((b) => !b.revoked && b.claimed === String(uid) && scope.has(b.head));
+  return !!uid && (a.members || []).includes(String(uid));
 }
-export const albumInvite = (aid) => signShort('alb:' + aid);
+export const albumOwner = (a, uid) => !!uid && String(a?.owner || a?.members?.[0] || '') === String(uid);
 // maxfiy fayl R2'da: imzolangan, kunlik havola
 const privUrl = (treeId, iid) => { const { e, s } = signMedia('pm:' + iid); return `/api/pm/${treeId}/${iid}?e=${e}&s=${s}`; };
 
@@ -90,8 +87,15 @@ export function publicAlbum(doc, tree, uid) {
   const vis = new Map(doc.albums.map((a) => [a.id, albumAccess(tree, a, uid)]));
   const headName = (id) => tree.persons.find((p) => p.id === id)?.name || '';
   return {
-    albums: doc.albums.filter((a) => vis.get(a.id)).map((a) => (a.priv
-      ? { id: a.id, name: a.name, createdAt: a.createdAt, by: a.by, priv: { head: a.priv.head, headName: headName(a.priv.head) }, members: (a.members || []).length, inv: albumInvite(a.id) } : a)),
+    // a'zo bo'lmaganlarga maxfiy albom faqat nomi bilan (qulf) ko'rinadi — so'rov yuborishi mumkin
+    albums: doc.albums.filter((a) => vis.get(a.id) || (a.priv && uid)).map((a) => {
+      if (!a.priv) return a;
+      const base = { id: a.id, name: a.name, createdAt: a.createdAt, by: a.by, priv: { head: a.priv.head, headName: headName(a.priv.head) }, members: (a.members || []).length };
+      if (!vis.get(a.id)) return { ...base, locked: true, requested: (a.req || []).some((r) => r.uid === String(uid)) };
+      if (!albumOwner(a, uid)) return base;
+      const nameOf = (id) => users[id]?.name || 'Telegram';
+      return { ...base, owner: true, memberList: (a.members || []).map((id) => ({ id, name: nameOf(id) })), req: (a.req || []).map((r) => ({ ...r, name: nameOf(r.uid) || r.name })) };
+    }),
     // maxfiy albom fayli boshqalarga faqat «umumiyda ham ko'rsatish» yoqilgan bo'lsa ko'rinadi (umumiy albomda)
     items: doc.items.filter((it) => vis.get(it.album) !== false || (it.pub && it.alsoIn)).map((it) => {
       const kind = kindOf(it);

@@ -19,7 +19,7 @@ import { webhookSecret, todayText } from '../lib/events.js';
 import { notify, escapeHtml } from '../lib/notify.js';
 import { updateUser, getUser } from '../lib/users.js';
 import { waitUntil } from '@vercel/functions';
-import { loadAlbum, mutateAlbum, publicAlbum, addToAlbum, canUpload, cleanName, ensureAlbum, albumAccess, albumInvite } from '../lib/album.js';
+import { loadAlbum, mutateAlbum, publicAlbum, addToAlbum, canUpload, cleanName, ensureAlbum, albumAccess, albumOwner } from '../lib/album.js';
 import { t, LANGS } from '../lib/i18n.js';
 
 const PUBLIC_URL = () => (process.env.PUBLIC_URL || '').replace(/\/$/, '');
@@ -83,6 +83,7 @@ const fullName = (tree, p) => {
   const yr = Number(String(p.birth || '').slice(0, 4)) || (Number(String(f?.birth || '').slice(0, 4)) + 25) || (p.deceased ? 1950 : NEW_STYLE_FROM);
   return yr < NEW_STYLE_FROM ? `${name} ${ovEv(first, p.gender === 'f')}` : `${name} ${first} ${p.gender === 'f' ? 'qizi' : 'o‘g‘li'}`;
 };
+const addLogSafe = (t, who, n) => { t.log = t.log || []; t.log.unshift({ at: new Date().toISOString(), who: who || 'Tahrirchi', action: 'edit', name: `✂️ ${n}` }); };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function tgUser(req) {
@@ -404,20 +405,61 @@ async function route(req, res) {
         if (!uid || !myHeads().some((h) => h.id === body.priv)) throw new HttpError(403, 'Bu shox uchun albom ochishga ruxsat yo‘q');
         const { r2On } = await import('../lib/r2.js');
         if (!r2On()) throw new HttpError(400, 'Maxfiy albom uchun fayl ombori (R2) sozlanmagan');
-        const a = { id: randomId(8), name: cleanName(body.name) || 'Oilaviy albom', createdAt: new Date().toISOString(), by: by.name, priv: { head: body.priv }, members: [uid] };
+        const a = { id: randomId(8), name: cleanName(body.name) || 'Oilaviy albom', createdAt: new Date().toISOString(), by: by.name, owner: uid, priv: { head: body.priv }, members: [uid], invites: {}, req: [] };
         await mutateAlbum(tree.id, (doc) => { doc.albums.push(a); });
         return send(res, 200, { album: a });
       }
       const r = await mutateAlbum(tree.id, (doc) => ensureAlbum(doc, body.name, by));
       return send(res, 200, { album: r.result });
     }
-    // maxfiy albomga taklif havolasi orqali qo'shilish
-    if (parts[1] === 'a' && parts[2] && parts[3] === 'join' && m === 'POST') {
+    // maxfiy albom a'zoligi: bir martalik taklif, so'rov va uni egasi qabul qilishi
+    if (parts[1] === 'a' && parts[2] && ['invite', 'join', 'request', 'decide', 'remove'].includes(parts[3]) && m === 'POST') {
+      if (!uid) throw new HttpError(400, 'Bu funksiya faqat Telegram ichida ishlaydi');
+      const aid = parts[2];
       const body = await readBody(req);
-      if (!uid || body.sig !== albumInvite(parts[2])) throw new HttpError(403, 'Taklif havolasi noto‘g‘ri');
-      const r = await mutateAlbum(tree.id, (d) => { const a = d.albums.find((x) => x.id === parts[2] && x.priv); if (!a) return null; a.members = [...new Set([...(a.members || []), uid])]; return a.name; });
-      if (!r.result) throw new HttpError(404, 'Albom topilmadi');
-      return send(res, 200, { ok: true, name: r.result });
+      const doc0 = await loadAlbum(tree.id);
+      const a0 = doc0.albums.find((x) => x.id === aid && x.priv);
+      if (!a0) throw new HttpError(404, 'Albom topilmadi');
+      const owner = albumOwner(a0, uid);
+      const { tg } = await import('../lib/telegram.js');
+      const URL0 = PUBLIC_URL();
+      const dm = (to, text) => tg('sendMessage', { chat_id: to, parse_mode: 'HTML', text, reply_markup: URL0 ? { inline_keyboard: [[{ text: '🔒 Albomni ochish', web_app: { url: URL0 + '/' } }]] } : undefined }).catch(() => {});
+      if (parts[3] === 'invite') {
+        if (!owner) throw new HttpError(403, 'Faqat albom egasi taklif qila oladi');
+        const code = randomId(10);
+        await mutateAlbum(tree.id, (d) => { const a = d.albums.find((x) => x.id === aid); a.invites = { ...(a.invites || {}), [code]: { at: new Date().toISOString(), used: null } }; });
+        return send(res, 200, { code });
+      }
+      if (parts[3] === 'join') {
+        const r = await mutateAlbum(tree.id, (d) => {
+          const a = d.albums.find((x) => x.id === aid);
+          if ((a.members || []).includes(uid)) return 'ok';
+          const inv = a.invites?.[String(body.code || '')];
+          if (!inv || inv.used) return null; // bir martalik — ishlatilgan
+          inv.used = uid;
+          a.members = [...(a.members || []), uid];
+          a.req = (a.req || []).filter((x) => x.uid !== uid);
+          return 'ok';
+        });
+        if (!r.result) throw new HttpError(410, 'Bu taklif havolasi allaqachon ishlatilgan. Albom egasidan yangisini so‘rang');
+        return send(res, 200, { ok: true, name: a0.name });
+      }
+      if (parts[3] === 'request') {
+        if ((a0.members || []).includes(uid)) return send(res, 200, { ok: true });
+        await mutateAlbum(tree.id, (d) => { const a = d.albums.find((x) => x.id === aid); if (!(a.req || []).some((x) => x.uid === uid)) a.req = [...(a.req || []), { uid, name: by.name, at: new Date().toISOString() }].slice(-100); });
+        if (a0.owner) await dm(a0.owner, `🔒 <b>${escapeHtml(by.name)}</b> «${escapeHtml(a0.name)}» albomini ko‘rish uchun so‘rov yubordi. Ilovada qabul qiling yoki rad eting.`);
+        return send(res, 200, { ok: true });
+      }
+      if (!owner) throw new HttpError(403, 'Faqat albom egasi hal qila oladi');
+      const target = String(body.uid || '');
+      if (parts[3] === 'decide') {
+        await mutateAlbum(tree.id, (d) => { const a = d.albums.find((x) => x.id === aid); a.req = (a.req || []).filter((x) => x.uid !== target); if (body.ok) a.members = [...new Set([...(a.members || []), target])]; });
+        if (body.ok) await dm(target, `✅ «${escapeHtml(a0.name)}» oilaviy albomiga qabul qilindingiz.`);
+        return send(res, 200, { ok: true });
+      }
+      if (target === uid) throw new HttpError(400, 'O‘zingizni chiqara olmaysiz');
+      await mutateAlbum(tree.id, (d) => { const a = d.albums.find((x) => x.id === aid); a.members = (a.members || []).filter((x) => x !== target); });
+      return send(res, 200, { ok: true });
     }
     // Asl sifatda yuklash: fayl 2.5 MB bo'laklarda keladi, so'ng kanalga «fayl» (document) sifatida — siqilmaydi
     if (parts[1] === 'up' && m === 'POST') {
@@ -749,6 +791,11 @@ async function route(req, res) {
         applied: props.filter((x) => x.status === 'applied' && x.undo).slice(0, 15).map((x) => ({ id: x.id, at: x.doneAt || x.at, by: x.by, headName: byId.get(x.head)?.name || '?', n: x.ops.length })),
         complete: (() => { const c = B.completeness(tree); return { pct: c.pct, total: c.total, missing: c.missing.slice(0, 300) }; })(),
       });
+    }
+    if (m === 'POST' && parts[1] === 'cleannames') {
+      // qon qarindoshlar ismidagi familiya/otasining ismini olib tashlash
+      const r = await mutateTree(tok.treeId, (t) => { let n = 0; for (const p of t.persons) { if (!(p.father_id || p.mother_id)) continue; const v = B.stripSurname(p.name); if (v && v !== p.name) { p.name = v; n++; } } if (n) addLogSafe(t, nameOf(user), n); return n; });
+      return send(res, 200, { n: r.result, tree: out(r.data, 'edit', uid) });
     }
     if (m === 'PATCH' && parts[1]) {
       const body = await readBody(req);

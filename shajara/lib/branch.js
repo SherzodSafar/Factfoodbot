@@ -188,6 +188,13 @@ export async function remindBranch(tree, bid) {
 export async function submitProposal(tree, bid, b, user, ops) {
   ops = (Array.isArray(ops) ? ops : []).slice(0, 500);
   if (!ops.length) throw new HttpError(400, 'O‘zgarish yo‘q');
+  // qon qarindoshlar ismida familiya/otasining ismi bo'lsa — faqat ism
+  const byId0 = new Map(tree.persons.map((p) => [p.id, p]));
+  for (const o of ops) {
+    if (!o.f?.name) continue;
+    const blood = o.op === 'add' ? !!(o.father || o.mother) : !!(byId0.get(o.id)?.father_id || byId0.get(o.id)?.mother_id);
+    if (blood) o.f.name = stripSurname(o.f.name);
+  }
   validateOps(ops, tree.persons);
   const uid = String(user.id);
   const key = `props/${tree.id}.json`;
@@ -302,6 +309,15 @@ function splitFull(v) {
   const rest = w.slice(2).join(' ').replace(/\s+(qizi|o‘g‘li|o'g'li|ўғли|қизи)$/i, '').replace(/(ovna|evna|yevna|ovich|evich|yevich)$/i, '');
   return [w.slice(0, 2).join(' '), rest.split(' ')[0] || null];
 }
+// Qon qarindoshning «ismi» joyiga familiya va otasining ismi ham yozilsa — faqat ism qoladi
+// («Go‘zal Komiljonova Hamidjon qizi» → «Go‘zal»); «Nur Muhammad» kabi qo'sh ismlar o'zgarmaydi.
+const SURNAME = /^\S+(ov|ova|ev|eva|yev|yeva|ovich|evich|ovna|evna|yevna)$/i;
+export function stripSurname(name) {
+  const w = String(name || '').trim().split(/\s+/);
+  if (w.length < 2) return w.join(' ');
+  if (SURNAME.test(w[1]) || /(^|\s)(qizi|o[‘'’`ʻ]?g[‘'’`ʻ]?li|қизи|ўғли)$/i.test(w.slice(1).join(' '))) return w[0];
+  return w.join(' ');
+}
 const isKid = (x) => !!(x.father_id || x.mother_id);
 
 function visitList(s) {
@@ -378,7 +394,7 @@ async function askQ(from, s) {
   if (f === 'nm') {
     s.wait = { f: 'name', id };
     text = inLaw(s, x) ? t(L, '✍️ {who} — ismi, familiyasi va otasining ismini yozing (masalan: Toshmat Eshmatov Yormatovich):', { who: nm })
-      : par && isNew(id) ? t(L, '✍️ {name}ning {n}-farzandi ismini yozing:', { name: esc(par.name || ''), n: kidsOf(W, par.id).findIndex((k) => k.id === id) + 1 }) : t(L, '✍️ Ismini yozing:');
+      : par && isNew(id) ? t(L, '✍️ {name}ning {n}-farzandi ismini yozing (faqat ismi, familiyasiz):', { name: esc(par.name || ''), n: kidsOf(W, par.id).findIndex((k) => k.id === id) + 1 }) : t(L, '✍️ Ismini yozing:');
     if (x.name) kb = [[U]];
   } else if (f === 'g') {
     text = t(L, '{who} — o‘g‘ilmi yoki qiz?', { who: nm });
@@ -455,7 +471,8 @@ export async function chatText(from, text) {
         if (s.cur === 'nm:' + w.id) markDone(s, s.cur);
       }
     } else {
-      x.name = name;
+      x.name = stripSurname(name);
+      if (x.name !== name) await send(from.id, t(L, 'ℹ️ Faqat ism saqlandi: <b>{name}</b> — familiya va otasining ismi shajaradan avtomatik olinadi.', { name: esc(x.name) }));
       if (s.cur === 'nm:' + w.id) markDone(s, s.cur);
     }
   } else if (w.f === 'fname') {
