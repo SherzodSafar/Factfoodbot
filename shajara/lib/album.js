@@ -101,7 +101,7 @@ export function publicAlbum(doc, tree, uid) {
       const base = {
         byUser: it.by?.id ? users[it.by.id]?.username || null : null,
         id: it.id, album: vis.get(it.album) === false ? it.alsoIn : it.album, type: it.type, kind, mime: it.mime || null, caption: it.caption, name: it.name, w: it.w, h: it.h, dur: it.dur,
-        size: it.size, by: it.by, at: it.at,
+        size: it.size, by: it.by, at: it.at, tags: it.tags || [],
         views: it.views || (it.seen || []).length, sends: it.sends || 0, cm: (it.cm || []).length, likes: (it.likes || []).length, liked: !!uid && (it.likes || []).includes(String(uid)),
       };
       if (it.r2) return { ...base, priv: true, pub: !!it.pub, member: vis.get(it.album) !== false, thumb: kind === 'image' ? privUrl(tree.id, it.id) : null, src: privUrl(tree.id, it.id) };

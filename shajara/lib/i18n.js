@@ -259,4 +259,6 @@ for (const [k, r, e] of [
   ["🌙 <b>Bugungi yangiliklar</b>", "🌙 <b>Новости за сегодня</b>", "🌙 <b>Today's news</b>"],
   ["…va yana {n} ta", "…и ещё {n}", "…and {n} more"],
   ["⏭ Keyinroq to‘ldiraman", "⏭ Заполню позже", "⏭ I'll fill it in later"],
+  ["🌸 Ertaga yaqinlaringizning tug‘ilgan kuni:", "🌸 Завтра день рождения у ваших близких:", "🌸 Tomorrow is a birthday in your close family:"],
+  ["Tabriklashni unutmang! 💐", "Не забудьте поздравить! 💐", "Don’t forget to congratulate! 💐"],
 ]) { RU[k] = r; EN[k] = e; }

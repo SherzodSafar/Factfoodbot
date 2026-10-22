@@ -45,6 +45,7 @@ Telegram bot **@ShajaraAiBot** + Mini App (oila shajarasi). Eski bot (@Shajara_i
 - Shox oilasi maxfiy albomi: `album.priv={head}`, `members`; kirish — faqat `members`; egasi (`owner`) bir martalik taklif `invites{code}` (`_k<aid><code>`) yuboradi, `remove` qiladi. A'zo bo'lmaganlarga umuman ko'rinmaydi. Fayllar kanalga emas, R2 `p/<tree>/<iid>` (`/api/pm/...` imzoli 302). `item.pub` + `alsoIn` (Umumiy) — tasdiqdan so'ng hammaga. Bot albom ro'yxatida maxfiylar yo'q.
 - Qon qarindosh ismi: `stripSurname` (bot, taklif, ilova) — familiya/otasining ismi qo'shib yozilsa faqat ism; panelda «Faqat ismni qoldirish» (`branch/cleannames`).
 - «Shajarada men»: `members[uid].pid` (+ `users/<uid>.trees[treeId].pid`), `PATCH /api/me {pid}`; ilova ochilganda bir marta so'raladi (`whoAmISheet`), «Ko‘proq»da o'zgartiriladi. Albom oilalari (`album/heads`): o'zining va ota-onasining oilasi, egallagan shoxlari; tahrirchiga — farzandi bor barcha qon qarindosh.
+- Shaxsiylashtirish (pid asosida): daraxt o'ziga markazlashadi + «Mening oilam» chiplari (`myBar`), shaxs oynasida «Sizga: …» (`meKin`, kinship + egalik qo'shimchasi), «Oilangiz N% — to'ldirasizmi?» → `POST /api/me/branch` → wizard, 3 qadamli yo'l-yo'riq (localStorage `sh_ob*`), rasmdagilarni belgilash `item.tags` (`album/i/<iid>/tags`) va shaxs oynasida «Suratlari», shaxsiy tabrik eslatmasi `lib/greet.js` (cron, 3 qadamgacha yaqinlar, ertangi tug'ilgan kun).
 - Keyingi g'oyalar: ovozli javob (bot chat), AI bilan Q&A.
 
 ## Foydalanuvchi afzalliklari

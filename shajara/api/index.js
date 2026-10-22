@@ -348,6 +348,16 @@ async function route(req, res) {
   }
 
   // ---- Shaxsiy sozlamalar: til, bildirishnomalar
+  // O'z oilasini to'ldirish: shajaradagi o'rni bo'yicha shox havolasi avtomatik (o'ziga biriktirilgan)
+  if (path === 'me/branch' && m === 'POST') {
+    const { tree, user, uid } = await authTree(req);
+    const pid = uid && tree.members?.[uid]?.pid;
+    if (!pid || !tree.persons.some((p) => p.id === pid)) throw new HttpError(400, 'Avval shajarada o‘zingizni belgilang');
+    const B = await import('../lib/branch.js');
+    let bid = Object.entries(tree.branches || {}).find(([, b]) => !b.revoked && b.head === pid && b.claimed === uid)?.[0];
+    if (!bid) { bid = await B.createBranch(tree.id, pid, nameOf(user) || '', { self: true }); await B.claimBranch(tree.id, bid, user); }
+    return send(res, 200, { bid, treeId: tree.id });
+  }
   if (path === 'me' && m === 'PATCH') {
     const body = await readBody(req);
     const { tree, user, uid } = await authTree(req);
@@ -419,7 +429,7 @@ async function route(req, res) {
       if (body.priv) {
         if (!uid || !myHeads().some((h) => h.id === body.priv)) throw new HttpError(403, 'Bu shox uchun albom ochishga ruxsat yo‘q');
         const { r2On } = await import('../lib/r2.js');
-        if (!r2On()) throw new HttpError(400, 'Maxfiy albom uchun fayl ombori (R2) sozlanmagan');
+        if (!r2On()) throw new HttpError(400, 'Yopiq albom uchun fayl ombori (R2) sozlanmagan');
         const a = { id: randomId(8), name: cleanName(body.name) || 'Oilaviy albom', createdAt: new Date().toISOString(), by: by.name, owner: uid, priv: { head: body.priv }, members: [uid], invites: {}, req: [] };
         await mutateAlbum(tree.id, (doc) => { doc.albums.push(a); });
         return send(res, 200, { album: a });
@@ -582,7 +592,16 @@ async function route(req, res) {
         await mutateAlbum(tree.id, (d) => { const x = d.items.find((y) => y.id === iid); if (!x) return; x.pub = !!body.on; if (x.pub && !x.alsoIn) x.alsoIn = ensureAlbum(d, 'Umumiy', by).id; });
         return send(res, 200, { ok: true, pub: !!body.on });
       }
-      if (it.r2 && !it.pub && (parts[3] === 'c' || parts[3] === 'send') && m === 'POST') throw new HttpError(400, 'Maxfiy albom faylini chatga yuborib yoki izoh yozib bo‘lmaydi');
+      // «Rasmdagilar kim?» — shajaradagi odamlarni belgilash
+      if (parts[3] === 'tags' && m === 'POST') {
+        if (!uid || !tree.members?.[uid]) throw new HttpError(403, 'Ruxsat yo‘q');
+        const body = await readBody(req);
+        const ids = new Set(tree.persons.map((p) => p.id));
+        const tags = [...new Set((Array.isArray(body.tags) ? body.tags : []).map(String).filter((x) => ids.has(x)))].slice(0, 50);
+        await mutateAlbum(tree.id, (d) => { const x = d.items.find((y) => y.id === iid); if (x) x.tags = tags; });
+        return send(res, 200, { ok: true, tags });
+      }
+      if (it.r2 && !it.pub && (parts[3] === 'c' || parts[3] === 'send') && m === 'POST') throw new HttpError(400, 'Yopiq albom faylini chatga yuborib yoki izoh yozib bo‘lmaydi');
       if (parts[3] === 'send' && m === 'POST') {
         if (!uid) throw new HttpError(400, 'Bu funksiya faqat Telegram ichida ishlaydi');
         const a = doc.albums.find((x) => x.id === it.album);
@@ -1013,6 +1032,12 @@ async function route(req, res) {
       sent += await notify(tr, 'bday', (lang) => todayText(tr, lang));
     }
     // to'liq bo'lmagan ma'lumotlar haqida egasiga va shox mas'ullariga eslatma
+    // yaqinlarning ertangi tug'ilgan kuni — har kimga shaxsan (shajaradagi o'rni bo'yicha)
+    const { personalBirthdays } = await import('../lib/greet.js');
+    for (const key of await listKeys('trees/')) {
+      const tr = (await readJson(key).catch(() => null))?.data;
+      if (tr?.persons?.length) sent += await personalBirthdays(tr).catch((e) => (console.error('greet', e), 0));
+    }
     const { dailyReminders } = await import('../lib/branch.js');
     for (const key of await listKeys('trees/')) {
       const tr = (await readJson(key).catch(() => null))?.data;
