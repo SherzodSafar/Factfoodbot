@@ -179,7 +179,7 @@ export async function remindBranch(tree, bid) {
   const head = tree.persons.find((p) => p.id === b.head)?.name || '';
   const r = await tg('sendMessage', { chat_id: b.claimed, parse_mode: 'HTML',
     text: t(l, '🌳 <b>{name}</b> shoxi — {pct}%: {nb} kishining tug‘ilgan sanasi yo‘q, {ns} kishining turmush o‘rtog‘i noma’lum. Bir necha daqiqa ajratib to‘ldirib bersangiz — avlodlar uchun katta xizmat bo‘ladi 🙏', { name: esc(head), pct: st.pct, nb: st.noBirth, ns: st.noSpouse }),
-    reply_markup: { inline_keyboard: [[{ text: t(l, '💬 Shu yerda to‘ldirish'), callback_data: `bc:go:${tree.id}_${bid}` }], [{ text: t(l, '🎙 Ovozli suhbat orqali'), callback_data: `bc:gv:${tree.id}_${bid}` }], [{ text: t(l, '✍️ Ilovada to‘ldirish'), web_app: { url: `${URL_()}/?br=${tree.id}_${bid}` } }]] } });
+    reply_markup: { inline_keyboard: [[{ text: t(l, '💬 Shu yerda to‘ldirish'), callback_data: `bc:go:${tree.id}_${bid}` }], [{ text: t(l, '✍️ Ilovada to‘ldirish'), web_app: { url: `${URL_()}/?br=${tree.id}_${bid}` } }]] } });
   if (!r.ok) throw new HttpError(502, 'Xabar yuborilmadi (mas’ul botni bloklagan bo‘lishi mumkin)');
   return true;
 }
@@ -280,15 +280,14 @@ const line = (p) => `${esc(p.name || '?')} (${fd(p.birth)}${p.deceased ? ` – �
 
 async function save(uid, s) { s.at = Date.now(); await writeJson(sKey(uid), s); }
 
-export async function chatStart(from, lang, treeId, bid, opts = {}) {
+export async function chatStart(from, lang, treeId, bid) {
   const { tree, b } = await claimBranch(treeId, bid, from);
   if (b.lang) lang = b.lang;
   const persons = scopePersons(tree, b.head);
-  const s = { tree: tree.id, bid, head: b.head, title: tree.title, lang, voice: !!opts.voice, i: 0, seq: 0, done: [], skip: [], W: Object.fromEntries(persons.map((p) => [p.id, p])), O: Object.fromEntries(persons.map((p) => [p.id, p])) };
+  const s = { tree: tree.id, bid, head: b.head, title: tree.title, lang, i: 0, seq: 0, done: [], skip: [], W: Object.fromEntries(persons.map((p) => [p.id, p])), O: Object.fromEntries(persons.map((p) => [p.id, p])) };
   await save(from.id, s);
   await updateUser(from.id, from, (d) => { d.brchat = Date.now(); d.aimode = null; d.pending = null; });
-  if (s.voice) await send(from.id, t(lang, '🎙 Ovozli suhbat boshlandi! Savollarni ovoz bilan beraman. Javobni ovozli xabar qilib ayting («ha», «yo‘q», «bilmayman», sana yoki ism) yoki tugmani bosing.\n\nTo‘xtatish: /bekor'));
-  else await send(from.id, t(lang, '💬 Boshladik! Har bir kishi haqida birma-bir savol beraman. Bor ma’lumot ko‘rsatiladi — to‘g‘ri bo‘lsa tasdiqlang, bo‘lmasa tuzating. Bilmasangiz «🤷 Bilmayman»ni bosing.\n\n🎙 Ovozli xabar ham yuborishingiz mumkin, masalan: «Akam Alining uch farzandi bor: …» — AI o‘zi ajratadi.\n\nTo‘xtatish: /bekor'));
+  await send(from.id, t(lang, '💬 Boshladik! Har bir kishi haqida birma-bir savol beraman. Bor ma’lumot ko‘rsatiladi — to‘g‘ri bo‘lsa tasdiqlang, bo‘lmasa tuzating. Bilmasangiz «🤷 Bilmayman»ni bosing.\n\nTo‘xtatish: /bekor'));
   return askQ(from, s);
 }
 
@@ -418,13 +417,8 @@ async function askQ(from, s) {
     }
   }
   kb.push([...((s.done || []).length ? [{ text: t(L, '⬅️ Orqaga'), callback_data: 'bc:bk' }] : []),
-    { text: s.voice ? t(L, '💬 Yozma') : t(L, '🎙 Ovozli'), callback_data: 'bc:vm' }, { text: t(L, '📨 Yakunlash'), callback_data: 'bc:fin' }]);
-  s.qtext = text;
+    { text: t(L, '📨 Yakunlash'), callback_data: 'bc:fin' }]);
   await save(from.id, s);
-  if (s.voice) {
-    const { sendVoiceQ } = await import('./voice.js');
-    if (await sendVoiceQ(from.id, head + text, L, kb)) return;
-  }
   return send(from.id, head + text, kb);
 }
 
@@ -509,7 +503,7 @@ export async function chatCallback(cq, lang) {
   const answer = (text) => tg('answerCallbackQuery', { callback_query_id: cq.id, text });
   const [, act, arg] = data.split(':');
   // havoladan yoki eslatmadan boshlash
-  if (act === 'go' || act === 'gv' || act === 'me' || act === 'off') {
+  if (act === 'go' || act === 'me' || act === 'off') {
     answer();
     if (act === 'off') {
       await mutateTree(arg, (t) => { const m = t.members?.[String(from.id)]; if (m) m.notify = { ...(m.notify || {}), remind: false }; }).catch(() => {});
@@ -517,7 +511,6 @@ export async function chatCallback(cq, lang) {
     }
     try {
       if (act === 'go') { const [tr, b] = arg.split('_'); return await chatStart(from, lang, tr, b); }
-      if (act === 'gv') { const [tr, b] = arg.split('_'); return await chatStart(from, lang, tr, b, { voice: true }); }
       const tree = await loadTree(arg);
       if (String(tree.owner) !== String(from.id)) return send(from.id, '⚠️');
       const root = tree.meta?.root_id || tree.persons[0]?.id;
@@ -534,7 +527,6 @@ export async function chatCallback(cq, lang) {
   const [cf, cid] = String(cur || '').split(':');
   const x = s.W[cid];
   if (act === 'fin') return finish(from, s);
-  if (act === 'vm') { s.voice = !s.voice; await send(from.id, s.voice ? t(L, '🎙 Ovozli rejim yoqildi.') : t(L, '💬 Yozma rejim.')); return askQ(from, s); }
   if (act === 'bk') { s.done = (s.done || []).slice(0, -1); return askQ(from, s); }
   if (!cur) return askQ(from, s);
   if (act === 'y' || act === 'u') { markDone(s, cur); return askQ(from, s); }
@@ -575,61 +567,16 @@ export async function chatCallback(cq, lang) {
   return askQ(from, s);
 }
 
-// Ovozli javob: joriy savolga qisqa javob bo'lsa — tushunib qo'llanadi; ko'p qarindosh haqida gapirsa — chatMedia
-const EXPECT = {
-  nm: 'a person name (for a spouse: first name, surname and father’s name)', sp: 'the spouse’s first name, surname and father’s name', g: 'gender: son (m) or daughter (f)',
-  al: 'alive or dead', ot: 'which parent (one of the names in the question)',
-};
-export async function chatVoice(from, audio) {
-  const s = (await readJson(sKey(from.id)))?.data;
-  if (!s) return false;
-  if (!s.cur) return chatMedia(from, [audio]);
-  const L = s.lang;
-  const [f, id] = s.cur.split(':');
-  const x = s.W[id];
-  const confirm = (f === 'b' && fullDate(x?.birth)) || (f === 'd' && fullDate(x?.death)) || (f === 'k' && kidsOf(W_(s), id).length) || (f === 'al' && x?.deceased);
-  const expect = EXPECT[f] || (f === 'k' ? (confirm ? 'yes (these are all the children) or how many more children there are' : 'number of children')
-    : confirm ? 'yes, or no with the corrected date' : 'a date');
-  let r;
-  try { r = await (await import('./voice.js')).understand(audio, s.qtext || '', expect, L); } catch (e) { console.error('voice', e); }
-  if (!r) { await send(from.id, t(L, 'Ovozni tushunolmadim. Qayta ayting yoki tugmani bosing.')); return true; }
-  if (r.heard) await send(from.id, `🎙 «${esc(r.heard.slice(0, 200))}»`);
-  const cb = (data) => chatCallback({ id: '0', from, data }, L);
-  const textAns = async (wf, v) => { s.wait = { f: wf, id }; await save(from.id, s); return chatText(from, v); };
-  if (r.action === 'family') return chatMedia(from, [audio]);
-  if (r.action === 'unknown') { await cb('bc:u'); return true; }
-  if (f === 'g') { await cb(`bc:g:${/^(f|qiz|ayol|daughter)/i.test(r.value) ? 'f' : 'm'}`); return true; }
-  if (f === 'al') {
-    if (r.action === 'yes' && x?.deceased) { await cb('bc:y'); return true; }
-    await cb(`bc:al:${/dead|vafot|o‘lgan|умер/i.test(r.value) || (r.action === 'no' && !x?.deceased) ? 0 : 1}`);
-    return true;
-  }
-  if (f === 'ot') { const o = spousesOf(W_(s), x.father_id || x.mother_id).find((y) => fuzzyName(y.name).startsWith(fuzzyName(r.value).slice(0, 4))); await cb(o ? `bc:op:${o.id}` : 'bc:u'); return true; }
-  if (f === 'k') {
-    const n = Number(String(r.value).replace(/\D/g, ''));
-    if (r.action === 'yes' && confirm) { await cb('bc:y'); return true; }
-    if (Number.isFinite(n) && String(r.value).trim()) { await cb(`bc:n:${Math.min(n, 30)}`); return true; }
-    await send(from.id, t(L, 'Nechta farzand ekanini raqam bilan ayting yoki tugmani bosing.'));
-    return true;
-  }
-  if (r.action === 'yes' && confirm) { await cb('bc:y'); return true; }
-  if (r.action === 'no' && !r.value) { await cb('bc:e'); return true; }
-  const wf = { nm: 'name', fn: 'fname', sp: 'sp', b: 'birth', d: 'death' }[f];
-  if (wf && r.value) { await textAns(wf, r.value); return true; }
-  await send(from.id, t(L, 'Ovozni tushunolmadim. Qayta ayting yoki tugmani bosing.'));
-  return true;
-}
-
-/** Ovozli xabar yoki rasm (daftar): AI odamlarni ajratadi va ular joriy shoxga qo'shiladi — so'ng odatdagidek savollar bilan tasdiqlanadi. */
+/** Daftar rasmi: AI odamlarni ajratadi va ular joriy shoxga qo'shiladi — so'ng odatdagidek savollar bilan tasdiqlanadi. */
 export async function chatMedia(from, content) {
   const s = (await readJson(sKey(from.id)))?.data;
   if (!s) return false;
   const L = s.lang;
-  await send(from.id, t(L, '🎧 Tahlil qilinmoqda… biroz kuting.'));
+  await send(from.id, t(L, '🔎 Tahlil qilinmoqda… biroz kuting.'));
   try {
     const { extractFamily } = await import('./ai.js');
     const ctx = Object.values(s.W).map((p) => `${p.name}${p.birth ? ' (' + p.birth.slice(0, 4) + ')' : ''}`).join(', ');
-    const { rows } = await extractFamily([...content, { type: 'text', text: `Context — the family already known: ${ctx}. The speaker talks about relatives in this family (e.g. "akam Ali" = my brother Ali).` }], L);
+    const { rows } = await extractFamily([...content, { type: 'text', text: `Context — the family already known: ${ctx}.` }], L);
     if (!rows.length) { await send(from.id, t(L, 'Hech kim aniqlanmadi. Ismlarni aniqroq aytib qayta yuboring.')); return true; }
     const { planGraph } = await import('./tree.js');
     const persons = Object.values(s.W).map((p) => ({ ...p, spouse_ids: p.spouse_ids || [] }));
@@ -659,7 +606,7 @@ export async function chatMedia(from, content) {
     }
     await send(from.id, t(L, '✅ {n} ta yangi kishi aniqlandi. Endi ularni birma-bir tasdiqlaymiz.', { n: added }));
     await askQ(from, s);
-  } catch (e) { console.error('voice', e); await send(from.id, t(L, 'AI tahlil qila olmadi. Keyinroq urinib ko‘ring yoki matn bilan yozing.')); }
+  } catch (e) { console.error('photo', e); await send(from.id, t(L, 'AI tahlil qila olmadi. Keyinroq urinib ko‘ring yoki matn bilan yozing.')); }
   return true;
 }
 

@@ -2360,8 +2360,11 @@ async function renderBranchWizard(treeId, bid) {
     const sps = spousesOf(p.id);
     const kids = kidsOf(p.id);
     const row = (x, kind) => `<div class="bw-row" data-id="${x.id}" data-kind="${kind}" data-unk="${x.unk ? 1 : ''}">
-        <input class="input" name="name" value="${esc(x.name || '')}" placeholder="${kind === 'sp' ? t('Ism va familiyasi') : t('Ismi')}">
-        ${kind === 'sp' ? `<input class="input" name="fname" value="${esc(x.fname || '')}" placeholder="${t('Otasining ismi (masalan: Rahim)')}">` : ''}
+        ${kind === 'sp' ? (() => { const [f0, ...sur] = String(x.name || '').split(' '); return `<div class="bw-names">
+          <input class="input" name="first" value="${esc(f0 || '')}" placeholder="${t('Ismi')}">
+          <input class="input" name="sur" value="${esc(sur.join(' '))}" placeholder="${t('Familiyasi')}">
+          <input class="input" name="fname" value="${esc(x.fname || '')}" placeholder="${t('Otasining ismi')}"></div>`; })()
+          : `<input class="input" name="name" value="${esc(x.name || '')}" placeholder="${t('Ismi')}">`}
         <div class="bw-sub">${kind === 'kid' ? `<select class="input" name="gender"><option value="m" ${x.gender !== 'f' ? 'selected' : ''}>👦 ${t('O‘g‘il')}</option><option value="f" ${x.gender === 'f' ? 'selected' : ''}>👧 ${t('Qiz')}</option></select>` : ''}
           <input class="input" name="birth" value="${esc(dateToInput(x.birth))}" placeholder="${t('Tug‘ilgan sana: 20.03.1958')}" inputmode="numeric">
           <button type="button" class="bw-unk ${x.unk ? 'on' : ''}" data-unk-btn>🤷 ${t('Bilmayman')}</button>
@@ -2407,7 +2410,8 @@ async function renderBranchWizard(treeId, bid) {
       for (const r of form.querySelectorAll('.bw-row')) {
         const x = W.get(r.dataset.id);
         if (!x) continue;
-        const name = r.querySelector('[name=name]').value.trim();
+        // turmush o'rtog'i: ism va familiya alohida maydonlarda — birga saqlanadi
+        const name = r.querySelector('[name=name]')?.value.trim() ?? [r.querySelector('[name=first]').value.trim(), r.querySelector('[name=sur]').value.trim()].filter(Boolean).join(' ');
         const bi = r.querySelector('[name=birth]').value;
         const birth = parseDateInput(bi);
         if (birth === undefined) { toast(t('Sana formati noto‘g‘ri. Masalan: 1958 yoki 20.03.1958'), true); r.querySelector('[name=birth]').focus(); return false; }
@@ -2421,9 +2425,9 @@ async function renderBranchWizard(treeId, bid) {
           const unk = r.dataset.unk === '1'; // «Bilmayman» — sana majburiy emas
           const bad = !name ? 'name' : inLaw && name.split(/\s+/).length < 2 ? 'surname' : !unk && !full(birth) ? 'birth' : dec && !unk && !full(death) ? 'death' : null;
           if (bad) {
-            if (bad === 'surname') { toast(t('Turmush o‘rtog‘ining familiyasini ham yozing'), true); const el = r.querySelector('[name=name]'); el.classList.add('bad'); el.focus(); return false; }
+            if (bad === 'surname') { toast(t('Turmush o‘rtog‘ining familiyasini ham yozing'), true); const el = r.querySelector('[name=sur]') || r.querySelector('[name=name]'); el.classList.add('bad'); el.focus(); return false; }
             toast(t(bad === 'name' ? 'Ismni kiriting' : bad === 'birth' ? 'Tug‘ilgan sanani to‘liq kiriting (kun.oy.yil)' : 'Vafot sanasini to‘liq kiriting (kun.oy.yil)'), true);
-            const el = r.querySelector(`[name=${bad}]`); el.classList.add('bad'); el.focus(); return false;
+            const el = r.querySelector(`[name=${bad}]`) || r.querySelector('[name=first]'); el.classList.add('bad'); el.focus(); return false;
           }
         }
         const unk = r.dataset.unk === '1';

@@ -64,8 +64,7 @@ async function onPrivate(msg) {
       if (b.lang) lang = b.lang; // havola yuborilgan til
       return send(from.id, t(lang, '🌳 <b>{title}</b>\n\nSizdan <b>{name}</b> oilasi ma’lumotlarini to‘ldirib berish so‘ralmoqda: ismlar, tug‘ilgan sanalar, turmush o‘rtoqlari va farzandlari. Bu 5–10 daqiqa oladi.\n\nIlovada (savol-javob shaklida) yoki shu yerda bot bilan yozishib to‘ldirishingiz mumkin 👇', { title: escapeHtml(tr.title), name: escapeHtml(head.name) }),
         { reply_markup: { inline_keyboard: [[{ text: t(lang, '✍️ Ilovada to‘ldirish'), web_app: { url: `${URL_()}/?br=${br[1]}_${br[2]}` } }],
-          [{ text: t(lang, '💬 Shu yerda to‘ldirish'), callback_data: `bc:go:${br[1]}_${br[2]}` }],
-          [{ text: t(lang, '🎙 Ovozli suhbat orqali'), callback_data: `bc:gv:${br[1]}_${br[2]}` }]] } });
+          [{ text: t(lang, '💬 Shu yerda to‘ldirish'), callback_data: `bc:go:${br[1]}_${br[2]}` }]] } });
     }
     if (pinv?.item) {
       return send(from.id, t(lang, '📸 Faylni ko‘rish uchun pastdagi tugmani bosing 👇'), { reply_markup: { inline_keyboard: [[{ text: t(lang, '👀 Ko‘rish'), web_app: { url: `${URL_()}/?inv=${payload}` } }]] } });
@@ -92,15 +91,13 @@ async function onPrivate(msg) {
       { reply_markup: appButton(lang, extra) });
   }
   // shox ma'lumotlarini bot yozishmasi orqali to'ldirish
-  // shox to'ldirishda: ovozli xabar yoki daftar rasmi — AI odamlarni ajratadi
-  if (user?.brchat && Date.now() - user.brchat < 3 * 864e5 && (msg.voice || msg.audio || msg.photo)) {
-    const f = msg.voice || msg.audio || msg.photo[msg.photo.length - 1];
+  // shox to'ldirishda: daftar rasmi — AI odamlarni ajratadi
+  if (user?.brchat && Date.now() - user.brchat < 3 * 864e5 && msg.photo) {
+    const f = msg.photo[msg.photo.length - 1];
     const file = await downloadFile(f.file_id).catch(() => null);
     if (file) {
-      const mime = msg.photo ? 'image/jpeg' : (f.mime_type || 'audio/ogg');
-      const { chatMedia, chatVoice } = await import('./branch.js');
-      const part = { type: 'image', source: { type: 'base64', media_type: mime, data: file.buffer.toString('base64') } };
-      if (await (msg.photo ? chatMedia(from, [part]) : chatVoice(from, part))) return;
+      const { chatMedia } = await import('./branch.js');
+      if (await chatMedia(from, [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: file.buffer.toString('base64') } }])) return;
     }
   }
   if (user?.brchat && Date.now() - user.brchat < 3 * 864e5 && text && (!cmd || cmd === '/bekor' || cmd === '/cancel')) {

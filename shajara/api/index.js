@@ -655,12 +655,6 @@ async function route(req, res) {
     t = Date.now();
     const me = (await tg('getMe', {})).result || {};
     const out = { blobMs, telegramMs: Date.now() - t, mainApp: !!me.has_main_web_app, region: process.env.VERCEL_REGION || null, db: !!process.env.DATABASE_URL };
-    if (url.searchParams.get('tts')) {
-      // ovozli suhbat tekshiruvi: TTS ishlayaptimi
-      const V = await import('../lib/voice.js');
-      const mp3 = await V.tts('Assalomu alaykum! Iskandar 1959-yilda tug‘ilgan, to‘g‘rimi?', 'uz').catch((e) => String(e?.message || e));
-      out.tts = Buffer.isBuffer(mp3) ? { bytes: mp3.length, model: V.ttsInfo() } : mp3;
-    }
     const r2 = await import('../lib/r2.js');
     if (r2.r2On() && url.searchParams.get('r2')) {
       // R2 tekshiruvi: kichik faylni yozib, imzolangan havola orqali o'qish

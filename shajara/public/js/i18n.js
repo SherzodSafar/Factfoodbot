@@ -611,6 +611,7 @@ const D = [
   ['Otasining ismi', 'Имя отца', 'Father’s name'],
   ['Shajarada otasi bo‘lmasa (masalan, kelin uchun)', 'Если отца нет в древе (напр., для невестки)', 'If the father is not in the tree (e.g. in-laws)'],
   ['Bilmayman', 'Не знаю', 'Don’t know'],
+  ['Familiyasi', 'Фамилия', 'Surname'],
 ];
 
 const RU = new Map(D.map((r) => [r[0], r[1]]));
