@@ -1,10 +1,10 @@
 // Oilaviy albom: fayllarning o'zi Telegram'da (shajara kanalida) turadi,
 // bu yerda faqat ro'yxat — file_id, izoh, albom nomi, kim yuborgani.
 import { readJson, writeJson, updateJson, ConflictError } from './store.js';
-import { sendStored, mediaOf, downloadFile } from './telegram.js';
+import { sendStored, mediaOf } from './telegram.js';
 import { signMedia, randomId } from './auth.js';
-import { mtprotoOn, readBuffer } from './mtproto.js';
-import { r2On, r2Store } from './r2.js';
+import { mtprotoOn } from './mtproto.js';
+import { r2On } from './r2.js';
 import { HttpError, PAYWALL, LIMITS, isPremium, mutateTree, addLog, branchScope } from './tree.js';
 import { notify, escapeHtml } from './notify.js';
 import { t } from './i18n.js';
@@ -85,12 +85,13 @@ const privUrl = (treeId, iid) => { const { e, s } = signMedia('pm:' + iid); retu
 export function publicAlbum(doc, tree, uid) {
   const users = tree?.members || {};
   const vis = new Map(doc.albums.map((a) => [a.id, albumAccess(tree, a, uid)]));
+  const privIds = new Set(doc.albums.filter((a) => a.priv).map((a) => a.id));
   const headName = (id) => tree.persons.find((p) => p.id === id)?.name || '';
   return {
     // maxfiy albom a'zo bo'lmaganlarga umuman ko'rinmaydi
     albums: doc.albums.filter((a) => vis.get(a.id)).map((a) => {
       if (!a.priv) return a;
-      const base = { id: a.id, name: a.name, createdAt: a.createdAt, by: a.by, priv: { head: a.priv.head, headName: headName(a.priv.head) }, members: (a.members || []).length };
+      const base = { id: a.id, name: a.name, createdAt: a.createdAt, by: a.by, priv: { head: a.priv.head, headName: headName(a.priv.head) }, members: (a.members || []).length, ch: a.ch ? { title: a.ch.title } : null };
       if (!albumOwner(a, uid)) return base;
       const nameOf = (id) => users[id]?.name || 'Telegram';
       return { ...base, owner: true, memberList: (a.members || []).map((id) => ({ id, name: nameOf(id) })) };
@@ -104,56 +105,18 @@ export function publicAlbum(doc, tree, uid) {
         size: it.size, by: it.by, at: it.at, tags: it.tags || [],
         views: it.views || (it.seen || []).length, sends: it.sends || 0, cm: (it.cm || []).length, likes: (it.likes || []).length, liked: !!uid && (it.likes || []).includes(String(uid)),
       };
-      if (it.r2) return { ...base, priv: true, pub: !!it.pub, member: vis.get(it.album) !== false, thumb: kind === 'image' ? privUrl(tree.id, it.id) : it.r2t ? privUrl(tree.id, it.id) + '&t=1' : null, src: privUrl(tree.id, it.id) };
+      const pv = privIds.has(it.album) ? { priv: true, pub: !!it.pub, member: vis.get(it.album) !== false } : null;
+      if (it.r2) return { ...base, priv: true, pub: !!it.pub, member: vis.get(it.album) !== false, thumb: kind === 'image' ? privUrl(tree.id, it.id) : null, src: privUrl(tree.id, it.id) };
       // 20 MB dan katta video/audio — MTProto orqali oqim bilan (kalitlar sozlangan bo'lsa)
       const big = (kind === 'video' || kind === 'audio') && it.size > INLINE_MAX && mtprotoOn();
       const ok = kind === 'image' ? !it.size || it.size <= imgMax() : kind !== 'file' && (!it.size || it.size <= INLINE_MAX || big);
       return {
-        ...base,
+        ...base, ...pv,
         thumb: it.thumbId ? mediaUrl(it.thumbId) : null,
         src: ok ? mediaUrl(it.fileId, EXT[it.mime] || (it.type === 'voice' ? 'ogg' : it.type === 'photo' ? 'jpg' : '')) + (big ? `&z=${it.size}` : '') : null,
       };
     }),
   };
-}
-
-const PRIV_MIME = { photo: 'image/jpeg', video: 'video/mp4', animation: 'video/mp4', video_note: 'video/mp4', voice: 'audio/ogg', audio: 'audio/mpeg' };
-
-/**
- * Bot orqali yopiq oilaviy albomga: fayl Telegramdan R2 omboriga ko'chiriladi (kanalga yozilmaydi — boshqalar ko'rmaydi).
- * 20 MB gacha — Bot API orqali, kattasi — MTProto (2 GB gacha). Muqova ham omborga olinadi.
- */
-export async function addToPrivAlbum(tree, { albumId, caption, media, by }) {
-  const a = (await loadAlbum(tree.id)).albums.find((x) => x.id === albumId && x.priv);
-  if (!a || !albumAccess(tree, a, by?.id)) throw new HttpError(403, 'Bu albomga ruxsatingiz yo‘q');
-  const cap = cleanName(caption, 900);
-  const stored = [];
-  for (const m of media) {
-    const iid = randomId(10);
-    const key = `p/${tree.id}/${iid}`;
-    const mime = m.mime || PRIV_MIME[m.type] || 'application/octet-stream';
-    let size = m.size;
-    let read;
-    if (!size || size <= INLINE_MAX) {
-      const f = await downloadFile(m.fileId);
-      if (!f) throw new HttpError(502, 'Faylni Telegramdan olib bo‘lmadi');
-      size = f.buffer.length;
-      read = async (x, y) => f.buffer.subarray(x, y + 1);
-    } else {
-      if (!mtprotoOn()) throw new HttpError(413, 'Fayl juda katta (20 MB gacha)');
-      read = (x, y) => readBuffer(m.fileId, x, y, size);
-    }
-    await r2Store(key, size, mime, read);
-    const item = { ...m, id: iid, album: a.id, mime, size, caption: cap, by, at: new Date().toISOString(), r2: key };
-    const th = m.thumbId && kindOf(item) !== 'image' ? await downloadFile(m.thumbId).catch(() => null) : null;
-    if (th) {
-      await r2Store(key + '.t', th.buffer.length, 'image/jpeg', async (x, y) => th.buffer.subarray(x, y + 1));
-      item.r2t = 1;
-    }
-    stored.push(item);
-  }
-  await mutateAlbum(tree.id, (d) => { d.items.unshift(...stored); });
-  return { album: a, count: stored.length };
 }
 
 /**
@@ -167,30 +130,36 @@ export async function addToAlbum(tree, { albumId, albumName, caption, media, by,
   if (PAYWALL() && !isPremium(tree) && doc0.items.length + media.length > LIMITS.album) {
     throw new HttpError(402, `Bepul tarifda albom limiti: ${LIMITS.album} ta fayl`);
   }
-  let album = doc0.albums.find((a) => a.id === albumId && !a.priv); // maxfiy albom — kanalga yozilmaydi
+  let album = doc0.albums.find((a) => a.id === albumId);
+  // yopiq oilaviy albom — o'zining alohida yopiq kanaliga (umumiy kanal a'zolari ko'rmaydi)
+  const priv = !!album?.priv;
+  if (priv && !inChannel && !albumAccess(tree, album, by?.id)) throw new HttpError(403, 'Bu albomga ruxsatingiz yo‘q');
+  if (priv && !album.ch?.id) throw new HttpError(400, 'Avval yopiq albom uchun alohida Telegram kanal ulang');
+  const target = priv ? album.ch.id : tree.channel?.id;
   const name = album?.name || cleanName(albumName) || 'Umumiy';
   const cap = cleanName(caption, 900);
   const stored = [];
   for (const m of media) {
     const item = { ...m, id: randomId(10), caption: cap, by, at: new Date().toISOString() };
-    if (tree.channel?.id && !inChannel) {
+    if (target && !inChannel) {
       const text = `📁 <b>${escapeHtml(name)}</b>${cap ? '\n' + escapeHtml(cap) : ''}\n— ${escapeHtml(by?.name || '')}`;
-      const r = await sendStored(tree.channel.id, item, text);
+      const r = await sendStored(target, item, text);
       if (r.ok) {
         const again = mediaOf(r.result);
         if (again) Object.assign(item, { fileId: again.fileId, thumbId: again.thumbId || item.thumbId });
-        item.ch = { chat: tree.channel.id, msg: r.result.message_id };
+        item.ch = { chat: target, msg: r.result.message_id };
       }
     }
     stored.push(item);
   }
   const r = await mutateAlbum(tree.id, (doc) => {
-    const a = (albumId && doc.albums.find((x) => x.id === albumId && !x.priv)) || ensureAlbum(doc, name, by);
+    const a = (albumId && doc.albums.find((x) => x.id === albumId)) || ensureAlbum(doc, name, by);
     for (const it of stored) it.album = a.id;
     doc.items.unshift(...stored);
     return a;
   });
   album = r.result;
+  if (priv) return { album, count: stored.length }; // yopiq albom — umumiy jurnal va bildirishnomalarsiz
   await mutateTree(tree.id, (tr) => {
     addLog(tr, by?.name, 'album', `${album.name} · ${stored.length}`);
   });

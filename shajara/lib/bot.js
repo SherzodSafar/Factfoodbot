@@ -9,8 +9,7 @@ import { readJson, writeJson, deleteKey, listKeys } from './store.js';
 import { signInvite, parseInvite } from './auth.js';
 import { loadTree, mutateTree } from './tree.js';
 import { getUser, updateUser } from './users.js';
-import { loadAlbum, addToAlbum, addToPrivAlbum, canUpload, cleanName, mutateAlbum, albumAccess } from './album.js';
-import { r2On } from './r2.js';
+import { loadAlbum, addToAlbum, canUpload, cleanName, mutateAlbum, albumAccess } from './album.js';
 import { escapeHtml } from './notify.js';
 import { upcomingText } from './events.js';
 
@@ -299,7 +298,7 @@ async function startUpload({ from, chatId, lang, msg, media, tree, replyTo }) {
   if (!isNew) return;
   const doc = await loadAlbum(treeId);
   // yopiq oilaviy albomlar — faqat a'zosiga va faqat shaxsiy chatda (guruhda nomi ham ko'rinmasin)
-  const priv = chatId > 0 && r2On() ? doc.albums.filter((a) => a.priv && albumAccess(tree, a, String(from.id))) : [];
+  const priv = chatId > 0 ? doc.albums.filter((a) => a.priv && a.ch && albumAccess(tree, a, String(from.id))) : [];
   const rows = [...priv.map((a) => [{ text: `🔒 ${a.name}`, callback_data: `alb:${a.id}:${from.id}` }]),
     ...doc.albums.filter((a) => !a.priv).slice(-8).reverse().map((a) => [{ text: `📁 ${a.name}`, callback_data: `alb:${a.id}:${from.id}` }])];
   rows.push([{ text: t(lang, '➕ Yangi albom'), callback_data: `alb:new:${from.id}` }, { text: t(lang, '✖️ Bekor qilish'), callback_data: `alb:x:${from.id}` }]);
@@ -346,23 +345,6 @@ async function finishUpload(from, chatId, lang) {
   const tree = await loadTree(p.treeId).catch(() => null);
   if (!tree) return;
   const by = { id: String(from.id), name: [from.first_name, from.last_name].filter(Boolean).join(' ') };
-  const pa = p.albumId && (await loadAlbum(tree.id)).albums.find((a) => a.id === p.albumId && a.priv);
-  if (pa) {
-    // yopiq albom: fayl R2 omboriga ko'chiriladi (katta video bir-ikki daqiqa olishi mumkin) — webhook kutib qolmasin
-    const wait = await send(chatId, t(lang, '⏳ «{album}» yopiq albomiga yuklanmoqda…', { album: escapeHtml(pa.name) }));
-    return bg((async () => {
-      let text;
-      try {
-        const r = await addToPrivAlbum(tree, { albumId: pa.id, caption: p.caption, media: p.items, by });
-        text = t(lang, '✅ {n} ta fayl «{album}» albomiga qo‘shildi.', { n: r.count, album: escapeHtml(r.album.name) });
-      } catch (e) {
-        text = '⚠️ ' + escapeHtml(e.message || 'Xatolik');
-      }
-      const mid = wait?.result?.message_id;
-      if (mid) await tg('editMessageText', { chat_id: chatId, message_id: mid, text, parse_mode: 'HTML', reply_markup: appButton(lang, '?tab=album') });
-      else await send(chatId, text, { reply_markup: appButton(lang, '?tab=album') });
-    })());
-  }
   try {
     const r = await addToAlbum(tree, {
       albumId: p.albumId, albumName: p.albumName, caption: p.caption, media: p.items, by,
@@ -438,13 +420,14 @@ async function linkChat(chat, code, from, lang) {
   const rec = c && (await readJson(linkKey(c)))?.data;
   if (!rec || rec.exp < Date.now()) return send(chat.id, t(lang, 'Kod noto‘g‘ri yoki muddati o‘tgan.'));
   const isChannel = chat.type === 'channel';
-  if ((rec.kind === 'channel') !== isChannel) return send(chat.id, t(lang, 'Kod noto‘g‘ri yoki muddati o‘tgan.'));
+  if ((rec.kind === 'channel' || rec.kind === 'pchannel') !== isChannel) return send(chat.id, t(lang, 'Kod noto‘g‘ri yoki muddati o‘tgan.'));
   await deleteKey(linkKey(c));
   let invite = null;
   if (isChannel) {
     const r = await tg('exportChatInviteLink', { chat_id: chat.id });
     invite = r.ok ? r.result : null;
   }
+  if (rec.kind === 'pchannel') return linkPrivChannel(chat, rec, invite, lang);
   const { data: tree } = await mutateTree(rec.treeId, (tr) => {
     if (isChannel) tr.channel = { id: chat.id, title: chat.title || '', invite };
     else {
@@ -454,6 +437,24 @@ async function linkChat(chat, code, from, lang) {
   });
   await writeJson(chatKey(chat.id), { treeId: rec.treeId, kind: isChannel ? 'channel' : 'group', lang });
   return send(chat.id, t(lang, isChannel ? '✅ Kanal «{tree}» albomi uchun ulandi. Barcha fayllar shu kanalda saqlanadi.' : '✅ Guruh «{tree}» shajarasiga ulandi. Endi albom va yangiliklar shu yerga ham keladi.', { tree: escapeHtml(tree.title) }));
+}
+
+// Yopiq oilaviy albomning alohida kanali (umumiy albom kanali bo'la olmaydi — uning a'zolari ko'rib qoladi)
+async function linkPrivChannel(chat, rec, invite, lang) {
+  const tree = await loadTree(rec.treeId).catch(() => null);
+  if (!tree) return;
+  if (tree.channel?.id === chat.id) return send(chat.id, t(lang, 'Bu kanal umumiy albomga ulangan. Yopiq albom uchun alohida yopiq kanal oching.'));
+  const r = await mutateAlbum(tree.id, (d) => {
+    const a = d.albums.find((x) => x.id === rec.album && x.priv);
+    if (!a) return null;
+    const old = a.ch?.id;
+    a.ch = { id: chat.id, title: chat.title || '', invite };
+    return { name: a.name, old };
+  });
+  if (!r?.result) return send(chat.id, t(lang, 'Kod noto‘g‘ri yoki muddati o‘tgan.'));
+  if (r.result.old && r.result.old !== chat.id) await deleteKey(chatKey(r.result.old));
+  await writeJson(chatKey(chat.id), { treeId: tree.id, kind: 'pchannel', album: rec.album, lang });
+  return send(chat.id, t(lang, '✅ Kanal «{album}» yopiq albomi uchun ulandi. Bu albom fayllari shu kanalda saqlanadi.', { album: escapeHtml(r.result.name) }));
 }
 
 async function onChannelPost(post) {
@@ -466,14 +467,16 @@ async function onChannelPost(post) {
   const media = mediaOf(post);
   if (!media) return;
   const link = (await readJson(chatKey(post.chat.id)))?.data;
-  if (!link || link.kind !== 'channel') return;
+  if (!link || (link.kind !== 'channel' && link.kind !== 'pchannel')) return;
   const tree = await loadTree(link.treeId).catch(() => null);
   if (!tree) return;
+  const priv = link.kind === 'pchannel'; // yopiq albom kanaliga joylangani — faqat o'sha albomga
+  if (priv && !(await loadAlbum(tree.id)).albums.some((a) => a.id === link.album && a.priv)) return;
   const cap = post.caption || '';
   const tag = /#([\p{L}\p{N}_]+)/u.exec(cap);
   await addToAlbum(tree, {
-    inChannel: true,
-    albumName: tag ? tag[1].replace(/_/g, ' ') : 'Kanal', caption: cap.replace(/#[\p{L}\p{N}_]+/gu, '').trim() || null,
+    inChannel: true, albumId: priv ? link.album : undefined,
+    albumName: priv ? null : tag ? tag[1].replace(/_/g, ' ') : 'Kanal', caption: cap.replace(/#[\p{L}\p{N}_]+/gu, '').trim() || null,
     media: [{ ...media, ch: { chat: post.chat.id, msg: post.message_id } }], by: { id: null, name: post.author_signature || post.chat.title || '' },
   }).catch(() => {});
 }
@@ -486,6 +489,10 @@ async function onMembership(cm) {
     const link = (await readJson(chatKey(chat.id)))?.data;
     if (!link) return;
     await deleteKey(chatKey(chat.id));
+    if (link.kind === 'pchannel') {
+      await mutateAlbum(link.treeId, (d) => { const a = d.albums.find((x) => x.id === link.album); if (a?.ch?.id === chat.id) a.ch = null; }).catch(() => {});
+      return;
+    }
     await mutateTree(link.treeId, (tr) => {
       if (tr.channel?.id === chat.id) tr.channel = null;
       tr.groups = (tr.groups || []).filter((g) => g.id !== chat.id);
@@ -495,7 +502,7 @@ async function onMembership(cm) {
   if ((status === 'member' || status === 'administrator') && chat.type !== 'private') {
     const linked = await readJson(chatKey(chat.id));
     // yangi bot albom kanaliga admin qilindi — fayl identifikatorlarini shu bot uchun yangilaymiz
-    if (status === 'administrator' && chat.type === 'channel' && linked?.data?.treeId) bg(refreshAlbumFiles(linked.data.treeId, cm.from?.id));
+    if (status === 'administrator' && chat.type === 'channel' && linked?.data?.kind === 'channel') bg(refreshAlbumFiles(linked.data.treeId, cm.from?.id));
     if (!linked && chat.type !== 'channel') await send(chat.id, t(lang, 'Salom! Meni shajaraga ulash uchun ilovadan kod oling va shu yerga /ulash KOD yuboring.'));
   }
 }

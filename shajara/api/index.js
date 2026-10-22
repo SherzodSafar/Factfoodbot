@@ -431,8 +431,6 @@ async function route(req, res) {
       const body = await readBody(req);
       if (body.priv) {
         if (!uid || !myHeads().some((h) => h.id === body.priv)) throw new HttpError(403, 'Bu shox uchun albom ochishga ruxsat yo‘q');
-        const { r2On } = await import('../lib/r2.js');
-        if (!r2On()) throw new HttpError(400, 'Yopiq albom uchun fayl ombori (R2) sozlanmagan');
         const a = { id: randomId(8), name: cleanName(body.name) || 'Oilaviy albom', createdAt: new Date().toISOString(), by: by.name, owner: uid, priv: { head: body.priv }, members: [uid], invites: {}, req: [] };
         await mutateAlbum(tree.id, (doc) => { doc.albums.push(a); });
         return send(res, 200, { album: a });
@@ -441,7 +439,7 @@ async function route(req, res) {
       return send(res, 200, { album: r.result });
     }
     // maxfiy albom a'zoligi: bir martalik taklif, so'rov va uni egasi qabul qilishi
-    if (parts[1] === 'a' && parts[2] && ['invite', 'join', 'remove'].includes(parts[3]) && m === 'POST') {
+    if (parts[1] === 'a' && parts[2] && ['invite', 'join', 'remove', 'linkcode'].includes(parts[3]) && m === 'POST') {
       if (!uid) throw new HttpError(400, 'Bu funksiya faqat Telegram ichida ishlaydi');
       const aid = parts[2];
       const body = await readBody(req);
@@ -454,6 +452,13 @@ async function route(req, res) {
         const code = randomId(10);
         await mutateAlbum(tree.id, (d) => { const a = d.albums.find((x) => x.id === aid); a.invites = { ...(a.invites || {}), [code]: { at: new Date().toISOString(), used: null } }; });
         return send(res, 200, { code });
+      }
+      if (parts[3] === 'linkcode') {
+        // albomning alohida yopiq kanali: egasi botni kanalga admin qilib, «/ulash KOD» yozadi
+        if (!owner) throw new HttpError(403, 'Faqat albom egasi kanal ulay oladi');
+        const code = randomCode(8);
+        await writeJson(linkKey(code), { treeId: tree.id, kind: 'pchannel', album: aid, exp: Date.now() + 30 * 60e3, by: uid });
+        return send(res, 200, { code, bot: BOT() });
       }
       if (parts[3] === 'join') {
         const r = await mutateAlbum(tree.id, (d) => {
@@ -501,21 +506,11 @@ async function route(req, res) {
         for (let i = 0; i < n; i++) await deleteKey(dir + i).catch(() => {});
         const buf = Buffer.concat(bufs);
         if (buf.length > 50 * 1024 * 1024) throw new HttpError(413, 'Fayl juda katta (50 MB gacha)');
-        const name0 = cleanName(body.name, 120).replace(/[\\/]/g, '_') || 'file';
-        const mime0 = /^[a-z]+\/[a-z0-9.+-]+$/i.test(body.mime || '') ? body.mime : 'application/octet-stream';
-        const pa = (await loadAlbum(tree.id)).albums.find((a) => a.id === body.album && a.priv);
-        if (pa) {
-          // shox oilasining maxfiy albomi: kanalga emas, faqat R2 omboriga (boshqalar ko'rmaydi)
-          if (!albumAccess(tree, pa, uid)) throw new HttpError(403, 'Bu albomga ruxsatingiz yo‘q');
-          const r2 = await import('../lib/r2.js');
-          const iid = randomId(10);
-          const key = `p/${tree.id}/${iid}`;
-          await r2.r2Store(key, buf.length, mime0, async (a, b) => buf.subarray(a, b + 1));
-          const item = { id: iid, album: pa.id, type: 'document', mime: mime0, size: buf.length, name: name0, caption: cleanName(body.caption, 900), by, at: new Date().toISOString(), r2: key };
-          await mutateAlbum(tree.id, (d) => { d.items.unshift(item); });
-          return send(res, 200, { ok: true, album: { id: pa.id, name: pa.name }, item: iid });
-        }
-        const target = tree.channel?.id;
+        const pa = !body.pid && (await loadAlbum(tree.id)).albums.find((a) => a.id === body.album && a.priv);
+        // yopiq oilaviy albom — o'zining alohida yopiq kanaliga (umumiy kanal a'zolari ko'rmaydi)
+        if (pa && !albumAccess(tree, pa, uid)) throw new HttpError(403, 'Bu albomga ruxsatingiz yo‘q');
+        if (pa && !pa.ch?.id) throw new HttpError(400, 'Avval yopiq albom uchun alohida Telegram kanal ulang');
+        const target = pa ? pa.ch.id : tree.channel?.id;
         if (!target) throw new HttpError(400, 'Avval albom kanalini ulang');
         const pid = body.pid && (role === 'edit' || tree.members?.[uid]?.pid === String(body.pid)) ? String(body.pid) : null; // shaxs portreti (o'ziniki ham)
         const person = pid && tree.persons.find((p) => p.id === pid);
@@ -531,9 +526,9 @@ async function route(req, res) {
         if (!sent.ok) throw new HttpError(502, 'Telegramga yuklab bo‘lmadi');
         const media = mediaOf(sent.result);
         const r = await addToAlbum(tree, { inChannel: true, albumId, albumName, caption, media: [{ ...media, ch: { chat: target, msg: sent.result.message_id } }], by, silent: !!person });
-        const item = (await loadAlbum(tree.id)).items.find((x) => x.ch?.msg === sent.result.message_id)?.id || null;
+        const item = (await loadAlbum(tree.id)).items.find((x) => x.ch?.msg === sent.result.message_id && x.ch?.chat === target)?.id || null;
         if (person && item) await mutateTree(tree.id, (t) => { const p = t.persons.find((x) => x.id === pid); if (p) p.photoItem = item; });
-        return send(res, 200, { ok: true, album: r.album, item });
+        return send(res, 200, { ok: true, album: { id: r.album.id, name: r.album.name }, item });
       }
     }
     if (parts[1] === 'upload' && m === 'POST') {
@@ -547,6 +542,7 @@ async function route(req, res) {
       if (!target) throw new HttpError(400, 'Avval albom kanalini ulang');
       const albumName = cleanName(body.albumName);
       const doc = await loadAlbum(tree.id);
+      if (doc.albums.find((a) => a.id === body.album)?.priv) throw new HttpError(400, 'Yopiq albomga «Qo‘shish» orqali yuklang');
       const aName = doc.albums.find((a) => a.id === body.album)?.name || albumName || 'Umumiy';
       const cap = `📁 <b>${escapeHtml(aName)}</b>${body.caption ? '\n' + escapeHtml(cleanName(body.caption, 900)) : ''}\n— ${escapeHtml(by.name)}`;
       const sent = await tgUpload('sendPhoto', { chat_id: target, caption: cap, parse_mode: 'HTML' }, 'photo', buf, 'photo.jpg', mm[1]);
@@ -604,7 +600,7 @@ async function route(req, res) {
         await mutateAlbum(tree.id, (d) => { const x = d.items.find((y) => y.id === iid); if (x) x.tags = tags; });
         return send(res, 200, { ok: true, tags });
       }
-      if (it.r2 && !it.pub && (parts[3] === 'c' || parts[3] === 'send') && m === 'POST') throw new HttpError(400, 'Yopiq albom faylini chatga yuborib yoki izoh yozib bo‘lmaydi');
+      if (ia?.priv && !it.pub && (parts[3] === 'c' || parts[3] === 'send') && m === 'POST') throw new HttpError(400, 'Yopiq albom faylini chatga yuborib yoki izoh yozib bo‘lmaydi');
       if (parts[3] === 'send' && m === 'POST') {
         if (!uid) throw new HttpError(400, 'Bu funksiya faqat Telegram ichida ishlaydi');
         const a = doc.albums.find((x) => x.id === it.album);
@@ -725,7 +721,7 @@ async function route(req, res) {
     if (!verifyMedia('pm:' + parts[2], url.searchParams.get('e'), url.searchParams.get('s'))) throw new HttpError(403, 'Havola eskirgan');
     const r2 = await import('../lib/r2.js');
     res.statusCode = 302;
-    res.setHeader('location', await r2.r2Url(`p/${parts[1].replace(/[^a-z0-9]/g, '')}/${parts[2]}${url.searchParams.get('t') ? '.t' : ''}`));
+    res.setHeader('location', await r2.r2Url(`p/${parts[1].replace(/[^a-z0-9]/g, '')}/${parts[2]}`));
     res.setHeader('cache-control', 'private, max-age=3600');
     return res.end();
   }

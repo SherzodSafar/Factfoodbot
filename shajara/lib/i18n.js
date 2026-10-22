@@ -261,5 +261,6 @@ for (const [k, r, e] of [
   ["⏭ Keyinroq to‘ldiraman", "⏭ Заполню позже", "⏭ I'll fill it in later"],
   ["🌸 Ertaga yaqinlaringizning tug‘ilgan kuni:", "🌸 Завтра день рождения у ваших близких:", "🌸 Tomorrow is a birthday in your close family:"],
   ["Tabriklashni unutmang! 💐", "Не забудьте поздравить! 💐", "Don’t forget to congratulate! 💐"],
-  ["⏳ «{album}» yopiq albomiga yuklanmoqda…", "⏳ Загружаю в закрытый альбом «{album}»…", "⏳ Uploading to the private album “{album}”…"],
+  ["✅ Kanal «{album}» yopiq albomi uchun ulandi. Bu albom fayllari shu kanalda saqlanadi.", "✅ Канал подключён к закрытому альбому «{album}». Файлы этого альбома хранятся здесь.", "✅ Channel connected to the private album “{album}”. Its files are stored here."],
+  ["Bu kanal umumiy albomga ulangan. Yopiq albom uchun alohida yopiq kanal oching.", "Этот канал подключён к общему альбому. Для закрытого альбома создайте отдельный закрытый канал.", "This channel is linked to the shared album. Create a separate private channel for the private album."],
 ]) { RU[k] = r; EN[k] = e; }

@@ -108,14 +108,6 @@ export async function* readRange(fileId, start, end, ahead = 4) {
   }
 }
 
-/** [start, end] oralig'ini bitta Buffer qilib olish; size berilsa keyingi qism oldindan yuklanadi. */
-export async function readBuffer(fileId, start, end, size) {
-  const out = [];
-  for await (const x of readRange(fileId, start, end)) out.push(x);
-  if (size && end + 1 < size) prefetch(fileId, end + 1, size);
-  return Buffer.concat(out);
-}
-
 /** pos dan boshlab n MB ni xotiraga oldindan yuklash (brauzer keyingi qismni so'raguncha). */
 export function prefetch(fileId, pos, size, n = 8) {
   const f = decodeFileId(fileId);

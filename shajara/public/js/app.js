@@ -772,12 +772,14 @@ async function renderAlbumTab(el) {
     ? `<button class="card banner" id="ch-banner"><div style="font-size:26px">🗄</div><div class="grow"><b>${t('Albom yaratish uchun avval kanal ulang')}</b><div class="small muted">${t('Fayllar sizning yopiq Telegram kanalingizda abadiy saqlanadi')}</div></div>${I.chev}</button>`
     : `<div class="card banner"><div style="font-size:26px">🗄</div><div class="grow"><b>${t('Albom hali ochilmagan')}</b><div class="small muted">${t('Albomni ochish uchun shajara tahrirchisi albom kanalini ulashi kerak.')}</div></div></div>`;
   const section = (a, items) => `<div class="alb-head"><div class="grow"><div class="h2 ellipsis">${a.priv ? '🔒' : '📁'} ${esc(nm(a.name))}</div><div class="small muted">${t('{n} ta fayl', { n: items.length })}${a.priv ? ` · ${t('{name} oilasi uchun yopiq', { name: esc(nm(a.priv.headName)) })} · 👥 ${a.members}` : ''}</div></div>
+      ${a.owner && a.ch ? `<button class="btn btn-soft btn-sm" data-alb-ch="${a.id}">📡</button>` : ''}
       ${a.owner ? `<button class="btn btn-soft btn-sm" data-alb-inv="${a.id}">👥 ${t('A’zolar')}</button>` : ''}
       ${isEdit() ? `<button class="icon-btn" data-alb-menu="${a.id}">${I.more}</button>` : ''}</div>
+    ${a.priv && !a.ch ? `<${a.owner ? `button data-alb-ch="${a.id}"` : 'div'} class="card banner" style="margin:4px 0 10px"><div style="font-size:22px">📡</div><div class="grow"><b>${t('Yopiq kanal ulanmagan')}</b><div class="small muted">${a.owner ? t('Fayl yuklash uchun bu albomga alohida yopiq Telegram kanal ulang') : t('Albom egasi yopiq kanal ulagach, fayl yuklash mumkin bo‘ladi')}</div></div>${a.owner ? I.chev + '</button>' : '</div>'}` : ''}
     ${a.priv && !items.length ? `<div class="small muted" style="padding:4px 2px 10px">${t('Bu albomni faqat siz qabul qilgan oila a’zolari ko‘radi. «Qo‘shish» orqali surat va videolarni yuklang.')}</div>` : ''}
     <div class="grid">${items.map(tile).join('')}</div>`;
   let body;
-  if (!A.items.length) {
+  if (!A.items.length && !A.albums.some((a) => a.priv)) {
     body = `<div class="empty"><div class="big">📸</div><b>${t('Albom hali bo‘sh')}</b><p class="small">${t('Oilaviy rasm, video va hujjatlarni qo‘shing — butun oila ko‘ra oladi.')}</p></div>`;
   } else if (f === 'all') {
     body = A.albums.filter((a) => counts[a.id] || a.priv).map((a) => section(a, A.items.filter((it) => it.album === a.id))).join('');
@@ -798,6 +800,7 @@ async function renderAlbumTab(el) {
   el.querySelectorAll('[data-item]').forEach((b) => (b.onclick = () => openViewer(order, order.indexOf(b.dataset.item))));
   el.querySelectorAll('[data-alb-menu]').forEach((b) => (b.onclick = () => albumMenu(b.dataset.albMenu)));
   el.querySelectorAll('[data-alb-inv]').forEach((b) => (b.onclick = () => privMembers(b.dataset.albInv)));
+  el.querySelectorAll('[data-alb-ch]').forEach((b) => (b.onclick = () => privChannelSheet(b.dataset.albCh)));
 
   el.querySelector('#priv-new')?.addEventListener('click', privAlbumSheet);
   el.querySelector('#add')?.addEventListener('click', uploadSheet);
@@ -813,7 +816,7 @@ async function privAlbumSheet() {
     return whoAmISheet();
   }
   const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">🔒 ${t('Oilaviy albom')}</div><button class="icon-btn" data-close>${I.close}</button></div>
-    <div class="sheet-body"><p class="small muted" style="margin-top:0">${t('Bu albomni faqat tanlangan shox oilasi a’zolari ko‘radi. Boshqa shoxlar va boshqalar ko‘ra olmaydi.')}</p>
+    <div class="sheet-body"><p class="small muted" style="margin-top:0">${t('Bu albomni faqat tanlangan shox oilasi a’zolari ko‘radi. Boshqa shoxlar va boshqalar ko‘ra olmaydi.')} ${t('Fayllar shu albom uchun alohida ochiladigan yopiq Telegram kanalda saqlanadi.')}</p>
     <div class="field"><label>${t('Qaysi oila uchun')}</label><select class="input" name="head">${heads.map((h) => `<option value="${h.id}">${esc(nm(h.name))} ${t('oilasi')}</option>`).join('')}</select></div>
     <div class="field"><label>${t('Albom nomi')}</label><input class="input" name="name" maxlength="60" value="${esc(t('{name} oilasi', { name: nm(heads[0].name) }))}"></div>
     <button class="btn btn-primary btn-block" id="pa-go">${t('Yaratish')}</button></div>`);
@@ -827,10 +830,39 @@ async function privAlbumSheet() {
       S.albumFilter = r.album.id;
       await refreshAlbum();
       toast(t('Oilaviy albom yaratildi 🔒'));
-      privMembers(r.album.id);
+      privChannelSheet(r.album.id);
     } catch (err) { toast(err.message, true); e.target.disabled = false; }
   };
 }
+// Yopiq albomning alohida kanali: egasi yopiq kanal ochib, botni admin qiladi va «/ulash KOD» yozadi
+function privChannelSheet(aid) {
+  const a = S.album?.albums.find((x) => x.id === aid);
+  const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">📡 ${t('Yopiq albom kanali')}</div><button class="icon-btn" data-close>${I.close}</button></div>
+    <div class="sheet-body"><p class="small muted" style="margin-top:0">${t('Yopiq albom fayllari alohida yopiq Telegram kanalda saqlanadi — umumiy albom kanali a’zolari ularni ko‘rmaydi. Kanalga faqat shu oila a’zolarini qo‘shing.')}</p>
+      ${a?.ch ? `<div class="card" style="padding:4px 0;margin-bottom:12px"><div class="log-item"><div class="dot">✅</div><div class="grow"><b>${esc(a.ch.title)}</b></div></div></div>` : ''}
+      <div id="lk"><button class="btn btn-primary btn-block" id="gen">${t(a?.ch ? 'Boshqa kanal ulash' : 'Kanal ulash')}</button></div></div>`);
+  sh.querySelector('#gen').onclick = async (e) => {
+    const gen = e.currentTarget;
+    gen.disabled = true;
+    try {
+      const r = await api(`album/a/${aid}/linkcode`, { method: 'POST', body: {} });
+      sh.querySelector('#lk').innerHTML = `<ol class="steps"><li>${t('Telegramda yangi <b>yopiq kanal</b> oching (masalan: «{title} albomi»).', { title: esc(nm(a?.name || '')) })}</li>
+          <li>${t('Pastdagi tugma orqali botni kanalga <b>admin</b> qilib qo‘shing.')}</li>
+          <li>${t('Kanalga quyidagi xabarni yozing:')}<div class="code-pill">/ulash ${r.code}</div></li></ol>
+        <button class="btn btn-primary btn-block" id="addb">${t('Botni kanalga qo‘shish')}</button>
+        <button class="btn btn-ghost btn-block" style="margin-top:8px" id="cpc">${t('Buyruqdan nusxa olish')}</button>
+        <button class="btn btn-soft btn-block" style="margin-top:8px" id="chk">${t('Uladim — tekshirish')}</button>
+        <div class="hint" style="text-align:center;margin-top:8px">${t('Kod 30 daqiqa amal qiladi')}</div>`;
+      sh.querySelector('#addb').onclick = () => openLink(`https://t.me/${r.bot}?startchannel&admin=post_messages+edit_messages+delete_messages+invite_users`);
+      sh.querySelector('#cpc').onclick = () => copyText(`/ulash ${r.code}`);
+      sh.querySelector('#chk').onclick = async () => {
+        await refreshAlbum();
+        if (S.album.albums.find((x) => x.id === aid)?.ch) { closeAllSheets(); toast(t('Kanal ulandi ✅')); } else toast(t('Hali ulanmagan — kanalga /ulash kodini yozing'), true);
+      };
+    } catch (err) { toast(err.message, true); gen.disabled = false; }
+  };
+}
+
 // Bu odam menga kim? (shajarada o'zini belgilagan bo'lsa) — «Nevarasi» → «Nevarangiz»
 function meKin(p) {
   const me = S.tree.me?.pid && S.fam.get(S.tree.me.pid);
@@ -1470,7 +1502,7 @@ function openProfile(it) {
 
 function albumSelect(selected, withNew = true) {
   const A = S.album;
-  return `<select class="input" name="album">${A.albums.filter((a) => !a.locked).map((a) => `<option value="${a.id}" ${a.id === selected ? 'selected' : ''}>${esc(nm(a.name))}</option>`).join('')}
+  return `<select class="input" name="album">${A.albums.filter((a) => !a.locked).map((a) => `<option value="${a.id}" ${a.id === selected ? 'selected' : ''}>${a.priv ? '🔒 ' : ''}${esc(nm(a.name))}</option>`).join('')}
     ${withNew ? `<option value="__new" ${!A.albums.length ? 'selected' : ''}>➕ ${t('Yangi albom')}</option>` : ''}</select>
     <input class="input ${A.albums.length ? 'hidden' : ''}" name="albumName" placeholder="${t('Yangi albom nomi (masalan: To‘y 2024)')}" maxlength="60" style="margin-top:8px">`;
 }
@@ -1544,6 +1576,12 @@ function uploadSheet() {
     const f = new FormData(e.target);
     const body = { caption: f.get('caption') };
     if (f.get('album') === '__new') body.albumName = f.get('albumName') || t('Umumiy'); else body.album = f.get('album');
+    const pa = S.album.albums.find((a) => a.id === body.album && a.priv && !a.ch);
+    if (pa) {
+      toast(t('Avval bu yopiq albomga alohida Telegram kanal ulang'), true);
+      if (pa.owner) { closeAllSheets(); privChannelSheet(pa.id); }
+      return;
+    }
     const btn = sh.querySelector('#ub');
     btn.disabled = true;
     let ok = 0;
