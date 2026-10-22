@@ -2466,8 +2466,8 @@ async function renderBranchWizard(treeId, bid) {
     $app.querySelector('#dlg')?.addEventListener('click', async () => {
       try {
         const r = await api(`br/${treeId}/${bid}/sub`, { method: 'POST', body: { head: p.id }, token: null });
-        const msg = t('Assalomu alaykum! «{title}» shajarasidagi {name} oilasi ma’lumotlarini to‘ldirib bersangiz. Havola:', { title: d.title, name: p.name });
-        tg?.openTelegramLink ? tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(r.link)}&text=${encodeURIComponent(msg)}`) : copyText(r.link);
+        const msg = t('Assalomu alaykum! Iltimos «{title}» shajarasidagi {name} oilasi ma’lumotlarini to‘ldirishda yordam bersangiz.\n\nHavola:', { title: d.title, name: p.name });
+        tg?.openTelegramLink ? tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(`${msg} ${r.link}`)}`) : copyText(r.link);
       } catch (err) { toast(err.message, true); }
     });
     $app.querySelector('#prev')?.addEventListener('click', () => { if (save()) { i--; draw(); window.scrollTo(0, 0); } });
@@ -2538,8 +2538,8 @@ async function branchLinkSheet(p) {
   sh.querySelector('#bl-share').onclick = async () => {
     try {
       const link = await get();
-      const [text] = tIn(lang, 'Assalomu alaykum! «{title}» shajarasidagi {name} oilasi ma’lumotlarini to‘ldirib bersangiz. Havola:', { title: S.tree.title, name: p.name });
-      openLink(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`);
+      const [text] = tIn(lang, 'Assalomu alaykum! Iltimos «{title}» shajarasidagi {name} oilasi ma’lumotlarini to‘ldirishda yordam bersangiz.\n\nHavola:', { title: S.tree.title, name: p.name });
+      openLink(`https://t.me/share/url?url=${encodeURIComponent(`${text} ${link}`)}`);
     } catch (err) { toast(err.message, true); }
   };
 }

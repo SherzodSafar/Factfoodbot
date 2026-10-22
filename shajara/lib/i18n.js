@@ -234,7 +234,7 @@ for (const [k, r, e] of [
   ["🗑 O‘chirish", "🗑 Удалить", "🗑 Delete"],
   ["Avval ma’lumotlarni yuboring — yangi qo‘shilgan oilani keyin topshirish mumkin.", "Сначала отправьте данные — новую семью можно передать позже.", "Send the data first — a newly added family can be handed over later."],
   ["🔗 <b>{name}</b> oilasini shu oiladagi kishiga topshiring. Quyidagi xabarni unga yuboring (forward):", "🔗 Передайте семью <b>{name}</b> человеку из этой семьи. Перешлите ему сообщение ниже:", "🔗 Hand the <b>{name}</b> family over to someone from it. Forward them the message below:"],
-  ["Assalomu alaykum! «{title}» shajarasidagi {name} oilasi ma’lumotlarini to‘ldirib bersangiz. Havola:", "Здравствуйте! Заполните, пожалуйста, данные семьи {name} в родословной «{title}». Ссылка:", "Hello! Please fill in the {name} family details in the «{title}» family tree. Link:"],
+  ["Assalomu alaykum! Iltimos «{title}» shajarasidagi {name} oilasi ma’lumotlarini to‘ldirishda yordam bersangiz.\n\nHavola:", "Здравствуйте! Пожалуйста, помогите заполнить данные семьи {name} в древе «{title}».\n\nСсылка:", "Hello! Please help fill in the {name} family details in the «{title}» family tree.\n\nLink:"],
   ["Yuborishdan oldin yetishmayotgan ma’lumotni to‘ldiring:", "Перед отправкой заполните недостающие данные:", "Fill in the missing data before sending:"],
   ["Rahmat! Hamma ma’lumot to‘g‘ri ekan — o‘zgarish yo‘q.", "Спасибо! Все данные верны — изменений нет.", "Thanks! Everything is correct — no changes."],
   ["Rahmat! Ma’lumotlar yuborildi.", "Спасибо! Данные отправлены.", "Thanks! Your data has been sent."],

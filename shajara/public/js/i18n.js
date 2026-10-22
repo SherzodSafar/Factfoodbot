@@ -502,7 +502,7 @@ const D = [
   ['Albomni faqat tahrir rejimidagilar o‘zgartira oladi', 'Альбом могут менять только в режиме правки', 'Only editors in edit mode can change the album'],
   ['Faylda ma’lumot topilmadi', 'В файле нет данных', 'No data in the file'],
   ['Kalit noto‘g‘ri', 'Неверный ключ', 'Wrong key'],
-  ["Assalomu alaykum! «{title}» shajarasidagi {name} oilasi ma’lumotlarini to‘ldirib bersangiz. Havola:", "Здравствуйте! Заполните, пожалуйста, данные семьи {name} в родословной «{title}». Ссылка:", "Hello! Please fill in the {name} family details in the «{title}» family tree. Link:"],
+  ["Assalomu alaykum! Iltimos «{title}» shajarasidagi {name} oilasi ma’lumotlarini to‘ldirishda yordam bersangiz.\n\nHavola:", "Здравствуйте! Пожалуйста, помогите заполнить данные семьи {name} в древе «{title}».\n\nСсылка:", "Hello! Please help fill in the {name} family details in the «{title}» family tree.\n\nLink:"],
   ["Bu havolani {name} oilasidan bir kishiga yuboring. U shu oila va avlodlari ma’lumotlarini savol-javob orqali to‘ldiradi. Siz tasdiqlagach, shajaraga qo‘shiladi.", "Отправьте эту ссылку человеку из семьи {name}. Он заполнит данные семьи и потомков в формате вопрос-ответ. После вашего подтверждения они попадут в родословную.", "Send this link to someone from the {name} family. They will fill in the family and descendants step by step. After you approve, it is added to the tree."],
   ["Diqqat: farzand ota-onasidan 14 yoshdan kam kichik", "Внимание: ребёнок младше родителя менее чем на 14 лет", "Warning: child is less than 14 years younger than the parent"],
   ["Faol havolalar", "Активные ссылки", "Active links"],
