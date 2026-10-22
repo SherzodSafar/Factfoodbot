@@ -607,6 +607,10 @@ const D = [
   ['Qo‘shish va havolalarni olish', 'Добавить и получить ссылки', 'Add and get links'],
   ['Har bir farzandga shox havolasini yuboring 👇', 'Отправьте каждому ссылку на ветвь 👇', 'Send each child a branch link 👇'],
   ['Havola', 'Ссылка', 'Link'],
+  ['Otasining ismi (masalan: Rahim)', 'Отчество/имя отца (напр.: Рахим)', 'Father’s name (e.g. Rahim)'],
+  ['Otasining ismi', 'Имя отца', 'Father’s name'],
+  ['Shajarada otasi bo‘lmasa (masalan, kelin uchun)', 'Если отца нет в древе (напр., для невестки)', 'If the father is not in the tree (e.g. in-laws)'],
+  ['Bilmayman', 'Не знаю', 'Don’t know'],
 ];
 
 const RU = new Map(D.map((r) => [r[0], r[1]]));

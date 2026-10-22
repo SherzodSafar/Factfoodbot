@@ -2065,6 +2065,7 @@ function personSheet(id) {
     a !== null && [t(p.deceased ? 'Umr ko‘rgan' : 'Yoshi'), t('{n} yosh', { n: a })],
     [t('Avlod'), t('{n}-avlod', { n: fam.gen(p) })],
     desc && [t('Avlodlari'), t('{n} kishi', { n: desc })],
+    p.fname && [t('Otasining ismi'), esc(p.fname)],
     p.code && [t('Daftar raqami'), p.code],
     p.phone && [t('Telefon'), `<a href="tel:${esc(p.phone)}" style="color:var(--primary)">${esc(p.phone)}</a>`],
   ].filter(Boolean);
@@ -2214,6 +2215,7 @@ function personForm({ person, relation, of }) {
         <button type="button" data-v="f" class="${g0 === 'f' ? 'on' : ''}"${motherTaken ? ' disabled style="opacity:.4"' : ''}>👩 ${t('Ayol')}</button></div></div>
       ${spouses.length > 1 ? `<div class="field"><label>${t('Onasi / otasi')}</label><select class="input" name="otherParentId">${spouses.map((s) => `<option value="${s.id}">${esc(nm(s.name))}</option>`).join('')}<option value="">${t('Noma’lum')}</option></select></div>` : ''}
       <div class="field"><label>${t('Tug‘ilgan sana')}</label><input class="input" name="birth" value="${esc(dateToInput(p.birth))}" placeholder="1985 · 03.1985 · 20.03.1985" inputmode="numeric"></div>
+      <div class="field"><label>${t('Otasining ismi')}</label><input class="input" name="fname" value="${esc(p.fname || '')}" placeholder="${t('Shajarada otasi bo‘lmasa (masalan, kelin uchun)')}" maxlength="60"></div>
       <div class="field"><label>${t('Tug‘ilgan joyi')}</label><input class="input" name="place" value="${esc(p.place || '')}" placeholder="${t('Masalan: Xiva')}" maxlength="120"></div>
       <label class="row card" style="padding:12px 14px;margin-bottom:14px"><div class="grow" style="font-weight:800">🤲 ${t('Vafot etgan')}</div><span class="switch"><input type="checkbox" name="deceased" ${p.deceased ? 'checked' : ''}><span></span></span></label>
       <div class="field ${p.deceased ? '' : 'hidden'}" id="death-f"><label>${t('Vafot sanasi')}</label><input class="input" name="death" value="${esc(dateToInput(p.death))}" placeholder="2005 · 24.10.1984" inputmode="numeric"></div>
@@ -2238,7 +2240,7 @@ function personForm({ person, relation, of }) {
     if (birth === undefined || death === undefined) return toast(t('Sana formati noto‘g‘ri. Masalan: 1958 yoki 20.03.1958'), true);
     const body = {
       name: f.get('name'), gender: segVal(sh, 'gender'), birth, death, deceased: dec.checked,
-      place: f.get('place'), phone: f.get('phone'), bio: f.get('bio'), note: f.get('note'), code: f.get('code'),
+      fname: f.get('fname'), place: f.get('place'), phone: f.get('phone'), bio: f.get('bio'), note: f.get('note'), code: f.get('code'),
     };
     if (f.has('child_order')) body.child_order = f.get('child_order') || null;
     const btn = e.target.querySelector('button:not([type])');
@@ -2357,10 +2359,12 @@ async function renderBranchWizard(treeId, bid) {
     const p = W.get(ids[i]);
     const sps = spousesOf(p.id);
     const kids = kidsOf(p.id);
-    const row = (x, kind) => `<div class="bw-row" data-id="${x.id}" data-kind="${kind}">
+    const row = (x, kind) => `<div class="bw-row" data-id="${x.id}" data-kind="${kind}" data-unk="${x.unk ? 1 : ''}">
         <input class="input" name="name" value="${esc(x.name || '')}" placeholder="${kind === 'sp' ? t('Ism va familiyasi') : t('Ismi')}">
+        ${kind === 'sp' ? `<input class="input" name="fname" value="${esc(x.fname || '')}" placeholder="${t('Otasining ismi (masalan: Rahim)')}">` : ''}
         <div class="bw-sub">${kind === 'kid' ? `<select class="input" name="gender"><option value="m" ${x.gender !== 'f' ? 'selected' : ''}>👦 ${t('O‘g‘il')}</option><option value="f" ${x.gender === 'f' ? 'selected' : ''}>👧 ${t('Qiz')}</option></select>` : ''}
           <input class="input" name="birth" value="${esc(dateToInput(x.birth))}" placeholder="${t('Tug‘ilgan sana: 20.03.1958')}" inputmode="numeric">
+          <button type="button" class="bw-unk ${x.unk ? 'on' : ''}" data-unk-btn>🤷 ${t('Bilmayman')}</button>
           <label class="bw-dec"><input type="checkbox" name="deceased" ${x.deceased ? 'checked' : ''}> ${t('Marhum')}</label></div>
         <input class="input bw-death ${x.deceased ? '' : 'hidden'}" name="death" value="${esc(dateToInput(x.death))}" placeholder="${t('Vafot sanasi: 05.06.2001')}" inputmode="numeric">
         ${kind === 'kid' && sps.length > 1 ? `<select class="input" name="other">${sps.map((s) => `<option value="${s.id}" ${[x.father_id, x.mother_id].includes(s.id) ? 'selected' : ''}>${t(p.gender === 'f' ? 'Otasi' : 'Onasi')}: ${esc(s.name)}</option>`).join('')}</select>` : ''}
@@ -2414,17 +2418,24 @@ async function renderBranchWizard(treeId, bid) {
           const full = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
           // turmush o'rtog'i (ota-onasi shoxda yo'q) — familiyasi ham shart
           const inLaw = r.dataset.kind === 'sp' && !x.father_id && !x.mother_id;
-          const bad = !name ? 'name' : inLaw && name.split(/\s+/).length < 2 ? 'surname' : !full(birth) ? 'birth' : dec && !full(death) ? 'death' : null;
+          const unk = r.dataset.unk === '1'; // «Bilmayman» — sana majburiy emas
+          const bad = !name ? 'name' : inLaw && name.split(/\s+/).length < 2 ? 'surname' : !unk && !full(birth) ? 'birth' : dec && !unk && !full(death) ? 'death' : null;
           if (bad) {
             if (bad === 'surname') { toast(t('Turmush o‘rtog‘ining familiyasini ham yozing'), true); const el = r.querySelector('[name=name]'); el.classList.add('bad'); el.focus(); return false; }
             toast(t(bad === 'name' ? 'Ismni kiriting' : bad === 'birth' ? 'Tug‘ilgan sanani to‘liq kiriting (kun.oy.yil)' : 'Vafot sanasini to‘liq kiriting (kun.oy.yil)'), true);
             const el = r.querySelector(`[name=${bad}]`); el.classList.add('bad'); el.focus(); return false;
           }
         }
+        const unk = r.dataset.unk === '1';
+        const fullD = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
+        x.unk = unk;
         x.name = name;
-        x.birth = birth;
+        // «Bilmayman»da chala sana saqlanmaydi — avvalgisi qoladi
+        if (!unk || fullD(birth) || !birth) x.birth = unk && !fullD(birth) ? orig.get(x.id)?.birth || null : birth;
         x.deceased = dec;
-        x.death = death;
+        if (!unk || fullD(death) || !death) x.death = unk && !fullD(death) ? orig.get(x.id)?.death || null : death;
+        const fn = r.querySelector('[name=fname]');
+        if (fn) x.fname = fn.value.trim().slice(0, 60);
         const g = r.querySelector('[name=gender]');
         if (g) x.gender = g.value;
         const o = r.querySelector('[name=other]');
@@ -2451,6 +2462,7 @@ async function renderBranchWizard(treeId, bid) {
     $app.querySelector('#add-sp').onclick = () => addRow('sp');
     $app.querySelector('#add-kid').onclick = () => addRow('kid');
     $app.querySelectorAll('[data-del]').forEach((b) => (b.onclick = () => { save(); W.delete(b.dataset.del); draw(); }));
+    $app.querySelectorAll('[data-unk-btn]').forEach((b) => (b.onclick = () => { const r = b.closest('.bw-row'); const on = r.dataset.unk !== '1'; r.dataset.unk = on ? '1' : ''; b.classList.toggle('on', on); haptic('light'); }));
     $app.querySelector('#dlg')?.addEventListener('click', async () => {
       try {
         const r = await api(`br/${treeId}/${bid}/sub`, { method: 'POST', body: { head: p.id }, token: null });
@@ -2470,7 +2482,7 @@ async function renderBranchWizard(treeId, bid) {
     const ops = [];
     for (const x of W.values()) {
       if (String(x.id).startsWith('n')) {
-        ops.push({ op: 'add', tmp: x.id, f: { name: x.name, gender: x.gender, birth: x.birth, death: x.death, deceased: x.deceased }, father: x.father_id, mother: x.mother_id, spouse: x.spouse_ids[0] || null });
+        ops.push({ op: 'add', tmp: x.id, f: { name: x.name, gender: x.gender, birth: x.birth, death: x.death, deceased: x.deceased, fname: x.fname || null }, father: x.father_id, mother: x.mother_id, spouse: x.spouse_ids[0] || null });
         continue;
       }
       const o = orig.get(x.id);
@@ -2478,6 +2490,7 @@ async function renderBranchWizard(treeId, bid) {
       if (x.name && x.name !== o.name) f.name = x.name;
       if (x.gender !== o.gender) f.gender = x.gender;
       if ((x.birth || null) !== (o.birth || null)) f.birth = x.birth;
+      if ((x.fname || null) !== (o.fname || null)) f.fname = x.fname;
       if (!!x.deceased !== !!o.deceased) f.deceased = x.deceased;
       if ((x.death || null) !== (o.death || null) && x.death) f.death = x.death;
       if (Object.keys(f).length) ops.push({ op: 'update', id: x.id, f });

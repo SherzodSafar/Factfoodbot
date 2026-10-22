@@ -48,6 +48,7 @@ function personFields(body, { requireName } = {}) {
   if ('code' in body) out.code = cleanText(body.code, 30);
   if ('bio' in body) out.bio = cleanText(body.bio, 3000);
   if ('place' in body) out.place = cleanText(body.place, 120);
+  if ('fname' in body) out.fname = cleanText(body.fname, 60) || null; // otasining ismi (shajarada otasi bo'lmasa)
   if ('phone' in body) out.phone = cleanText(body.phone, 30);
   if ('child_order' in body && body.child_order !== null && body.child_order !== '') {
     const n = parseInt(body.child_order, 10);
@@ -757,6 +758,7 @@ export function applyProposal(tree, headId, ops, who) {
     if ('birth' in f && date(f.birth)) p.birth = date(f.birth);
     if ('death' in f && date(f.death)) p.death = date(f.death);
     if ('deceased' in f) p.deceased = !!f.deceased || !!p.death;
+    if ('fname' in f) p.fname = cleanText(f.fname, 60) || null;
     updated++;
   }
   const map = new Map();
@@ -767,7 +769,7 @@ export function applyProposal(tree, headId, ops, who) {
     const p = {
       id: nextId(tree), code: null, name: cleanText(o.f.name, 80), gender: genderOf(o.f.gender), birth: date(o.f.birth), death,
       deceased: !!death || !!o.f.deceased, blood: !o.spouse || !!(o.father || o.mother), generation: null, father_id: null, mother_id: null,
-      spouse_ids: [], child_order: null, note: null, place: null, phone: null, source: 'branch', photo: null,
+      spouse_ids: [], child_order: null, note: null, place: null, phone: null, source: 'branch', photo: null, fname: cleanText(o.f.fname, 60) || null,
     };
     map.set(String(o.tmp), p);
     created.push({ p, o });

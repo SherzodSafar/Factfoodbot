@@ -51,7 +51,7 @@ let oldOff = null; // eski botni uzish (bir marta)
 let capFix = null;
 // Bir martalik: avval saqlangan portretlar izohini to'liq ism sharifga almashtirish (albom va kanalda)
 async function portraitCaptions() {
-  if (await readJson('sys/portrait-cap-v4.json').catch(() => null)) return;
+  if (await readJson('sys/portrait-cap-v5.json').catch(() => null)) return;
   let n = 0;
   for (const key of await listKeys('trees/')) {
     const tr = (await readJson(key).catch(() => null))?.data;
@@ -68,7 +68,7 @@ async function portraitCaptions() {
       n++;
     }
   }
-  await writeJson('sys/portrait-cap-v4.json', { at: new Date().toISOString(), n });
+  await writeJson('sys/portrait-cap-v5.json', { at: new Date().toISOString(), n });
   console.log('portrait captions', n);
 }
 // Ism sharif (otasining ismi asosida). 2000-yildan oldin tug'ilganlar — «Jumaboy Saparboyevich» / «… Saparboyevna»,
@@ -78,9 +78,9 @@ const ovEv = (n, fem) => { const l = n.slice(-1).toLowerCase(); return n + (/[ae
 const fullName = (tree, p) => {
   const name = String(p.name || '').trim();
   const f = p.father_id && tree.persons.find((x) => x.id === p.father_id);
-  const first = (f?.name || '').trim().split(/\s+/)[0];
-  if (!first || name.split(/\s+/).length > 1) return name;
-  const yr = Number(String(p.birth || '').slice(0, 4)) || (Number(String(f.birth || '').slice(0, 4)) + 25) || (p.deceased ? 1950 : NEW_STYLE_FROM);
+  const first = (f?.name || p.fname || '').trim().split(/\s+/)[0]; // shajarada otasi bo'lmasa — «otasining ismi» maydoni
+  if (!first) return name; // familiya ismda bo'lsa ham otasining ismi qo'shiladi
+  const yr = Number(String(p.birth || '').slice(0, 4)) || (Number(String(f?.birth || '').slice(0, 4)) + 25) || (p.deceased ? 1950 : NEW_STYLE_FROM);
   return yr < NEW_STYLE_FROM ? `${name} ${ovEv(first, p.gender === 'f')}` : `${name} ${first} ${p.gender === 'f' ? 'qizi' : 'o‘g‘li'}`;
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -655,6 +655,12 @@ async function route(req, res) {
     t = Date.now();
     const me = (await tg('getMe', {})).result || {};
     const out = { blobMs, telegramMs: Date.now() - t, mainApp: !!me.has_main_web_app, region: process.env.VERCEL_REGION || null, db: !!process.env.DATABASE_URL };
+    if (url.searchParams.get('tts')) {
+      // ovozli suhbat tekshiruvi: TTS ishlayaptimi
+      const V = await import('../lib/voice.js');
+      const mp3 = await V.tts('Assalomu alaykum! Iskandar 1959-yilda tug‘ilgan, to‘g‘rimi?', 'uz').catch((e) => String(e?.message || e));
+      out.tts = Buffer.isBuffer(mp3) ? { bytes: mp3.length, model: V.ttsInfo() } : mp3;
+    }
     const r2 = await import('../lib/r2.js');
     if (r2.r2On() && url.searchParams.get('r2')) {
       // R2 tekshiruvi: kichik faylni yozib, imzolangan havola orqali o'qish
