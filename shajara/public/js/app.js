@@ -344,6 +344,7 @@ function renderCreate() {
       });
       toast(t('Tabriklaymiz! Shajarangiz yaratildi 🌱'));
       openTree(r.tree, r.token, f.get('viewCode').trim().toLowerCase());
+      setTimeout(quickStartSheet, 600);
     } catch (err) {
       toast(err.message, true);
       btn.disabled = false;
@@ -2530,6 +2531,34 @@ async function branchLinkSheet(p) {
   };
 }
 
+// Yangi shajara: bosh ajdod farzandlarining ismlari → har biriga shox havolasi (hammasi bitta shajara ichida)
+function quickStartSheet() {
+  const root = S.tree?.persons?.[0];
+  if (!root || S.tree.persons.length > 1) return;
+  const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">🌱 ${t('Tez boshlash')}</div><button class="icon-btn" data-close>${I.close}</button></div>
+    <div class="sheet-body"><p class="small muted" style="margin-top:0">${t('{name}ning farzandlari ismlarini yozing (har birini yangi qatorda). So‘ng har bir farzandga shox havolasini yuborasiz — ular o‘z oilasini o‘zlari to‘ldiradi.', { name: `<b>${esc(nm(root.name))}</b>` })}</p>
+    <textarea class="input" id="qs-kids" rows="6" placeholder="${t('Masalan:\nKarimboy\nJumaboy\nOydin')}"></textarea>
+    <button class="btn btn-primary btn-block" id="qs-go" style="margin-top:10px">${t('Qo‘shish va havolalarni olish')}</button><div id="qs-list" style="margin-top:12px"></div></div>`);
+  sh.querySelector('#qs-go').onclick = async (e) => {
+    const names = sh.querySelector('#qs-kids').value.split('\n').map((x) => x.trim()).filter(Boolean).slice(0, 30);
+    if (!names.length) return;
+    e.currentTarget.disabled = true;
+    const added = [];
+    for (const name of names) {
+      try {
+        const r = await api('person', { method: 'POST', body: { name, gender: /(a|а|oy|gul|xon|niso|bibi|bonu|oza)$/i.test(name) && !/(boy|бой)$/i.test(name) ? 'f' : 'm', relation: 'child', of: root.id } });
+        onTreeChanged(r.tree);
+        added.push(r.person);
+      } catch (err) { toast(err.message, true); }
+    }
+    sh.querySelector('#qs-kids').closest('.sheet-body').querySelector('textarea').remove();
+    e.target.remove();
+    sh.querySelector('#qs-list').innerHTML = `<div class="small muted" style="margin-bottom:8px">${t('Har bir farzandga shox havolasini yuboring 👇')}</div>` +
+      added.map((p, i) => `<div class="dp-row"><b class="grow">${esc(nm(p.name))}</b><button class="btn btn-primary btn-sm" data-ql="${i}">🔗 ${t('Havola')}</button></div>`).join('');
+    sh.querySelectorAll('[data-ql]').forEach((b) => (b.onclick = () => branchLinkSheet(added[Number(b.dataset.ql)])));
+  };
+}
+
 // Tahrirchi: kelgan takliflar va faol havolalar
 async function branchesSheet() {
   const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">📨 ${t('Shox havolalari va takliflar')}</div><button class="icon-btn" data-close>${I.close}</button></div>
@@ -2558,12 +2587,20 @@ async function branchesSheet() {
       ${c.missing.length ? `<details style="margin-top:6px"><summary class="small">${t('Ro‘yxatni ko‘rish')}</summary>${c.missing.map((x) => `<div class="pr-line" data-pp="${x.id}">👤 <b>${esc(nm(x.name || '?'))}</b> <span class="muted">— ${x.miss.map((k) => MISS[k]).join(', ')}</span></div>`).join('')}</details>` : ''}</div>`;
     body.innerHTML = `${panel}${r.proposals.length ? r.proposals.map((pr, i) => `<div class="card pr-card"><div><b>${esc(nm(pr.headName))}</b> ${t('shoxi')} · 👤 ${esc(pr.by?.name || '')} · <span class="muted">${esc(pr.at.slice(0, 10))}</span></div>
         <div class="pr-ops">${pr.ops.map((o) => line(o, pr)).join('')}</div>
+        ${(pr.warn || []).length ? `<div class="pr-warn">${pr.warn.map((w) => `⚠️ ${esc(w)}`).join('<br>')}</div>` : ''}
         <div class="row" style="gap:8px;margin-top:8px"><button class="btn btn-primary btn-sm grow" data-ok="${i}">✅ ${t('Tasdiqlash')}</button><button class="btn btn-soft btn-sm" data-no="${i}">${t('Rad etish')}</button></div></div>`).join('')
       : `<div class="empty" style="padding:20px"><b>${t('Yangi takliflar yo‘q')}</b></div>`}
       <div class="h3" style="margin:18px 0 8px">🔗 ${t('Faol havolalar')}</div>
-      ${r.branches.length ? r.branches.map((b) => `<div class="dp-row"><div class="grow"><b>${esc(nm(b.headName))}</b><div class="small muted">${b.claimedName ? '👤 ' + esc(b.claimedName) : t('Hali ochilmagan')} · ${b.pct}%${b.parentName ? ' · ↳ ' + esc(nm(b.parentName)) : ''}</div></div>
-        <button class="btn btn-soft btn-sm" data-copy="${esc(b.link)}">📋</button><button class="btn btn-ghost btn-sm" data-rev="${b.bid}">${t('Bekor qilish')}</button></div>`).join('')
-      : `<div class="small muted">${t('Havola yaratish: daraxtda oila boshini oching → «Shox havolasi».')}</div>`}`;
+      ${r.branches.length ? r.branches.map((b) => `<div class="card br-card"><div class="row" style="justify-content:space-between"><b>${esc(nm(b.headName))} ${t('shoxi')}</b><b style="color:var(--primary)">${b.pct}%</b></div>
+        <div class="bw-prog"><i style="width:${b.pct}%"></i></div>
+        <div class="small muted">${[b.noBirth && t('{n} kishining tug‘ilgan sanasi yo‘q', { n: b.noBirth }), b.noSpouse && t('{n} kishining turmush o‘rtog‘i noma’lum', { n: b.noSpouse }), b.noDeath && t('{n} kishining vafot sanasi yo‘q', { n: b.noDeath })].filter(Boolean).join(', ') || t('Barcha ma’lumotlar to‘liq ✓')}</div>
+        <div class="small muted" style="margin-top:4px">${b.claimedName ? '👤 ' + esc(b.claimedName) : b.expired ? '⌛ ' + t('Muddati tugagan') : t('Hali ochilmagan') + (b.exp ? ' · ' + t('{d} gacha', { d: fmtDate(b.exp.slice(0, 10)) }) : '')}${b.parentName ? ' · ↳ ' + esc(nm(b.parentName)) : ''}</div>
+        ${b.claimedName ? `<label class="row small" style="gap:8px;margin-top:8px"><span class="switch"><input type="checkbox" data-trust="${b.bid}" ${b.trust ? 'checked' : ''}><span></span></span>${t('Ishonchli mas’ul — tasdiqsiz qo‘shilsin')}</label>` : ''}
+        <div class="row" style="gap:6px;margin-top:8px">${b.claimedName && b.pct < 100 ? `<button class="btn btn-primary btn-sm grow" data-rem="${b.bid}">🔔 ${t('Mas’ulga eslatma yuborish')}</button>` : '<span class="grow"></span>'}
+          <button class="btn btn-soft btn-sm" data-copy="${esc(b.link)}">📋</button><button class="btn btn-ghost btn-sm" data-rev="${b.bid}">${t('Bekor qilish')}</button></div></div>`).join('')
+      : `<div class="small muted">${t('Havola yaratish: daraxtda oila boshini oching → «Shox havolasi».')}</div>`}
+      ${r.applied?.length ? `<div class="h3" style="margin:18px 0 8px">↩️ ${t('Qo‘shilganlar tarixi')}</div>${r.applied.map((a, i) => `<div class="dp-row"><div class="grow"><b>${esc(nm(a.headName))}</b><div class="small muted">👤 ${esc(a.by?.name || '')} · ${relTime(a.at)} · ${a.n} ${t('o‘zgarish')}</div></div>
+        <button class="btn btn-ghost btn-sm" data-undo="${i}">↩️ ${t('Qaytarish')}</button></div>`).join('')}` : ''}`;
     const act = async (pr, action, btn) => {
       btn.disabled = true;
       try { const x = await api(`branch/proposal/${pr.id}`, { method: 'POST', body: { action } }); if (x.tree) onTreeChanged(x.tree); toast(action === 'apply' ? t('Shajaraga qo‘shildi ✓') : t('Rad etildi')); load(); } catch (err) { toast(err.message, true); btn.disabled = false; }
@@ -2571,6 +2608,17 @@ async function branchesSheet() {
     body.querySelectorAll('[data-ok]').forEach((b) => (b.onclick = () => act(r.proposals[Number(b.dataset.ok)], 'apply', b)));
     body.querySelectorAll('[data-no]').forEach((b) => (b.onclick = () => act(r.proposals[Number(b.dataset.no)], 'reject', b)));
     body.querySelectorAll('[data-copy]').forEach((b) => (b.onclick = () => copyText(b.dataset.copy)));
+    body.querySelectorAll('[data-rem]').forEach((b) => (b.onclick = async () => {
+      b.disabled = true;
+      try { await api(`branch/${b.dataset.rem}/remind`, { method: 'POST' }); toast(t('Eslatma yuborildi ✓')); } catch (err) { toast(err.message, true); b.disabled = false; }
+    }));
+    body.querySelectorAll('[data-trust]').forEach((c) => (c.onchange = async () => {
+      try { await api('branch/' + c.dataset.trust, { method: 'PATCH', body: { trust: c.checked } }); toast(t('Saqlandi ✓')); } catch (err) { c.checked = !c.checked; toast(err.message, true); }
+    }));
+    body.querySelectorAll('[data-undo]').forEach((b) => (b.onclick = async () => {
+      if (!(await confirmBox(t('Bu o‘zgarishlar shajaradan qaytarib olinsinmi?')))) return;
+      try { const x = await api(`branch/proposal/${r.applied[Number(b.dataset.undo)].id}`, { method: 'POST', body: { action: 'undo' } }); if (x.tree) onTreeChanged(x.tree); toast(t('Qaytarildi ✓')); load(); } catch (err) { toast(err.message, true); }
+    }));
     body.querySelectorAll('[data-pp]').forEach((b) => (b.onclick = () => { if (S.fam.get(b.dataset.pp)) personSheet(b.dataset.pp); }));
     body.querySelectorAll('[data-rev]').forEach((b) => (b.onclick = async () => {
       if (!(await confirmBox(t('Havola bekor qilinsinmi?')))) return;

@@ -91,6 +91,16 @@ async function onPrivate(msg) {
       { reply_markup: appButton(lang, extra) });
   }
   // shox ma'lumotlarini bot yozishmasi orqali to'ldirish
+  // shox to'ldirishda: ovozli xabar yoki daftar rasmi — AI odamlarni ajratadi
+  if (user?.brchat && Date.now() - user.brchat < 3 * 864e5 && (msg.voice || msg.audio || msg.photo)) {
+    const f = msg.voice || msg.audio || msg.photo[msg.photo.length - 1];
+    const file = await downloadFile(f.file_id).catch(() => null);
+    if (file) {
+      const mime = msg.photo ? 'image/jpeg' : (f.mime_type || 'audio/ogg');
+      const { chatMedia } = await import('./branch.js');
+      if (await chatMedia(from, [{ type: 'image', source: { type: 'base64', media_type: mime, data: file.buffer.toString('base64') } }])) return;
+    }
+  }
   if (user?.brchat && Date.now() - user.brchat < 3 * 864e5 && text && (!cmd || cmd === '/bekor' || cmd === '/cancel')) {
     const { chatText } = await import('./branch.js');
     if (await chatText(from, text)) return;

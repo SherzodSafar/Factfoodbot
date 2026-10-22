@@ -479,7 +479,7 @@ function safeDate(v) {
 }
 
 // Ismlarni taqqoslash: katta-kichik harf, tutuq belgisi, x/h, qo'sh harf va qavsdagi izoh farq qilmaydi
-const fuzzyName = (v) => normName(String(v ?? '').replace(/\(.*?\)/g, '')).replace(/x/g, 'h').replace(/[^\p{L}\p{N}]/gu, '').replace(/(.)\1+/gu, '$1');
+export const fuzzyName = (v) => normName(String(v ?? '').replace(/\(.*?\)/g, '')).replace(/x/g, 'h').replace(/[^\p{L}\p{N}]/gu, '').replace(/(.)\1+/gu, '$1');
 function lev1(a, b) {
   if (a === b) return true;
   if (Math.abs(a.length - b.length) > 1) return false;

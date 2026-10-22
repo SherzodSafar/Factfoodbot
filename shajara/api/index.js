@@ -673,8 +673,7 @@ async function route(req, res) {
       const body = await readBody(req);
       const head = tree.persons.find((p) => p.id === body.head);
       if (!head) throw new HttpError(404, 'Shaxs topilmadi');
-      const bid = randomId(8);
-      await mutateTree(tok.treeId, (t) => { t.branches = { ...(t.branches || {}), [bid]: { head: head.id, at: new Date().toISOString(), by: nameOf(user) || '', claimed: null, ...(LANGS.includes(body.lang) ? { lang: body.lang } : {}) } }; });
+      const bid = await (await import('../lib/branch.js')).createBranch(tree.id, head.id, nameOf(user) || '', LANGS.includes(body.lang) ? { lang: body.lang } : {});
       return send(res, 200, { bid, link: `https://t.me/${(await import('../lib/bot.js')).BOT()}?start=br_${tree.id}_${bid}` });
     }
     const B = await import('../lib/branch.js');
@@ -684,11 +683,22 @@ async function route(req, res) {
       const props = (await readJson(`props/${tree.id}.json`))?.data?.items || [];
       return send(res, 200, {
         branches: Object.entries(tree.branches || {}).filter(([, b]) => !b.revoked && !(b.auto && !b.claimed)).map(([bid, b]) => ({ bid, head: b.head, headName: byId.get(b.head)?.name || '?', claimedName: b.claimedName || null, at: b.at,
-          parentName: b.parent ? byId.get(tree.branches[b.parent]?.head)?.name || null : null, pct: B.completeness(tree, branchScope(tree, b.head)).pct,
+          parentName: b.parent ? byId.get(tree.branches[b.parent]?.head)?.name || null : null, ...B.branchStats(tree, b.head), exp: b.exp || null, trust: !!b.trust, expired: !b.claimed && !!b.exp && Date.parse(b.exp) < Date.now(),
           link: `https://t.me/${botName}?start=br_${tree.id}_${bid}` })),
         proposals: props.filter((x) => x.status === 'pending').map((x) => ({ ...x, headName: byId.get(x.head)?.name || '?' })),
+        applied: props.filter((x) => x.status === 'applied' && x.undo).slice(0, 15).map((x) => ({ id: x.id, at: x.doneAt || x.at, by: x.by, headName: byId.get(x.head)?.name || '?', n: x.ops.length })),
         complete: (() => { const c = B.completeness(tree); return { pct: c.pct, total: c.total, missing: c.missing.slice(0, 300) }; })(),
       });
+    }
+    if (m === 'PATCH' && parts[1]) {
+      const body = await readBody(req);
+      await mutateTree(tok.treeId, (t) => { const b = t.branches?.[parts[1]]; if (b && 'trust' in body) b.trust = !!body.trust; });
+      return send(res, 200, { ok: true });
+    }
+    if (m === 'POST' && parts[2] === 'remind') {
+      if (!await rateLimit('remind:' + parts[1], 3, 864e5)) throw new HttpError(429, 'Bugun bu mas’ulga yetarlicha eslatildi');
+      await B.remindBranch(tree, parts[1]);
+      return send(res, 200, { ok: true });
     }
     if (m === 'DELETE' && parts[1]) {
       await mutateTree(tok.treeId, (t) => { if (t.branches?.[parts[1]]) t.branches[parts[1]].revoked = true; });
@@ -698,16 +708,23 @@ async function route(req, res) {
       const body = await readBody(req);
       const key = `props/${tree.id}.json`;
       const doc = (await readJson(key))?.data || { items: [] };
-      const pr = doc.items.find((x) => x.id === parts[2] && x.status === 'pending');
+      const pr = doc.items.find((x) => x.id === parts[2] && x.status === (body.action === 'undo' ? 'applied' : 'pending'));
       if (!pr) throw new HttpError(404, 'Taklif topilmadi');
+      if (body.action === 'undo') {
+        const r = await B.undoProposal(tok.treeId, pr, nameOf(user));
+        await updateJson(key, (d) => { const x = d.items.find((y) => y.id === parts[2]); if (x) { x.status = 'undone'; x.doneAt = new Date().toISOString(); } });
+        return send(res, 200, { tree: out(r.data, 'edit', uid) });
+      }
       let result = null;
       let data = tree;
+      let undo = null;
       if (body.action === 'apply') {
-        const r = await mutateTree(tok.treeId, (t) => (checkVer(t, tok), applyProposal(t, pr.head, pr.ops, pr.by?.name || nameOf(user))));
+        const r = await B.applyWithUndo(tok.treeId, pr, pr.by?.name || nameOf(user));
         result = r.result;
-        data = r.data;
+        data = r.tree;
+        undo = r.undo;
       }
-      await updateJson(key, (d) => { const x = d.items.find((y) => y.id === parts[2]); if (x) { x.status = body.action === 'apply' ? 'applied' : 'rejected'; x.doneAt = new Date().toISOString(); } });
+      await updateJson(key, (d) => { const x = d.items.find((y) => y.id === parts[2]); if (x) { x.status = body.action === 'apply' ? 'applied' : 'rejected'; x.doneAt = new Date().toISOString(); if (undo) x.undo = undo; } });
       if (pr.by?.id) (await import('../lib/telegram.js')).tg('sendMessage', { chat_id: pr.by.id, text: body.action === 'apply' ? '✅ Shajaraga kiritgan ma’lumotlaringiz tasdiqlandi. Rahmat!' : 'ℹ️ Taklifingiz ko‘rib chiqildi va qabul qilinmadi.' }).catch(() => {});
       return send(res, 200, { result, tree: out(data, 'edit', uid) });
     }

@@ -41,6 +41,7 @@ Telegram bot **@ShajaraAiBot** + Mini App (oila shajarasi). Eski bot (@Shajara_i
 - 2-bosqich: Instagram uslubi — bildirishnomalar bo'limi (Menga/Oila izohlari/Yangiliklar/Sozlamalar), profil oynasi (rasm + yuklagan fayllari), albom plitkalarida 👁❤💬, shox havolasi tilini tanlash (`branches[bid].lang`), shoxda sanalar faqat to'liq (kun.oy.yil), eski bot kodi olib tashlandi.
 - Asl sifat: mini app yuklamalari `album/up/chunk` (2.5 MB bo'laklar, `tmp/up/`) + `album/up/finish` → kanalga sendDocument (siqilmaydi). Avatar: 640px kvadrat ko'rsatish uchun + asl nusxa «Portretlar» albomiga (`person.photoItem`). Katta rasmlar `/api/media` da R2 ga ko'chirilib 302. Botga «rasm» sifatida yuborilganlar siqilgan — bot «Fayl» sifatida yuborishni maslahat beradi.
 - Bildirishnoma tugmalari: `notify(..., { open })` — `_p<id>` shaxs, `_a<itemId>` albom fayli.
+- 3-bosqich (shox): bot yozishmasi — birma-bir savollar (`nextQ`/`askQ`: nm,g,b,al,d,ot,sp,k; «🤷 Bilmayman», «Orqaga», «Bu oilani o‘zi to‘ldirsin» → subBranch + `s.skip`), ovoz/rasm → `chatMedia` (Gemini extractFamily + planGraph). Takliflarda `warn` (14 yosh, takror), ishonchli mas'ul `branches[bid].trust` (avto-qo'shish), `applyWithUndo`/`undoProposal`, havola muddati `exp` (30 kun, ochilmagan bo'lsa), `branchStats` + `remindBranch`. Yangi shajara: `quickStartSheet` (farzand ismlari → havolalar).
 - Keyingi g'oyalar: ovozli javob (bot chat), AI bilan Q&A.
 
 ## Foydalanuvchi afzalliklari

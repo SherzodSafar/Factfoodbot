@@ -707,3 +707,5 @@ img { pointer-events: none; }
 .rv-a-row { display: flex; gap: 8px; justify-content: center; }
 .rv-a-loop { opacity: .55; }
 .rv-a-loop.on { opacity: 1; background: color-mix(in srgb, var(--primary) 55%, transparent) !important; }
+.br-card { padding: 12px 14px; margin-bottom: 10px; }
+.pr-warn { margin-top: 8px; padding: 8px 10px; border-radius: 10px; font-size: 12.5px; background: color-mix(in srgb, #e0a800 14%, transparent); }
