@@ -41,7 +41,7 @@ export function ensureAlbum(doc, name, by) {
   const n = cleanName(name) || 'Umumiy';
   let a = doc.albums.find((x) => x.name.toLowerCase() === n.toLowerCase());
   if (!a) {
-    a = { id: randomId(8), name: n, createdAt: new Date().toISOString(), by: by?.name || null };
+    a = { id: randomId(8), name: n, createdAt: new Date().toISOString(), by: by?.name || null, uid: by?.id ? String(by.id) : undefined };
     doc.albums.push(a);
   }
   return a;

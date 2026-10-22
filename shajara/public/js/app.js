@@ -789,13 +789,17 @@ async function renderAlbumTab(el) {
     body = a ? section(a, A.items.filter((it) => it.album === f)) : '';
   }
   const cur = A.albums.find((a) => a.id === f);
-  el.innerHTML = `<div class="scroll" style="padding-top:8px">
+  el.innerHTML = `<div class="scroll ${S.sel ? 'sel-mode' : ''}" style="padding-top:8px">
     ${banner}
     <div class="alb-bar"><button class="chip on alb-pick" id="alb-pick"><span class="ellipsis">${cur ? `${cur.priv ? '🔒' : '📁'} ${esc(nm(cur.name))} · ${counts[cur.id] || 0}` : `📚 ${t('Hammasi')} · ${A.items.length}`}</span><b>▾</b></button>
-      ${A.canUpload && inTelegram ? `<button class="chip" id="priv-new">🔒 ${t('Yopiq albom ochish')}</button>` : ''}</div>
+      ${A.items.length ? `<button class="chip ${S.sel ? 'on' : ''}" id="sel-tg" title="${t('Tanlash')}">☑️</button>` : ''}
+      ${A.canUpload && inTelegram ? `<button class="chip" id="priv-new">🔒 ${t('Yopiq albom')}</button>` : ''}</div>
     ${body}
-    <div style="height:90px"></div></div>
-    ${A.canUpload ? `<button class="fab" id="add">${I.plus}<span>${t('Qo‘shish')}</span></button>` : ''}`;
+    <div style="height:${S.sel ? 150 : 90}px"></div></div>
+    ${S.sel ? `<div class="sel-bar card"><div class="row" style="gap:8px;align-items:center"><b id="sel-n">${S.sel.size}</b><span class="muted small grow">${t('ta tanlandi')}</span>
+        <button class="chip" id="sel-all">${t('Hammasini tanlash')}</button><button class="icon-btn" id="sel-x">${I.close}</button></div>
+      <div class="sel-acts"><button data-sa="send">📤<span>${t('Yuborish')}</span></button><button data-sa="zip">🗜<span>ZIP</span></button><button data-sa="move">📁<span>${t('Ko‘chirish')}</span></button><button data-sa="delete" class="danger">🗑<span>${t('O‘chirish')}</span></button></div></div>`
+    : A.canUpload ? `<button class="fab" id="add">${I.plus}<span>${t('Qo‘shish')}</span></button>` : ''}`;
   // albomlar ro'yxati — bitta tugmada; tanlangani ochiladi
   el.querySelector('#alb-pick').onclick = () => {
     const row = (id, ic, name, n) => `<button class="card alb-opt ${f === id ? 'on' : ''}" data-pick="${id}"><span style="font-size:20px">${ic}</span><b class="grow ellipsis">${name}</b><span class="muted small">${n}</span></button>`;
@@ -804,7 +808,22 @@ async function renderAlbumTab(el) {
     sh.querySelectorAll('[data-pick]').forEach((b) => (b.onclick = () => { S.albumFilter = b.dataset.pick; haptic('light'); closeAllSheets(); renderAlbumTab(el); }));
   };
   const order = (f === 'all' ? A.albums.filter((a) => counts[a.id]).flatMap((a) => A.items.filter((it) => it.album === a.id)) : A.items.filter((it) => it.album === f)).map((it) => it.id);
-  el.querySelectorAll('[data-item]').forEach((b) => (b.onclick = () => openViewer(order, order.indexOf(b.dataset.item))));
+  el.querySelectorAll('[data-item]').forEach((b) => (b.onclick = () => {
+    if (!S.sel) return openViewer(order, order.indexOf(b.dataset.item));
+    const id = b.dataset.item;
+    S.sel.has(id) ? S.sel.delete(id) : S.sel.add(id);
+    b.classList.toggle('sel', S.sel.has(id));
+    el.querySelector('#sel-n').textContent = S.sel.size;
+    haptic('light');
+  }));
+  // fayl menejeri: tanlash rejimi
+  el.querySelector('#sel-tg')?.addEventListener('click', () => { S.sel = S.sel ? null : new Set(); renderAlbumTab(el); });
+  el.querySelector('#sel-x')?.addEventListener('click', () => { S.sel = null; renderAlbumTab(el); });
+  el.querySelector('#sel-all')?.addEventListener('click', () => {
+    if (order.every((id) => S.sel.has(id))) order.forEach((id) => S.sel.delete(id)); else order.forEach((id) => S.sel.add(id));
+    renderAlbumTab(el);
+  });
+  el.querySelectorAll('[data-sa]').forEach((b) => (b.onclick = () => selAction(b.dataset.sa)));
   el.querySelectorAll('[data-alb-menu]').forEach((b) => (b.onclick = () => albumMenu(b.dataset.albMenu)));
   el.querySelectorAll('[data-alb-inv]').forEach((b) => (b.onclick = () => privMembers(b.dataset.albInv)));
   el.querySelectorAll('[data-alb-ch]').forEach((b) => (b.onclick = () => privChannelSheet(b.dataset.albCh)));
@@ -1035,7 +1054,7 @@ function tile(it) {
   const img = it.thumb ? `<img src="${it.thumb}" alt="" loading="lazy">` : `<div class="tile-ic">${TYPE_ICON[it.type] || '📄'}</div>`;
   const badge = it.type === 'video' || it.type === 'animation' || it.type === 'video_note' ? `<span class="tile-badge">▶ ${fmtDur(it.dur)}</span>`
     : it.type !== 'photo' && it.kind !== 'image' ? `<span class="tile-badge">${TYPE_ICON[it.type] || ''} ${esc((it.name || '').slice(0, 14))}</span>` : '';
-  return `<div class="tile-w"><button class="tile" data-item="${it.id}">${img}${badge}${it.priv ? `<span class="tile-lock">${it.pub ? '🌐' : '🔒'}</span>` : ''}</button>
+  return `<div class="tile-w"><button class="tile ${S.sel?.has(it.id) ? 'sel' : ''}" data-item="${it.id}">${img}${badge}${it.priv ? `<span class="tile-lock">${it.pub ? '🌐' : '🔒'}</span>` : ''}</button>
     <div class="tile-st"><span>${VI.eye}${fmtN(it.views)}</span><span class="${it.liked ? 'on' : ''}">${VI.heart(it.liked)}${fmtN(it.likes)}</span><span>${VI.cm}${fmtN(it.cm)}</span></div></div>`;
 }
 
@@ -1184,8 +1203,9 @@ function openViewer(ids, index, opts = {}) {
     if (k === 'send') {
       b.disabled = true;
       try {
-        const r = await api(`album/i/${it.id}/send`, { method: 'POST' });
-        toast(t('Chatga yuborildi 📩'));
+        const sh = tg?.shareMessage && tg.isVersionAtLeast?.('8.0') && await api(`album/i/${it.id}/share`, { method: 'POST' }).catch(() => null);
+        const r = sh?.id ? (tg.shareMessage(sh.id, (ok) => ok && toast(t('Yuborildi 📩'))), {}) : await api(`album/i/${it.id}/send`, { method: 'POST' });
+        if (!sh?.id) toast(t('Chatga yuborildi 📩'));
         it.sends = r.sends ?? (it.sends || 0) + 1;
         sl.querySelectorAll('.sn').forEach((x) => (x.textContent = fmtN(it.sends)));
       } catch (err) { toast(err.message, true); }
@@ -1573,6 +1593,64 @@ function wakeStream(u) {
   if (!u || Date.now() - streamWoke < 10 * 60e3) return;
   streamWoke = Date.now();
   fetch(u + '/health', { mode: 'no-cors' }).catch(() => {});
+}
+
+// Tanlangan fayllar ustida amal: o'chirish, ko'chirish, bot chatiga yuborish, ZIP
+async function selAction(k) {
+  const ids = [...(S.sel || [])];
+  if (!ids.length) return toast(t('Avval fayllarni tanlang'), true);
+  const skip = (r) => (r.skipped ? ' · ' + t('{n} tasiga ruxsat yo‘q', { n: r.skipped }) : '');
+  const done = async (msg) => { S.sel = null; toast(msg); await refreshAlbum(); };
+  try {
+    if (k === 'delete') {
+      if (!(await confirmBox(t('{n} ta fayl o‘chirilsinmi?', { n: ids.length })))) return;
+      const r = await api('album/batch', { method: 'POST', body: { op: 'delete', ids } });
+      return done(t('{n} ta fayl o‘chirildi', { n: r.n }) + skip(r));
+    }
+    if (k === 'move') {
+      const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">📁 ${t('Qaysi albomga ko‘chiramiz?')}</div><button class="icon-btn" data-close>${I.close}</button></div>
+        <div class="sheet-body">${S.album.albums.filter((a) => !a.priv || a.ch).map((a) => `<button class="card alb-opt" data-to="${a.id}"><span style="font-size:20px">${a.priv ? '🔒' : '📁'}</span><b class="grow ellipsis">${esc(nm(a.name))}</b></button>`).join('')}</div>`);
+      sh.querySelectorAll('[data-to]').forEach((b) => (b.onclick = async () => {
+        b.disabled = true;
+        try {
+          const r = await api('album/batch', { method: 'POST', body: { op: 'move', ids, album: b.dataset.to } });
+          closeAllSheets();
+          done(t('{n} ta fayl ko‘chirildi', { n: r.n }) + skip(r));
+        } catch (err) { toast(err.message, true); b.disabled = false; }
+      }));
+      return;
+    }
+    if (k === 'send') {
+      const r = await api('album/batch', { method: 'POST', body: { op: 'send', ids } });
+      S.sel = null;
+      refreshAlbum();
+      const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">📤 ${t('Yuborildi')}</div><button class="icon-btn" data-close>${I.close}</button></div>
+        <div class="sheet-body"><p>${t('{n} ta fayl bot chatiga yuborildi. U yerdan istalgan chatga yuboring: faylni bosib turing → «Forward» (Uzatish).', { n: r.n })}</p>
+        ${r.skipped ? `<div class="hint">${t('{n} tasi yopiq albomdan — chatga yuborilmaydi.', { n: r.skipped })}</div>` : ''}
+        <button class="btn btn-primary btn-block" id="tobot">🤖 ${t('Botni ochish')}</button></div>`);
+      sh.querySelector('#tobot').onclick = () => openLink(`https://t.me/${BOT}`);
+      return;
+    }
+    if (k === 'zip') {
+      const r = await api('album/batch', { method: 'POST', body: { op: 'zip', ids } });
+      const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">🗜 ZIP</div><button class="icon-btn" data-close>${I.close}</button></div>
+        <div class="sheet-body"><p style="margin-top:0"><b>${esc(r.name)}</b><br><span class="muted small">${t('{n} ta fayl', { n: r.count })} · ${fmtSize(r.size)}</span></p>
+        <p class="small muted">${t('ZIP ichida har bir albom alohida papka bo‘ladi.')}</p>
+        <button class="btn btn-primary btn-block" id="z-dl">📥 ${t('Yuklab olish')}</button>
+        ${r.send ? `<button class="btn btn-soft btn-block" style="margin-top:8px" id="z-send">📤 ${t('Bot chatiga yuborish')}</button><div class="hint">${t('Bot chatidan uni istalgan chatga yuborasiz (Forward).')}</div>`
+          : `<div class="hint">${t('50 MB dan katta (yoki yopiq albom fayli bor) ZIP faqat yuklab olinadi. Fayllarni chatga yuborish uchun «Yuborish»ni tanlang.')}</div>`}</div>`);
+      sh.querySelector('#z-dl').onclick = () => {
+        if (tg?.downloadFile && tg.isVersionAtLeast?.('8.0')) tg.downloadFile({ url: r.url, file_name: r.name }); else openLink(r.url);
+      };
+      sh.querySelector('#z-send')?.addEventListener('click', async (e) => {
+        const b = e.currentTarget;
+        b.disabled = true;
+        b.innerHTML = `<span class="spin"></span> ${t('ZIP tayyorlanmoqda…')}`;
+        const j = await fetch(r.url + '&send=1').then((x) => x.json()).catch(() => ({ ok: false }));
+        if (j.ok) { closeAllSheets(); toast(t('ZIP bot chatiga yuborildi 📩')); } else { toast(j.error || t('Yuborib bo‘lmadi'), true); b.disabled = false; b.textContent = '📤 ' + t('Bot chatiga yuborish'); }
+      });
+    }
+  } catch (err) { toast(err.message, true); }
 }
 
 async function refreshAlbum() {

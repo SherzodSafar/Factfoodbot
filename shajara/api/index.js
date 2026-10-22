@@ -591,6 +591,90 @@ async function route(req, res) {
         return send(res, 200, { ok: true });
       }
     }
+    // Fayl menejeri: bir nechta faylni o'chirish, ko'chirish, bot chatiga yuborish, ZIP
+    if (parts[1] === 'batch' && m === 'POST') {
+      const body = await readBody(req);
+      const ids = new Set((Array.isArray(body.ids) ? body.ids : []).map(String).slice(0, 2000));
+      const doc0 = await loadAlbum(tree.id);
+      const albumOf = (id) => doc0.albums.find((a) => a.id === id);
+      const isPriv = (it) => !!albumOf(it.album)?.priv && !it.pub;
+      // boshqarish: tahrirchi, faylni yuklagan yoki albomni ochgan kishi
+      const canManage = (it) => role === 'edit' || (!!uid && [String(it.by?.id || ''), albumOf(it.album)?.uid, albumOf(it.album)?.owner].includes(uid));
+      const items = doc0.items.filter((it) => ids.has(it.id) && (albumAccess(tree, albumOf(it.album), uid) || it.pub));
+      if (!items.length) throw new HttpError(400, 'Fayl tanlanmagan');
+      if (body.op === 'delete') {
+        const del = items.filter(canManage);
+        const gone = new Set(del.map((x) => x.id));
+        await mutateAlbum(tree.id, (d) => { d.items = d.items.filter((y) => !gone.has(y.id)); });
+        for (const it of del) if (it.ch) await tg('deleteMessage', { chat_id: it.ch.chat, message_id: it.ch.msg });
+        return send(res, 200, { ok: true, n: del.length, skipped: items.length - del.length });
+      }
+      if (body.op === 'move') {
+        const to = albumOf(String(body.album || ''));
+        if (!to) throw new HttpError(404, 'Albom topilmadi');
+        if (to.priv && !albumAccess(tree, to, uid)) throw new HttpError(403, 'Bu albomga ruxsatingiz yo‘q');
+        if (to.priv && !to.ch?.id) throw new HttpError(400, 'Avval yopiq albom uchun alohida Telegram kanal ulang');
+        const target = to.priv ? to.ch.id : tree.channel?.id;
+        const upd = {};
+        for (const it of items.filter((x) => canManage(x) && x.album !== to.id && !x.r2)) {
+          // boshqa kanalga o'tsa (umumiy ↔ yopiq) — fayl o'sha kanalga nusxalanadi, eskisi o'chiriladi
+          if (it.ch && target && String(it.ch.chat) !== String(target)) {
+            const r = await sendStored(target, it, `📁 <b>${escapeHtml(to.name)}</b>${it.caption ? '\n' + escapeHtml(it.caption) : ''}`);
+            if (!r.ok) continue;
+            const again = mediaOf(r.result);
+            upd[it.id] = { fileId: again?.fileId || it.fileId, thumbId: again?.thumbId || it.thumbId, ch: { chat: target, msg: r.result.message_id }, old: it.ch };
+          } else upd[it.id] = {};
+        }
+        await mutateAlbum(tree.id, (d) => {
+          for (const x of d.items) {
+            if (!upd[x.id]) continue;
+            const { old, ...u } = upd[x.id];
+            Object.assign(x, u, { album: to.id });
+            if (to.priv) { delete x.pub; delete x.alsoIn; }
+          }
+        });
+        for (const u of Object.values(upd)) if (u.old) await tg('deleteMessage', { chat_id: u.old.chat, message_id: u.old.msg });
+        return send(res, 200, { ok: true, n: Object.keys(upd).length, skipped: items.length - Object.keys(upd).length });
+      }
+      if (body.op === 'send') {
+        // fayllar bot chatiga (file_id bo'yicha — hajm cheklovisiz); u yerdan istalgan chatga Forward
+        if (!uid) throw new HttpError(400, 'Bu funksiya faqat Telegram ichida ishlaydi');
+        const list = items.filter((it) => it.fileId && !isPriv(it)).slice(0, 50);
+        const job = (async () => {
+          for (const it of list) {
+            await sendStored(uid, it, `📁 <b>${escapeHtml(albumOf(it.album)?.name || '')}</b>${it.caption ? '\n' + escapeHtml(it.caption) : ''}`);
+            await sleep(350);
+          }
+        })();
+        try { waitUntil(job); } catch { await job; }
+        return send(res, 200, { ok: true, n: list.length, skipped: items.length - list.length });
+      }
+      if (body.op === 'zip') {
+        // ZIP Render'da Telegram'dan oqim bilan yig'iladi (serverda saqlanmaydi); har albom — alohida papka
+        const STREAM = (process.env.STREAM_URL || '').replace(/\/$/, '');
+        if (!STREAM) throw new HttpError(503, 'ZIP serveri sozlanmagan');
+        const list = items.filter((it) => it.fileId && it.size);
+        const size = list.reduce((a, x) => a + x.size, 0);
+        if (!list.length) throw new HttpError(400, 'ZIP uchun fayl yo‘q');
+        if (size > 3.5 * 1024 ** 3) throw new HttpError(413, 'ZIP 3.5 GB dan oshmasin — kamroq fayl tanlang');
+        const safe = (v) => String(v || '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').trim().slice(0, 80);
+        const EXTS = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'video/mp4': 'mp4', 'video/quicktime': 'mov', 'audio/mpeg': 'mp3', 'audio/ogg': 'ogg', 'audio/mp4': 'm4a', 'application/pdf': 'pdf' };
+        const TEXT = { photo: 'jpg', video: 'mp4', animation: 'mp4', video_note: 'mp4', voice: 'ogg', audio: 'mp3' };
+        const seen = new Set();
+        const files = list.map((it) => {
+          const dir = safe(albumOf(it.album)?.name) || 'Albom';
+          let nm0 = safe(it.name) || `${String(it.at || '').slice(0, 10) || 'fayl'}_${it.id}.${EXTS[it.mime] || TEXT[it.type] || 'bin'}`;
+          for (let k = 2; seen.has(`${dir}/${nm0}`.toLowerCase()); k++) nm0 = nm0.replace(/(\.[^.]+)?$/, (x) => ` (${k})${x}`);
+          seen.add(`${dir}/${nm0}`.toLowerCase());
+          return { f: it.fileId, z: it.size, p: `${dir}/${nm0}`, t: it.type, at: it.at };
+        });
+        const id = randomId(12);
+        await writeJson(`zip/${id}.json`, { uid, title: safe(tree.title) || 'Shajara', files, at: Date.now() });
+        const { e, s } = signMedia('zip:' + id);
+        return send(res, 200, { url: `${STREAM}/zip/${id}?e=${e}&s=${s}`, name: `${safe(tree.title) || 'Shajara'}.zip`, size, count: files.length, skipped: items.length - files.length, send: !!uid && size <= 48 * 1024 * 1024 && !list.some(isPriv) });
+      }
+      throw new HttpError(400, 'Noma’lum amal');
+    }
     if (parts[1] === 'i' && parts[2]) {
       const iid = parts[2];
       const doc = await loadAlbum(tree.id);
@@ -615,7 +699,18 @@ async function route(req, res) {
         await mutateAlbum(tree.id, (d) => { const x = d.items.find((y) => y.id === iid); if (x) x.tags = tags; });
         return send(res, 200, { ok: true, tags });
       }
-      if (ia?.priv && !it.pub && (parts[3] === 'c' || parts[3] === 'send') && m === 'POST') throw new HttpError(400, 'Yopiq albom faylini chatga yuborib yoki izoh yozib bo‘lmaydi');
+      if (ia?.priv && !it.pub && ['c', 'send', 'share'].includes(parts[3]) && m === 'POST') throw new HttpError(400, 'Yopiq albom faylini chatga yuborib yoki izoh yozib bo‘lmaydi');
+      if (parts[3] === 'share' && m === 'POST') {
+        // Telegram'ning «istalgan chatga yuborish» oynasi uchun tayyor xabar (Bot API 8.0: savePreparedInlineMessage)
+        if (!uid || !it.fileId) throw new HttpError(400, 'Bu faylni ulashib bo‘lmaydi');
+        const [type, key] = { photo: ['photo', 'photo_file_id'], video: ['video', 'video_file_id'], video_note: ['video', 'video_file_id'], animation: ['gif', 'gif_file_id'], audio: ['audio', 'audio_file_id'], voice: ['voice', 'voice_file_id'] }[it.type] || ['document', 'document_file_id'];
+        const a = doc.albums.find((x) => x.id === it.album);
+        const result = { type, id: iid, [key]: it.fileId, title: it.name || a?.name || 'Shajara', caption: [a?.name ? `📁 ${a.name}` : '', it.caption || ''].filter(Boolean).join('\n').slice(0, 1000) };
+        const r = await tg('savePreparedInlineMessage', { user_id: Number(uid), result, allow_user_chats: true, allow_bot_chats: true, allow_group_chats: true, allow_channel_chats: true });
+        if (!r.ok) throw new HttpError(502, 'Ulashib bo‘lmadi');
+        await mutateAlbum(tree.id, (d) => { const x = d.items.find((y) => y.id === iid); if (x) x.sends = (x.sends || 0) + 1; }).catch(() => {});
+        return send(res, 200, { id: r.result.id });
+      }
       if (parts[3] === 'send' && m === 'POST') {
         if (!uid) throw new HttpError(400, 'Bu funksiya faqat Telegram ichida ishlaydi');
         const a = doc.albums.find((x) => x.id === it.album);
@@ -730,6 +825,14 @@ async function route(req, res) {
       'content-type': type, 'accept-ranges': 'bytes', 'cache-control': 'private, max-age=86400',
       'content-range': `bytes ${start}-${start + file.buffer.length - 1}/${file.total}`,
     });
+  }
+
+  // ---- ZIP topshirig'i: Render'dagi oqim serveri imzo bilan oladi (fayllar ro'yxati)
+  if (parts[0] === 'zipjob' && /^[a-z0-9]{12}$/.test(parts[1] || '') && m === 'GET') {
+    if (!verifyMedia('zip:' + parts[1], url.searchParams.get('e'), url.searchParams.get('s'))) throw new HttpError(403, 'Havola eskirgan');
+    const j = (await readJson(`zip/${parts[1]}.json`))?.data;
+    if (!j) throw new HttpError(404, 'Topilmadi');
+    return send(res, 200, j);
   }
 
   // ---- Shox oilasi maxfiy albomi fayli: imzo albom ro'yxatini ko'rishga haqli kishiga beriladi → R2 havolasi
