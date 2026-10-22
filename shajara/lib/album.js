@@ -55,6 +55,8 @@ export function canUpload(tree, uid, role) {
   return (tree.settings?.albumUpload || 'members') === 'members';
 }
 
+// katta video/audio Render'dagi oqim serveridan (stream/server.js), sozlanmagan bo'lsa Vercel'dan
+const STREAM_URL = (process.env.STREAM_URL || '').replace(/\/$/, '');
 const mediaUrl = (fileId, x) => {
   const { e, s } = signMedia(fileId);
   return `/api/media?f=${encodeURIComponent(fileId)}&e=${e}&s=${s}${x ? '&x=' + x : ''}`;
@@ -113,7 +115,7 @@ export function publicAlbum(doc, tree, uid) {
       return {
         ...base, ...pv,
         thumb: it.thumbId ? mediaUrl(it.thumbId) : null,
-        src: ok ? mediaUrl(it.fileId, EXT[it.mime] || (it.type === 'voice' ? 'ogg' : it.type === 'photo' ? 'jpg' : '')) + (big ? `&z=${it.size}` : '') : null,
+        src: ok ? (big ? STREAM_URL : '') + mediaUrl(it.fileId, EXT[it.mime] || (it.type === 'voice' ? 'ogg' : it.type === 'photo' ? 'jpg' : '')) + (big ? `&z=${it.size}` : '') : null,
       };
     }),
   };

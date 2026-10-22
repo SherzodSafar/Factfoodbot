@@ -16,7 +16,7 @@ Telegram bot **@ShajaraAiBot** + Mini App (oila shajarasi). Eski bot (@Shajara_i
 - `lib/store.js`: Neon Postgres `kv(key, data jsonb, ver)` (optimistik qulf), `rl` jadval — rate limit. Yo'q kalit Vercel Blob'dan ko'chiriladi. Shaxs rasmlari Blob'da.
 - `lib/r2.js`: Cloudflare R2 (`shajara-media`) media kesh; `/api/media` keshda bo'lsa 302 presigned URL.
 - `lib/mtproto.js`: GramJS, bot o'z tokeni bilan; kanal matnlari (`readChannelTexts`) va 20MB+ fayllar oqim bilan: `sendRange` (1 MB bo'laklar 4 tadan parallel, LRU kesh ~96 MB, `prefetch`), Vercel'da bitta javob 4 MB + keyingi 8 MB oldindan; R2 ga ko'chirilmaydi (≤20MB lar R2 keshiga tushadi).
-- Render (workspace `tea-dakqs1ff3r2c73dvtrhg`): bepul web-servislar 2026-10-15 dan «billing» bilan to'xtatilgan (bepul soatlar tugagan, boshqa servislar bilan umumiy 750 soat) — oqim serveri hozircha Vercel'da.
+- **Render oqim serveri** (`stream/server.js`, workspace `tea-d2m25rf5r7bs73e89omg`; eski `tea-dakqs1ff3r2c73dvtrhg` bepul limiti tugagan): 20MB+ video/audio `GET /api/media` — `sendRange` 64 MB gacha javob, `/health`. Env: BOT_TOKEN, APP_SECRET (Vercel bilan bir xil — imzo), TG_API_ID, TG_API_HASH, DATABASE_URL, `MT_SESSION=render` (alohida MTProto sessiya). Vercel'da `STREAM_URL` qo'yilsa `album.js` katta fayllar `src`ini Render'ga yo'naltiradi (bo'lmasa Vercel'dagi 4 MB lik oqim); CSP `media-src` da `*.onrender.com`. Bepul rejimda 15 daqiqa so'rovsiz uxlaydi (birinchi ochilish ~30–60 s).
 - Kalitlar: `trees/<id>.json`, `albums/<id>.json`, `users/<uid>.json`, `props/<treeId>.json` (takliflar), `brchat/<uid>.json` (bot-yozishma holati), `aijobs/`.
 
 ## Asosiy modullar

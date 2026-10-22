@@ -12,7 +12,8 @@ function client() {
   if (clientP) return clientP;
   clientP = (async () => {
     // sessiya saqlanadi — har safar qayta kirish (va Telegram cheklovlari) bo'lmasin
-    const key = `mtproto/session-${String(process.env.BOT_TOKEN).split(':')[0]}.json`; // har bot uchun alohida sessiya
+    // har bot (va har server: MT_SESSION) uchun alohida sessiya
+    const key = `mtproto/session-${String(process.env.BOT_TOKEN).split(':')[0]}${process.env.MT_SESSION ? '-' + process.env.MT_SESSION : ''}.json`;
     const saved = (await readJson(key).catch(() => null))?.data?.s || '';
     const c = new TelegramClient(new StringSession(saved), Number(process.env.TG_API_ID), process.env.TG_API_HASH, { connectionRetries: 3, autoReconnect: true });
     c.setLogLevel('error');
