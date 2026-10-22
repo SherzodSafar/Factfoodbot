@@ -1,6 +1,6 @@
 // Katta fayllar (20 MB+) uchun MTProto: bot o'z tokeni bilan kiradi (foydalanuvchi akkaunti ishlatilmaydi),
-// Bot API cheklovisiz fayl bo'laklarini yuklaydi. TG_API_ID / TG_API_HASH — my.telegram.org dagi ilova.
-import { TelegramClient, Api } from 'telegram';
+// Bot API cheklovisiz (2 GB gacha) fayl bo'laklarini yuklaydi. TG_API_ID / TG_API_HASH — my.telegram.org dagi ilova.
+import { TelegramClient, Api, errors } from 'telegram';
 import { StringSession } from 'telegram/sessions/index.js';
 import bigInt from 'big-integer';
 import { readJson, writeJson } from './store.js';
@@ -52,30 +52,122 @@ export function decodeFileId(fileId) {
   return { type, dcId, id, accessHash, fileReference };
 }
 
-const PART = 512 * 1024; // MTProto bo'lagi: 4 KB ga karrali, 1 MB ni bo'ladi
+// ---- Katta fayllarni oqim bilan uzatish: 1 MB lik bo'laklar (Telegram ruxsat bergan eng kattasi) parallel
+// so'raladi va kelishi bilan javobga yoziladi. Yaqinda olingan bo'laklar xotirada (LRU) — keyingi Range
+// so'rovi (yoki oldindan yuklangan qism) kutmasdan beriladi. Fayl serverda saqlanmaydi.
+const MB = 1024 * 1024;
+const MAX_PARTS = 96; // ~96 MB xotira
+const parts = new Map(); // `${docId}:${i}` -> Promise<Buffer>; Map tartibi — LRU
+const sleep = (ms) => new Promise((ok) => setTimeout(ok, ms));
 
-/**
- * Faylning [start, end] oralig'ini yuklash. ch — kanal posti ({chat, msg}) — eskirgan file_reference ni yangilash uchun.
- * size — fayl hajmi (bayt).
- */
-export async function mtprotoPart(fileId, start, end, size, ch) {
+async function fetchPart(f, i) {
   const c = await client();
-  const f = decodeFileId(fileId);
   const location = new Api.InputDocumentFileLocation({
     id: bigInt(f.id.toString()), accessHash: bigInt(f.accessHash.toString()), fileReference: f.fileReference, thumbSize: '',
   });
-  end = Math.min(end, size - 1);
-  const from = Math.floor(start / PART) * PART;
-  const parts = Math.ceil((end + 1 - from) / PART);
-  const msgData = ch?.chat && ch?.msg
-    ? [new Api.InputPeerChannel({ channelId: bigInt(String(ch.chat).replace(/^-100/, '')), accessHash: bigInt(0) }), ch.msg]
-    : undefined;
-  const chunks = [];
-  for await (const chunk of c.iterDownload({ file: location, offset: bigInt(from), limit: parts, requestSize: PART, dcId: f.dcId, fileSize: bigInt(size), msgData })) {
-    chunks.push(chunk);
+  let dc = f.dcId;
+  for (let t = 0; ; t++) {
+    try {
+      const r = await c.invokeWithSender(new Api.upload.GetFile({ location, offset: bigInt(i * MB), limit: MB }), await c.getSender(dc));
+      return r.bytes;
+    } catch (e) {
+      if (e instanceof errors.FileMigrateError) { dc = e.newDc; continue; }
+      const rpc = e.errorMessage || '';
+      // uzilish, TIMEOUT yoki qisqa FLOOD_WAIT — qayta urinamiz; fayl xatolari (FILE_REFERENCE_EXPIRED…) — yo'q
+      if (t >= 2 || (rpc && rpc !== 'TIMEOUT' && !rpc.startsWith('FLOOD'))) throw e;
+      await sleep(rpc.startsWith('FLOOD') ? Math.min(e.seconds || 1, 5) * 1000 : 400 * (t + 1));
+    }
   }
-  const buf = Buffer.concat(chunks);
-  return { buffer: buf.subarray(start - from, end - from + 1), total: size };
+}
+
+function getPart(f, i) {
+  const k = `${f.id}:${i}`;
+  let p = parts.get(k);
+  if (p) parts.delete(k);
+  else {
+    p = fetchPart(f, i);
+    p.catch(() => { if (parts.get(k) === p) parts.delete(k); });
+  }
+  parts.set(k, p);
+  while (parts.size > MAX_PARTS) parts.delete(parts.keys().next().value);
+  return p;
+}
+
+/** Faylning [start, end] oralig'i bo'laklab (tartib bilan); oldindan `ahead` ta bo'lak so'raladi. */
+export async function* readRange(fileId, start, end, ahead = 4) {
+  const f = decodeFileId(fileId);
+  const first = Math.floor(start / MB);
+  const last = Math.floor(end / MB);
+  for (let i = first; i <= last; i++) {
+    for (let j = i + 1; j <= Math.min(last, i + ahead); j++) getPart(f, j);
+    const buf = await getPart(f, i);
+    const a = i === first ? start - i * MB : 0;
+    const b = Math.min(buf.length, end - i * MB + 1);
+    if (b > a) yield buf.subarray(a, b);
+    if (buf.length < MB) return; // fayl oxiri
+  }
+}
+
+/** [start, end] oralig'ini bitta Buffer qilib olish; size berilsa keyingi qism oldindan yuklanadi. */
+export async function readBuffer(fileId, start, end, size) {
+  const out = [];
+  for await (const x of readRange(fileId, start, end)) out.push(x);
+  if (size && end + 1 < size) prefetch(fileId, end + 1, size);
+  return Buffer.concat(out);
+}
+
+/** pos dan boshlab n MB ni xotiraga oldindan yuklash (brauzer keyingi qismni so'raguncha). */
+export function prefetch(fileId, pos, size, n = 8) {
+  const f = decodeFileId(fileId);
+  const from = Math.floor(pos / MB);
+  const ps = [];
+  for (let i = from; i < Math.min(Math.ceil(size / MB), from + n); i++) ps.push(getPart(f, i));
+  return Promise.allSettled(ps);
+}
+
+const waitDrain = (res) => new Promise((ok) => {
+  const done = () => { res.off('drain', done); res.off('close', done); ok(); };
+  res.on('drain', done);
+  res.on('close', done);
+});
+
+/**
+ * Range so'roviga javob: bo'laklar kelishi bilan yoziladi. max — bitta javobning eng katta hajmi
+ * (brauzer keyingi qismni o'zi so'raydi). Qaytaradi: yuborilgan oxirgi bayt (yoki null).
+ */
+export async function sendRange(req, res, { fileId, size, type, max = Infinity }) {
+  const rg = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range || ''));
+  let start = 0;
+  let end = size - 1;
+  if (rg && rg[1]) { start = Number(rg[1]); if (rg[2]) end = Math.min(Number(rg[2]), size - 1); }
+  else if (rg && rg[2]) start = Math.max(0, size - Number(rg[2]));
+  if (start >= size || start > end) {
+    res.writeHead(416, { 'content-range': `bytes */${size}` });
+    res.end();
+    return null;
+  }
+  if (rg) end = Math.min(end, start + max - 1);
+  const it = readRange(fileId, start, end);
+  const first = await it.next(); // xato bo'lsa — sarlavhalar yuborilmasidan oldin chiqadi
+  res.writeHead(rg ? 206 : 200, {
+    'content-type': type, 'accept-ranges': 'bytes', 'content-length': end - start + 1, 'cache-control': 'private, max-age=86400',
+    ...(rg ? { 'content-range': `bytes ${start}-${end}/${size}` } : {}),
+  });
+  let gone = false;
+  res.on('close', () => { gone = true; });
+  try {
+    for (let r = first; !r.done && !gone; r = await it.next()) {
+      if (!res.write(r.value)) await waitDrain(res);
+    }
+  } catch (e) {
+    console.error('stream', e?.errorMessage || e?.message);
+    res.destroy();
+    return null;
+  } finally {
+    it.return();
+  }
+  res.end();
+  return end;
 }
 
 // ---- Kanal xabarlari matnini o'qish (albom izohlari uchun)

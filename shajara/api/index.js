@@ -676,29 +676,29 @@ async function route(req, res) {
         return res.end();
       }
     }
+    const size = Number(url.searchParams.get('z')) || 0;
+    if (size > 20 * 1024 * 1024) {
+      // Bot API 20 MB dan kattasini bermaydi — MTProto orqali oqim bilan (bot tokeni bilan); serverda saqlanmaydi
+      const mt = await import('../lib/mtproto.js');
+      if (!mt.mtprotoOn()) throw new HttpError(413, 'Fayl katta — Telegramda oching');
+      // bitta javob 4 MB gacha (funksiya javobi chegarasi); brauzer keyingisini so'raguncha u xotiraga yuklab qo'yiladi
+      const end = await mt.sendRange(req, res, { fileId: f, size, type: MIME[xext] || 'application/octet-stream', max: 4 * 1024 * 1024 });
+      if (end != null && end + 1 < size) {
+        try { waitUntil(mt.prefetch(f, end + 1, size)); } catch {}
+      }
+      return;
+    }
     const CH = 4 * 1024 * 1024 - 1;
     const rg = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range || ''));
     const start = rg && rg[1] ? Number(rg[1]) : 0;
     const end = rg && rg[2] ? Math.min(Number(rg[2]), start + CH) : start + CH;
-    const size = Number(url.searchParams.get('z')) || 0;
-    let file = null;
-    if (size > 20 * 1024 * 1024) {
-      // Bot API 20 MB dan kattasini bermaydi — MTProto orqali (bot tokeni bilan)
-      const { mtprotoPart, mtprotoOn } = await import('../lib/mtproto.js');
-      if (!mtprotoOn()) throw new HttpError(413, 'Fayl katta — Telegramda oching');
-      const r = await mtprotoPart(f, start, end, size, { chat: url.searchParams.get('c'), msg: Number(url.searchParams.get('m')) || 0 });
-      file = { ...r, path: '' };
-    } else file = await fetchFilePart(f, start, end);
+    const file = await fetchFilePart(f, start, end);
     if (!file) throw new HttpError(404, 'Fayl topilmadi');
     const ext = (url.searchParams.get('x') || file.path.split('.').pop() || '').toLowerCase();
     const type = MIME[ext] || 'application/octet-stream';
-    // birinchi so'rovda faylni fonda R2 ga ko'chiramiz (500 MB gacha)
-    if (r2.r2On() && start === 0 && file.total && file.total <= 500 * 1024 * 1024) {
-      const ch = { chat: url.searchParams.get('c'), msg: Number(url.searchParams.get('m')) || 0 };
-      const big = file.total > 20 * 1024 * 1024;
-      const readPart = async (a, b) => (big
-        ? (await (await import('../lib/mtproto.js')).mtprotoPart(f, a, b, file.total, ch)).buffer
-        : (await fetchFilePart(f, a, b)).buffer);
+    // birinchi so'rovda faylni fonda R2 ga ko'chiramiz (20 MB gacha — kattalari yuqorida oqim bilan)
+    if (r2.r2On() && start === 0 && file.total) {
+      const readPart = async (a, b) => (await fetchFilePart(f, a, b)).buffer;
       const job = r2.r2Store(r2.mediaKey(f, xext), file.total, type, readPart).catch((e) => console.error('r2', e));
       const whole0 = file.buffer.length >= file.total;
       // katta (asl sifatli) rasm bir javobga sig'maydi — R2 ga ko'chirib bo'lgach o'sha yerga yo'naltiramiz
@@ -725,7 +725,7 @@ async function route(req, res) {
     if (!verifyMedia('pm:' + parts[2], url.searchParams.get('e'), url.searchParams.get('s'))) throw new HttpError(403, 'Havola eskirgan');
     const r2 = await import('../lib/r2.js');
     res.statusCode = 302;
-    res.setHeader('location', await r2.r2Url(`p/${parts[1].replace(/[^a-z0-9]/g, '')}/${parts[2]}`));
+    res.setHeader('location', await r2.r2Url(`p/${parts[1].replace(/[^a-z0-9]/g, '')}/${parts[2]}${url.searchParams.get('t') ? '.t' : ''}`));
     res.setHeader('cache-control', 'private, max-age=3600');
     return res.end();
   }

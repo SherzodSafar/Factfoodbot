@@ -261,4 +261,5 @@ for (const [k, r, e] of [
   ["⏭ Keyinroq to‘ldiraman", "⏭ Заполню позже", "⏭ I'll fill it in later"],
   ["🌸 Ertaga yaqinlaringizning tug‘ilgan kuni:", "🌸 Завтра день рождения у ваших близких:", "🌸 Tomorrow is a birthday in your close family:"],
   ["Tabriklashni unutmang! 💐", "Не забудьте поздравить! 💐", "Don’t forget to congratulate! 💐"],
+  ["⏳ «{album}» yopiq albomiga yuklanmoqda…", "⏳ Загружаю в закрытый альбом «{album}»…", "⏳ Uploading to the private album “{album}”…"],
 ]) { RU[k] = r; EN[k] = e; }

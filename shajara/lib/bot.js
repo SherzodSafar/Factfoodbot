@@ -9,7 +9,8 @@ import { readJson, writeJson, deleteKey, listKeys } from './store.js';
 import { signInvite, parseInvite } from './auth.js';
 import { loadTree, mutateTree } from './tree.js';
 import { getUser, updateUser } from './users.js';
-import { loadAlbum, addToAlbum, canUpload, cleanName, mutateAlbum } from './album.js';
+import { loadAlbum, addToAlbum, addToPrivAlbum, canUpload, cleanName, mutateAlbum, albumAccess } from './album.js';
+import { r2On } from './r2.js';
 import { escapeHtml } from './notify.js';
 import { upcomingText } from './events.js';
 
@@ -297,7 +298,10 @@ async function startUpload({ from, chatId, lang, msg, media, tree, replyTo }) {
   });
   if (!isNew) return;
   const doc = await loadAlbum(treeId);
-  const rows = doc.albums.filter((a) => !a.priv).slice(-8).reverse().map((a) => [{ text: `📁 ${a.name}`, callback_data: `alb:${a.id}:${from.id}` }]);
+  // yopiq oilaviy albomlar — faqat a'zosiga va faqat shaxsiy chatda (guruhda nomi ham ko'rinmasin)
+  const priv = chatId > 0 && r2On() ? doc.albums.filter((a) => a.priv && albumAccess(tree, a, String(from.id))) : [];
+  const rows = [...priv.map((a) => [{ text: `🔒 ${a.name}`, callback_data: `alb:${a.id}:${from.id}` }]),
+    ...doc.albums.filter((a) => !a.priv).slice(-8).reverse().map((a) => [{ text: `📁 ${a.name}`, callback_data: `alb:${a.id}:${from.id}` }])];
   rows.push([{ text: t(lang, '➕ Yangi albom'), callback_data: `alb:new:${from.id}` }, { text: t(lang, '✖️ Bekor qilish'), callback_data: `alb:x:${from.id}` }]);
   // Telegram «rasm» sifatida yuborilganini siqadi — asl sifat faqat «fayl» sifatida saqlanadi
   const hint = media.type === 'photo' ? '\n\n' + t(lang, '💡 Rasm siqilgan holda keldi. Asl sifatda saqlash uchun uni «Fayl» sifatida yuboring (📎 → Fayl).') : '';
@@ -341,10 +345,27 @@ async function finishUpload(from, chatId, lang) {
   if (!p) return;
   const tree = await loadTree(p.treeId).catch(() => null);
   if (!tree) return;
+  const by = { id: String(from.id), name: [from.first_name, from.last_name].filter(Boolean).join(' ') };
+  const pa = p.albumId && (await loadAlbum(tree.id)).albums.find((a) => a.id === p.albumId && a.priv);
+  if (pa) {
+    // yopiq albom: fayl R2 omboriga ko'chiriladi (katta video bir-ikki daqiqa olishi mumkin) — webhook kutib qolmasin
+    const wait = await send(chatId, t(lang, '⏳ «{album}» yopiq albomiga yuklanmoqda…', { album: escapeHtml(pa.name) }));
+    return bg((async () => {
+      let text;
+      try {
+        const r = await addToPrivAlbum(tree, { albumId: pa.id, caption: p.caption, media: p.items, by });
+        text = t(lang, '✅ {n} ta fayl «{album}» albomiga qo‘shildi.', { n: r.count, album: escapeHtml(r.album.name) });
+      } catch (e) {
+        text = '⚠️ ' + escapeHtml(e.message || 'Xatolik');
+      }
+      const mid = wait?.result?.message_id;
+      if (mid) await tg('editMessageText', { chat_id: chatId, message_id: mid, text, parse_mode: 'HTML', reply_markup: appButton(lang, '?tab=album') });
+      else await send(chatId, text, { reply_markup: appButton(lang, '?tab=album') });
+    })());
+  }
   try {
     const r = await addToAlbum(tree, {
-      albumId: p.albumId, albumName: p.albumName, caption: p.caption, media: p.items,
-      by: { id: String(from.id), name: [from.first_name, from.last_name].filter(Boolean).join(' ') },
+      albumId: p.albumId, albumName: p.albumName, caption: p.caption, media: p.items, by,
     });
     return send(chatId, t(lang, '✅ {n} ta fayl «{album}» albomiga qo‘shildi.', { n: r.count, album: escapeHtml(r.album.name) }), {
       reply_markup: chatId > 0 ? appButton(lang, '?tab=album') : undefined,
