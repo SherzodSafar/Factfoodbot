@@ -980,12 +980,24 @@ async function route(req, res) {
       let data = tree;
       let undo = null;
       if (body.action === 'apply') {
+        // tahrirchi tasdiqlashdan oldin tuzatgan maydonlar (ism, otasining ismi, sanalar) — qolganini applyProposal tozalaydi
+        for (const [k, f] of Object.entries(body.edits && typeof body.edits === 'object' ? body.edits : {})) {
+          const o = pr.ops[Number(k)];
+          if (!o || !f || typeof f !== 'object') continue;
+          o.f = o.f || {};
+          for (const key of ['name', 'fname', 'birth', 'death']) {
+            if (!(key in f) || (o.op !== 'add' && !(key in o.f))) continue;
+            const v = f[key] == null ? null : String(f[key]).trim().slice(0, 100) || null;
+            if (key === 'name' && !v) continue;
+            o.f[key] = v;
+          }
+        }
         const r = await B.applyWithUndo(tok.treeId, pr, pr.by?.name || nameOf(user));
         result = r.result;
         data = r.tree;
         undo = r.undo;
       }
-      await updateJson(key, (d) => { const x = d.items.find((y) => y.id === parts[2]); if (x) { x.status = body.action === 'apply' ? 'applied' : 'rejected'; x.doneAt = new Date().toISOString(); if (undo) x.undo = undo; } });
+      await updateJson(key, (d) => { const x = d.items.find((y) => y.id === parts[2]); if (x) { x.status = body.action === 'apply' ? 'applied' : 'rejected'; x.doneAt = new Date().toISOString(); if (undo) x.undo = undo; if (body.action === 'apply') x.ops = pr.ops; } });
       if (pr.by?.id) (await import('../lib/telegram.js')).tg('sendMessage', { chat_id: pr.by.id, text: body.action === 'apply' ? '✅ Shajaraga kiritgan ma’lumotlaringiz tasdiqlandi. Rahmat!' : 'ℹ️ Taklifingiz ko‘rib chiqildi va qabul qilinmadi.' }).catch(() => {});
       return send(res, 200, { result, tree: out(data, 'edit', uid) });
     }

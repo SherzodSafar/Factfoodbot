@@ -774,3 +774,5 @@ img { pointer-events: none; }
 .up-th { position: relative; }
 .up-pct { position: absolute; inset: auto 0 0 0; text-align: center; font-size: 12px; font-weight: 800; color: #fff; background: rgba(0,0,0,.45); padding: 2px 0; }
 .up-pct:empty { display: none; }
+.pr-edit { padding: 6px 0; border-bottom: 1px dashed var(--line); }
+.pr-edit .input { margin-bottom: 6px; }

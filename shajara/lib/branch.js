@@ -543,7 +543,8 @@ export async function chatCallback(cq, lang) {
   const cur = s.cur;
   const [cf, cid] = String(cur || '').split(':');
   const x = s.W[cid];
-  if (act === 'fin') return finish(from, s);
+  if (act === 'fin') return review(from, s);
+  if (act === 'send') return finish(from, s);
   if (act === 'bk') { s.done = (s.done || []).slice(0, -1); return askQ(from, s); }
   if (!cur) return askQ(from, s);
   if (act === 'y' || act === 'u') { markDone(s, cur); return askQ(from, s); }
@@ -625,6 +626,15 @@ export async function chatMedia(from, content) {
     await askQ(from, s);
   } catch (e) { console.error('photo', e); await send(from.id, t(L, 'AI tahlil qila olmadi. Keyinroq urinib ko‘ring yoki matn bilan yozing.')); }
   return true;
+}
+
+// Yuborishdan oldin: kiritilgan hamma ma'lumot bitta xabarda — diqqat bilan o'qib, xato bo'lsa tuzatish
+async function review(from, s) {
+  const L = s.lang;
+  const line = (x) => `• <b>${esc(x.name || '?')}</b>${x.fname ? ` (${esc(x.fname)})` : ''} — ${x.unk ? '🤷' : fmtD(x.birth)}${x.deceased ? ` · † ${fmtD(x.death)}` : ''}`;
+  const list = Object.values(s.W || {}).filter((x) => x.name).map(line);
+  const text = `📋 ${t(L, 'Yuborishdan oldin hammasini yana bir bor diqqat bilan o‘qib chiqing: ismlar, familiyalar va sanalar. Xato bo‘lsa — «⬅️ Tuzatish»ni bosing va to‘g‘irlang.')}\n\n${list.slice(0, 80).join('\n')}${list.length > 80 ? '\n…' : ''}`;
+  return send(from.id, text.slice(0, 4000), [[{ text: t(L, '✅ Hammasi to‘g‘ri — yuborish'), callback_data: 'bc:send' }], [{ text: t(L, '⬅️ Tuzatish'), callback_data: 'bc:re' }]]);
 }
 
 async function finish(from, s) {
