@@ -35,6 +35,7 @@ export async function handleUpdate(u) {
   const st = actor.getStore();
   const from = (u.message || u.callback_query)?.from;
   if (st && from) st.uid = String(from.id);
+  if (u.inline_query) return onInline(u.inline_query);
   if (u.pre_checkout_query) return onPreCheckout(u.pre_checkout_query);
   if (u.callback_query) return onCallback(u.callback_query);
   if (u.my_chat_member) return onMembership(u.my_chat_member);
@@ -279,6 +280,30 @@ async function onGroup(msg) {
     const caption = cleanName(text.replace(/^\/\S+\s*/, ''), 900) || src.caption || null;
     return startUpload({ from, chatId: msg.chat.id, lang, msg: { ...src, caption }, media, tree, replyTo: msg.message_id });
   }
+}
+
+// Inline: ilovada «Yuborish» → chat tanlanadi → shu yerda fayl natijasi chiqadi, bosilsa yuboriladi.
+// f_<tree>_<fayl>_<imzo> (bir nechtasi bo'sh joy bilan) yoki z_<zip topshirig'i> (faqat o'zi yaratgan ZIP)
+const CACHED = { photo: ['photo', 'photo_file_id'], video: ['video', 'video_file_id'], video_note: ['video', 'video_file_id'], animation: ['gif', 'gif_file_id'], audio: ['audio', 'audio_file_id'], voice: ['voice', 'voice_file_id'] };
+async function onInline(q) {
+  const results = [];
+  for (const tok of String(q.query || '').trim().split(/\s+/).slice(0, 10)) {
+    const z = /^z_([a-z0-9]{12})$/.exec(tok);
+    if (z) {
+      const j = (await readJson(`zip/${z[1]}.json`).catch(() => null))?.data;
+      if (j?.fileId && String(j.uid) === String(q.from.id)) results.push({ type: 'document', id: 'z' + z[1], document_file_id: j.fileId, title: `${j.title}.zip`, caption: `🗜 ${j.title}` });
+      continue;
+    }
+    const f = /^f_([a-z0-9]{6,20})_([a-z0-9]{10})_([A-Za-z0-9_-]{12})$/.exec(tok);
+    if (!f || !verifyShare(`${f[1]}_${f[2]}`, f[3])) continue;
+    const doc = await loadAlbum(f[1]).catch(() => null);
+    const it = doc?.items.find((x) => x.id === f[2]);
+    const a = it && doc.albums.find((x) => x.id === it.album);
+    if (!it?.fileId || (a?.priv && !it.pub)) continue;
+    const [type, key] = CACHED[it.type] || ['document', 'document_file_id'];
+    results.push({ type, id: it.id, [key]: it.fileId, title: it.name || a?.name || 'Shajara', caption: [a?.name ? `📁 ${a.name}` : '', it.caption || ''].filter(Boolean).join('\n').slice(0, 1000) });
+  }
+  return tg('answerInlineQuery', { inline_query_id: q.id, results, cache_time: 0, is_personal: true });
 }
 
 async function sendSharedFile(from, lang, [, treeId, iid, sig]) {
@@ -630,7 +655,7 @@ export async function setupBot() {
   await tg('deleteWebhook', { drop_pending_updates: false });
   out.webhook = await tg('setWebhook', {
     url: url + '/api/webhook', secret_token: webhookSecret(), drop_pending_updates: false,
-    allowed_updates: ['message', 'callback_query', 'channel_post', 'my_chat_member', 'pre_checkout_query'],
+    allowed_updates: ['message', 'callback_query', 'channel_post', 'my_chat_member', 'pre_checkout_query', 'inline_query'],
   });
   out.menu = await tg('setChatMenuButton', { menu_button: { type: 'web_app', text: 'Shajara', web_app: { url: url + '/' } } });
   for (const lang of ['uz', 'ru', 'en']) {

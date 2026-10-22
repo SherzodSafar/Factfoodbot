@@ -121,10 +121,14 @@ async function zipRoute(req, res, id, url) {
         for (const [i, g] of groups.entries()) {
           const name = groups.length > 1 ? `${job.title || 'Shajara'} (${i + 1}).zip` : fname;
           const doc = await uploadDocument(job.uid, name, `🗜 ${job.title} · ${g.files.length}`, (out) => writeZip({ files: g.files }, out));
-          if (groups.length === 1 && doc) prepared = await prepare(encodeFileId(doc, job.files[0].f), name).catch(() => null);
+          if (groups.length === 1 && doc) {
+            const fid = encodeFileId(doc, job.files[0].f);
+            prepared = await prepare(fid, name).catch(() => null);
+            await fetch(`${PUBLIC_URL}/api/zipjob/${id}?e=${e}&s=${encodeURIComponent(s || '')}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ fileId: fid }) }).catch(() => {});
+          }
         }
         console.log('🗜 MTProto', groups.length, 'ZIP');
-        return json(200, { ok: true, parts: groups.length, prepared, skipped: job.files.length - fits.length });
+        return json(200, { ok: true, parts: groups.length, prepared, inline: groups.length === 1 ? 'z_' + id : null, skipped: job.files.length - fits.length });
       } catch (err) {
         console.error('zip mtproto', err?.errorMessage || err?.message);
         return json(500, { ok: false, error: err?.errorMessage || err?.message });

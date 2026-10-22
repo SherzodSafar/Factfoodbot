@@ -78,6 +78,12 @@ async function confirmBox(text) {
 function openBot() {
   if (inTelegram && tg?.openTelegramLink) { tg.openTelegramLink(`https://t.me/${BOT}`); setTimeout(() => tg.close?.(), 300); } else window.open(`https://t.me/${BOT}`, '_blank');
 }
+// fayl/ZIP ni istalgan chatga: inline (papkali chat tanlash oynasi) yoki «Share with» oynasi
+function shareVia(q, prepared) {
+  if (q && S.album?.inline && tg?.switchInlineQuery && tg.isVersionAtLeast?.('6.7')) { tg.switchInlineQuery(q, ['users', 'bots', 'groups', 'channels']); return true; }
+  if (prepared && tg?.shareMessage) { tg.shareMessage(prepared, (ok) => ok && toast(t('Yuborildi 📩'))); return true; }
+  return false;
+}
 function openLink(url) {
   if (url.startsWith('https://t.me/') && tg?.openTelegramLink && inTelegram) tg.openTelegramLink(url);
   else if (tg?.openLink && inTelegram) tg.openLink(url);
@@ -1222,9 +1228,11 @@ function openViewer(ids, index, opts = {}) {
     if (k === 'send') {
       b.disabled = true;
       try {
-        const sh = tg?.shareMessage && tg.isVersionAtLeast?.('8.0') && await api(`album/i/${it.id}/share`, { method: 'POST' }).catch(() => null);
-        const r = sh?.id ? (tg.shareMessage(sh.id, (ok) => ok && toast(t('Yuborildi 📩'))), {}) : await api(`album/i/${it.id}/send`, { method: 'POST' });
-        if (!sh?.id) toast(t('Chatga yuborildi 📩'));
+        const ln = S.album?.inline ? await api(`album/i/${it.id}/link`, { method: 'POST' }).catch(() => null) : null;
+        const sh = !ln?.q && tg?.shareMessage && tg.isVersionAtLeast?.('8.0') && await api(`album/i/${it.id}/share`, { method: 'POST' }).catch(() => null);
+        const shared = shareVia(ln?.q, sh?.id);
+        const r = shared ? {} : await api(`album/i/${it.id}/send`, { method: 'POST' });
+        if (!shared) toast(t('Chatga yuborildi 📩'));
         it.sends = r.sends ?? (it.sends || 0) + 1;
         sl.querySelectorAll('.sn').forEach((x) => (x.textContent = fmtN(it.sends)));
       } catch (err) { toast(err.message, true); }
@@ -1664,8 +1672,7 @@ async function selAction(k) {
         const j = await fetch(r.url + '&send=1').then((x) => x.json()).catch(() => ({ ok: false }));
         if (!j.ok) { toast(j.error || t('Yuborib bo‘lmadi'), true); b.disabled = false; b.textContent = '📤 ' + t('Telegramda yuborish'); return; }
         closeAllSheets();
-        if (j.prepared && tg?.shareMessage) tg.shareMessage(j.prepared, (ok) => ok && toast(t('Yuborildi 📩')));
-        else {
+        if (!shareVia(j.inline, j.prepared)) {
           const s2 = openSheet(`<div class="sheet-head"><div class="h2 grow">🗜 ZIP</div><button class="icon-btn" data-close>${I.close}</button></div>
             <div class="sheet-body"><p>${t('ZIP {n} qismga bo‘linib bot chatiga yuborildi. U yerdan istalgan chatga yuboring (Forward).', { n: j.parts })}</p>
             ${j.skipped ? `<div class="hint">${t('{n} ta fayl 48 MB dan katta — ZIP’ga sig‘madi, ularni alohida yuboring.', { n: j.skipped })}</div>` : ''}
@@ -1723,7 +1730,7 @@ function uploadForm(sh) {
     const many = files.length > 1;
     sh.querySelector('#pv').classList.toggle('up-list', many);
     sh.querySelector('#pv').innerHTML = many
-      ? `<div class="small muted" style="margin-bottom:6px">${t('Har bir faylga alohida izoh yozing — kim, qachon, qayerda?')}</div>` + files.map((f, i) => `<div class="up-row"><div class="up-th">${prev(f)}</div><textarea class="input" data-cap="${i}" rows="2" maxlength="900" placeholder="${t('{i}-fayl izohi', { i: i + 1 })}"></textarea></div>`).join('')
+      ? `<div class="small muted" style="margin-bottom:6px">${t('Har bir faylga alohida izoh yozing — kim, qachon, qayerda?')}</div>` + files.map((f, i) => `<div class="up-row"><div class="up-th">${prev(f)}<b class="up-pct" data-pct="${i}"></b></div><textarea class="input" data-cap="${i}" rows="2" maxlength="900" placeholder="${t('{i}-fayl izohi', { i: i + 1 })}"></textarea></div>`).join('')
       : files.map(prev).join('');
     sh.querySelector('#capf').classList.toggle('hidden', many);
     const bw = sh.querySelector('#bigw');
@@ -1753,11 +1760,17 @@ function uploadForm(sh) {
     for (const [i, file] of files.entries()) {
       btn.innerHTML = `<span class="spin"></span> ${ok + 1}/${files.length}`;
       if (files.length > 1) body.caption = caps[i] || '';
+      const pct = sh.querySelector(`[data-pct="${i}"]`);
       try {
-        const r = await uploadOriginal(file, body, (k) => (btn.innerHTML = `<span class="spin"></span> ${ok + 1}/${files.length} · ${Math.round(k * 100)}%`));
+        const r = await uploadOriginal(file, body, (k) => {
+          btn.innerHTML = `<span class="spin"></span> ${ok + 1}/${files.length} · ${Math.round(k * 100)}%`;
+          if (pct) pct.textContent = `${Math.round(k * 100)}%`;
+        });
+        if (pct) pct.textContent = '✅';
         if (body.albumName) { body.album = r.album.id; delete body.albumName; }
         ok++;
       } catch (err) {
+        if (pct) pct.textContent = '⚠️';
         toast(err.message, true);
         break;
       }
@@ -2049,7 +2062,7 @@ function inviteSheet() {
   bindSeg(sh);
   sh.querySelector('[data-seg="il"]').addEventListener('change', () => { lang = segVal(sh, 'il') || lang; sh.querySelector('#il-link').textContent = link(); });
   sh.querySelector('#shr').onclick = () => {
-    const url = `https://t.me/share/url?url=${encodeURIComponent(link())}&text=${encodeURIComponent(msg())}`;
+    const url = `https://t.me/share/url?url=${encodeURIComponent(`${msg()}\n\n${link()}`)}`;
     if (inTelegram) openLink(url);
     else if (navigator.share) navigator.share({ text: msg() + '\n' + link() }).catch(() => {});
     else copyText(link());

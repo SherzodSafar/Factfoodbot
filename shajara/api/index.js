@@ -87,6 +87,12 @@ const addLogSafe = (t, who, n) => { t.log = t.log || []; t.log.unshift({ at: new
 // so'rov egasini eslab qolamiz (jurnal yozuvlari uchun)
 const seenUser = (u) => { const st = actor.getStore(); if (st && u) st.uid = String(u.id); return u; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+let inlineOn = { v: false, at: 0 };
+async function botInline() {
+  if (Date.now() - inlineOn.at > 10 * 60e3) inlineOn = { v: !!(await tg('getMe', {})).result?.supports_inline_queries, at: Date.now() };
+  return inlineOn.v;
+}
+let hookFix = null; // webhook'ga inline_query qo'shish (bir martalik)
 
 function tgUser(req) {
   const u = seenUser(verifyInitData(req.headers['x-init-data']));
@@ -425,7 +431,7 @@ async function route(req, res) {
     const by = { id: uid, name: nameOf(user) || 'Tahrirchi' };
     if (parts.length === 1 && m === 'GET') {
       const doc = await loadAlbum(tree.id);
-      return send(res, 200, { ...publicAlbum(doc, tree, uid), hasChannel: !!tree.channel, canUpload: canUpload(tree, uid, role), canEdit: role === 'edit', me: uid });
+      return send(res, 200, { ...publicAlbum(doc, tree, uid), hasChannel: !!tree.channel, canUpload: canUpload(tree, uid, role), canEdit: role === 'edit', me: uid, inline: await botInline().catch(() => false) });
     }
     // shox oilasi albomini kim ocha oladi: tahrirchi — istalgan shox uchun, qolganlar — o'zi egallagan shox(lar) uchun
     const myHeads = () => {
@@ -704,7 +710,7 @@ async function route(req, res) {
         // istalgan odamga (Telegram'ning havola ulashish oynasi): havolani ochgan kishiga bot faylni yuboradi
         if (!it.fileId) throw new HttpError(400, 'Bu faylni ulashib bo‘lmaydi');
         const k = `${tree.id}_${iid}`;
-        return send(res, 200, { url: `https://t.me/${BOT()}?start=f_${k}_${signShare(k)}` });
+        return send(res, 200, { url: `https://t.me/${BOT()}?start=f_${k}_${signShare(k)}`, q: `f_${k}_${signShare(k)}` });
       }
       if (parts[3] === 'share' && m === 'POST') {
         // Telegram'ning «istalgan chatga yuborish» oynasi uchun tayyor xabar (Bot API 8.0: savePreparedInlineMessage)
@@ -834,8 +840,13 @@ async function route(req, res) {
   }
 
   // ---- ZIP topshirig'i: Render'dagi oqim serveri imzo bilan oladi (fayllar ro'yxati)
-  if (parts[0] === 'zipjob' && /^[a-z0-9]{12}$/.test(parts[1] || '') && m === 'GET') {
+  if (parts[0] === 'zipjob' && /^[a-z0-9]{12}$/.test(parts[1] || '') && (m === 'GET' || m === 'POST')) {
     if (!verifyMedia('zip:' + parts[1], url.searchParams.get('e'), url.searchParams.get('s'))) throw new HttpError(403, 'Havola eskirgan');
+    if (m === 'POST') {
+      const body = await readBody(req);
+      await updateJson(`zip/${parts[1]}.json`, (d) => { d.fileId = String(body.fileId || '').slice(0, 300) || null; });
+      return send(res, 200, { ok: true });
+    }
     const j = (await readJson(`zip/${parts[1]}.json`))?.data;
     if (!j) throw new HttpError(404, 'Topilmadi');
     return send(res, 200, j);
@@ -1126,7 +1137,13 @@ async function route(req, res) {
     const job = handleUpdate(update).catch((e) => console.error('webhook', e));
     if (!oldOff) oldOff = import('../lib/bot.js').then((b) => b.oldBotOff()).catch((e) => console.error('oldbot', e)); // bir martalik
     if (!capFix) capFix = portraitCaptions().catch((e) => console.error('capfix', e)); // bir martalik
-    try { waitUntil(Promise.all([job, oldOff, capFix])); } catch { await job; }
+    if (!hookFix) {
+      hookFix = (async () => {
+        if (await readJson('sys/webhook-v2.json').catch(() => null)) return;
+        await writeJson('sys/webhook-v2.json', { at: new Date().toISOString(), r: await setupBot() });
+      })().catch((e) => console.error('hookfix', e));
+    }
+    try { waitUntil(Promise.all([job, oldOff, capFix, hookFix])); } catch { await job; }
     return send(res, 200, { ok: true });
   }
 

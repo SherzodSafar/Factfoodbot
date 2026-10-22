@@ -771,3 +771,6 @@ img { pointer-events: none; }
 .up-th { flex: none; width: 64px; height: 64px; border-radius: 10px; overflow: hidden; background: var(--surface-2); display: grid; place-items: center; }
 .up-th img { width: 100%; height: 100%; object-fit: cover; }
 .up-row textarea { flex: 1; min-height: 64px; margin: 0; }
+.up-th { position: relative; }
+.up-pct { position: absolute; inset: auto 0 0 0; text-align: center; font-size: 12px; font-weight: 800; color: #fff; background: rgba(0,0,0,.45); padding: 2px 0; }
+.up-pct:empty { display: none; }
