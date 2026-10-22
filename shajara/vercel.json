@@ -71,5 +71,10 @@
         }
       ]
     }
-  ]
+  ],
+  "git": {
+    "deploymentEnabled": {
+      "ccr-29541463-1vn1md": false
+    }
+  }
 }

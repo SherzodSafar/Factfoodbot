@@ -8,7 +8,8 @@ Telegram bot **@ShajaraAiBot** + Mini App (oila shajarasi). Eski bot (@Shajara_i
   Git: SherzodSafar/Factfoodbot, Root Directory `shajara`, Production Branch `shajara-main`.
 - **Branchlar:** ish — `ccr-29541463-1vn1md`; prod — `shajara-main`.
   Push: `git push origin ccr-29541463-1vn1md && git push origin ccr-29541463-1vn1md:shajara-main`.
-  Avto-deploy ba'zan ishlamaydi → Vercel MCP `create_deployment` (gitSource github, org SherzodSafar, repo Factfoodbot, ref shajara-main, sha, target production).
+  Avto-deploy (git push → shajara-main) ishlaydi; qo'lda `create_deployment` faqat zarur bo'lsa (Hobby: API orqali kuniga 100 deploy limiti). `ccr-29541463-1vn1md` uchun Vercel deploy o'chirilgan (vercel.json git.deploymentEnabled) — Render shu branchdan oladi.
+  Zaxira: Vercel MCP `create_deployment` (gitSource github, org SherzodSafar, repo Factfoodbot, ref shajara-main, sha, target production).
 - Bu muhitdan shajara-ai.vercel.app ga curl bloklangan → tekshirish uchun Vercel MCP (`get_deployment`, `get_runtime_logs`, `web_fetch_vercel_url`).
 - Bitta funksiya `api/index.js` (route=path rewrite), cron `/api/cron` har kuni 04:00 UTC (09:00 Toshkent) va `/api/cron?k=digest` 14:00 UTC (19:00).
 
