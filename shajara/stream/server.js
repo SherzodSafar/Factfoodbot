@@ -99,21 +99,39 @@ async function zipRoute(req, res, id, url) {
   const fname = `${job.title || 'Shajara'}.zip`;
   console.log('🗜', job.files.length, 'fayl', url.searchParams.get('send') ? '→ chat' : '→ yuklab olish');
   if (url.searchParams.get('send')) {
-    // kichik ZIP (≤ 49 MB) — Bot API orqali foydalanuvchining bot chatiga hujjat bo'lib boradi
-    const bufs = [];
-    let n = 0;
+    // ZIP ≤ 48 MB qismlarga bo'linadi (Bot API 50 MB chegarasi) va bot chatiga hujjat bo'lib boradi
+    const json = (code, o) => { res.writeHead(code, { 'content-type': 'application/json', ...cors }); res.end(JSON.stringify(o)); };
+    const LIM = 48 * 1048576;
+    const fits = job.files.filter((f) => f.z + 200 < LIM);
+    const groups = [];
+    for (const f of fits) {
+      const g = groups.find((x) => x.size + f.z + 200 < LIM);
+      if (g) { g.files.push(f); g.size += f.z + 200; } else groups.push({ files: [f], size: f.z + 200 });
+    }
+    if (!groups.length) return json(400, { ok: false, error: 'Fayllar 48 MB dan katta — ularni alohida yuboring' });
     try {
-      await writeZip(job, async (b) => { n += b.length; if (n > 49 * 1048576) throw new Error('ZIP 50 MB dan katta'); bufs.push(b); });
-      const form = new FormData();
-      form.append('chat_id', String(job.uid));
-      form.append('caption', `🗜 ${job.title} · ${job.files.length}`);
-      form.append('document', new Blob([Buffer.concat(bufs)], { type: 'application/zip' }), fname);
-      const r = await (await fetch(TGA('sendDocument'), { method: 'POST', body: form })).json();
-      res.writeHead(r.ok ? 200 : 502, { 'content-type': 'application/json', ...cors });
-      return res.end(JSON.stringify({ ok: !!r.ok, error: r.ok ? undefined : r.description }));
+      let prepared = null;
+      for (const [i, g] of groups.entries()) {
+        const bufs = [];
+        await writeZip({ files: g.files }, async (b) => { bufs.push(b); });
+        const name = groups.length > 1 ? `${job.title || 'Shajara'} (${i + 1}).zip` : fname;
+        const form = new FormData();
+        form.append('chat_id', String(job.uid));
+        form.append('caption', `🗜 ${job.title} · ${g.files.length}`);
+        form.append('document', new Blob([Buffer.concat(bufs)], { type: 'application/zip' }), name);
+        const r = await (await fetch(TGA('sendDocument'), { method: 'POST', body: form })).json();
+        if (!r.ok) return json(502, { ok: false, error: r.description });
+        if (groups.length === 1) {
+          const p = await (await fetch(TGA('savePreparedInlineMessage'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({
+            user_id: Number(job.uid), allow_user_chats: true, allow_bot_chats: true, allow_group_chats: true, allow_channel_chats: true,
+            result: { type: 'document', id: id.slice(0, 32), document_file_id: r.result.document.file_id, title: name, caption: `🗜 ${job.title}` },
+          }) })).json().catch(() => ({}));
+          prepared = p.ok ? p.result.id : null;
+        }
+      }
+      return json(200, { ok: true, parts: groups.length, prepared, skipped: job.files.length - fits.length });
     } catch (err) {
-      res.writeHead(500, { 'content-type': 'application/json', ...cors });
-      return res.end(JSON.stringify({ ok: false, error: err.message }));
+      return json(500, { ok: false, error: err.message });
     }
   }
   res.writeHead(200, { 'content-type': 'application/zip', 'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(fname)}`, ...cors });

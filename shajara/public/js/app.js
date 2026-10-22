@@ -74,6 +74,10 @@ async function confirmBox(text) {
   if (tg?.showConfirm && inTelegram) return new Promise((r) => tg.showConfirm(text, r));
   return confirm(text);
 }
+// o'z botining chati: havola mini app ichidan ochilmaydi — ilovani yopamiz, ostida bot chati
+function openBot() {
+  if (inTelegram && tg?.openTelegramLink) { tg.openTelegramLink(`https://t.me/${BOT}`); setTimeout(() => tg.close?.(), 300); } else window.open(`https://t.me/${BOT}`, '_blank');
+}
 function openLink(url) {
   if (url.startsWith('https://t.me/') && tg?.openTelegramLink && inTelegram) tg.openTelegramLink(url);
   else if (tg?.openLink && inTelegram) tg.openLink(url);
@@ -1215,8 +1219,7 @@ function openViewer(ids, index, opts = {}) {
       b.innerHTML = `${VI.heart(it.liked)}<span>${fmtN(it.likes)}</span>`;
       try { const r = await api(`album/i/${it.id}/like`, { method: 'POST' }); if (r.likes != null) { it.likes = r.likes; it.liked = r.liked; b.querySelector('span').textContent = fmtN(r.likes); } } catch {}
     }
-    if (k === 'send') return sendChoice(it, () => act('sendfile', it, sl, b));
-    if (k === 'sendfile') {
+    if (k === 'send') {
       b.disabled = true;
       try {
         const sh = tg?.shareMessage && tg.isVersionAtLeast?.('8.0') && await api(`album/i/${it.id}/share`, { method: 'POST' }).catch(() => null);
@@ -1644,7 +1647,7 @@ async function selAction(k) {
         <div class="sheet-body"><p>${t('{n} ta fayl bot chatiga yuborildi. U yerdan istalgan chatga yuboring: faylni bosib turing → «Forward» (Uzatish).', { n: r.n })}</p>
         ${r.skipped ? `<div class="hint">${t('{n} tasi yopiq albomdan — chatga yuborilmaydi.', { n: r.skipped })}</div>` : ''}
         <button class="btn btn-primary btn-block" id="tobot">🤖 ${t('Botni ochish')}</button></div>`);
-      sh.querySelector('#tobot').onclick = () => openLink(`https://t.me/${BOT}`);
+      sh.querySelector('#tobot').onclick = openBot;
       return;
     }
     if (k === 'zip') {
@@ -1652,40 +1655,26 @@ async function selAction(k) {
       const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">🗜 ZIP</div><button class="icon-btn" data-close>${I.close}</button></div>
         <div class="sheet-body"><p style="margin-top:0"><b>${esc(r.name)}</b><br><span class="muted small">${t('{n} ta fayl', { n: r.count })} · ${fmtSize(r.size)}</span></p>
         <p class="small muted">${t('ZIP ichida har bir albom alohida papka bo‘ladi.')}</p>
-        <button class="btn btn-primary btn-block" id="z-dl">📥 ${t('Yuklab olish')}</button>
-        ${r.send ? `<button class="btn btn-soft btn-block" style="margin-top:8px" id="z-send">📤 ${t('Bot chatiga yuborish')}</button><div class="hint">${t('Bot chatidan uni istalgan chatga yuborasiz (Forward).')}</div>`
-          : `<div class="hint">${t('50 MB dan katta (yoki yopiq albom fayli bor) ZIP faqat yuklab olinadi. Fayllarni chatga yuborish uchun «Yuborish»ni tanlang.')}</div>`}</div>`);
-      sh.querySelector('#z-dl').onclick = () => {
-        if (tg?.downloadFile && tg.isVersionAtLeast?.('8.0')) tg.downloadFile({ url: r.url, file_name: r.name }); else openLink(r.url);
-      };
-      sh.querySelector('#z-send')?.addEventListener('click', async (e) => {
+        <button class="btn btn-primary btn-block" id="z-send">📤 ${t('Telegramda yuborish')}</button>
+        <div class="hint">${t('ZIP Telegram’ga yuklanadi, so‘ng istalgan odam yoki chatni tanlaysiz. 50 MB dan katta ZIP bir necha qismga bo‘linib bot chatiga keladi.')}</div></div>`);
+      sh.querySelector('#z-send').addEventListener('click', async (e) => {
         const b = e.currentTarget;
         b.disabled = true;
         b.innerHTML = `<span class="spin"></span> ${t('ZIP tayyorlanmoqda…')}`;
         const j = await fetch(r.url + '&send=1').then((x) => x.json()).catch(() => ({ ok: false }));
-        if (j.ok) { closeAllSheets(); toast(t('ZIP bot chatiga yuborildi 📩')); } else { toast(j.error || t('Yuborib bo‘lmadi'), true); b.disabled = false; b.textContent = '📤 ' + t('Bot chatiga yuborish'); }
+        if (!j.ok) { toast(j.error || t('Yuborib bo‘lmadi'), true); b.disabled = false; b.textContent = '📤 ' + t('Telegramda yuborish'); return; }
+        closeAllSheets();
+        if (j.prepared && tg?.shareMessage) tg.shareMessage(j.prepared, (ok) => ok && toast(t('Yuborildi 📩')));
+        else {
+          const s2 = openSheet(`<div class="sheet-head"><div class="h2 grow">🗜 ZIP</div><button class="icon-btn" data-close>${I.close}</button></div>
+            <div class="sheet-body"><p>${t('ZIP {n} qismga bo‘linib bot chatiga yuborildi. U yerdan istalgan chatga yuboring (Forward).', { n: j.parts })}</p>
+            ${j.skipped ? `<div class="hint">${t('{n} ta fayl 48 MB dan katta — ZIP’ga sig‘madi, ularni alohida yuboring.', { n: j.skipped })}</div>` : ''}
+            <button class="btn btn-primary btn-block" id="tobot">🤖 ${t('Botni ochish')}</button></div>`);
+          s2.querySelector('#tobot').onclick = openBot;
+        }
       });
     }
   } catch (err) { toast(err.message, true); }
-}
-
-// Yuborish: havola bilan istalgan odamga (Telegram'ning havola ulashish oynasi — kontaktlar, bir nechta chat)
-// yoki faylning o'zini tanlangan chatga
-function sendChoice(it, sendFile) {
-  const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">📤 ${t('Yuborish')}</div><button class="icon-btn" data-close>${I.close}</button></div>
-    <div class="sheet-body">
-      <button class="card banner up-way" id="s-link"><div style="font-size:24px">🔗</div><div class="grow"><b>${t('Istalgan odamga — havola bilan')}</b><div class="small muted">${t('Kontaktlar, chatlar, guruhlar — bir nechtasini birdan tanlash mumkin. Havolani ochgan kishiga bot faylni yuboradi.')}</div></div>${I.chev}</button>
-      <button class="card banner up-way" id="s-file"><div style="font-size:24px">📎</div><div class="grow"><b>${t('Faylning o‘zini chatga')}</b><div class="small muted">${t('Fayl tanlangan chatga to‘g‘ridan-to‘g‘ri boradi.')}</div></div>${I.chev}</button>
-    </div>`);
-  sh.querySelector('#s-link').onclick = async () => {
-    try {
-      const r = await api(`album/i/${it.id}/link`, { method: 'POST' });
-      const text = [it.caption || '', t('Faylni ochish uchun havolani bosing 👇')].filter(Boolean).join('\n');
-      closeTopSheet();
-      openLink(`https://t.me/share/url?url=${encodeURIComponent(r.url)}&text=${encodeURIComponent(text)}`);
-    } catch (err) { toast(err.message, true); }
-  };
-  sh.querySelector('#s-file').onclick = () => { closeTopSheet(); sendFile(); };
 }
 
 async function refreshAlbum() {
@@ -1708,7 +1697,7 @@ function uploadSheet() {
         <li>${t('Faylni botga yuboring (📎 → Fayl). Asl sifatda saqlanishi uchun «Fayl» sifatida yuboring.')}</li>
         <li>${t('Bot qaysi albomga qo‘shishni so‘raydi (🔒 yopiq albomlar ham bor), so‘ng izoh yozasiz.')}</li></ol>
       <button class="btn btn-primary btn-block" id="tobot">🤖 ${t('Botni ochish')}</button>`;
-    sh.querySelector('#tobot').onclick = () => openLink(`https://t.me/${BOT}`);
+    sh.querySelector('#tobot').onclick = openBot;
   });
 }
 
@@ -1741,7 +1730,7 @@ function uploadForm(sh) {
     bw.classList.toggle('hidden', !big.length);
     if (big.length) {
       bw.innerHTML = `⚠️ ${t('{n} ta fayl 50 MB dan katta — ularni bot orqali yuboring.', { n: big.length })}${inTelegram ? `<button type="button" class="btn btn-ghost btn-sm" style="margin-top:8px;width:100%" id="tobot2">🤖 ${t('Botni ochish')}</button>` : ''}`;
-      bw.querySelector('#tobot2')?.addEventListener('click', () => openLink(`https://t.me/${BOT}`));
+      bw.querySelector('#tobot2')?.addEventListener('click', openBot);
     }
     sh.querySelector('#ub').disabled = !files.length;
     sh.querySelector('#ub').textContent = files.length ? t('Yuklash ({n})', { n: files.length }) : t('Yuklash');
