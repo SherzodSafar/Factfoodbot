@@ -763,6 +763,7 @@ async function renderAlbumTab(el) {
   if (!S.album) el.innerHTML = `<div class="empty"><span class="spin" style="color:var(--primary)"></span></div>`;
   let A;
   try { A = await loadAlbum(); } catch (err) { el.innerHTML = `<div class="empty">${esc(err.message)}</div>`; return; }
+  wakeStream(A.stream);
   const counts = {};
   for (const it of A.items) counts[it.album] = (counts[it.album] || 0) + 1;
   const albums = A.albums.filter((a) => counts[a.id] || isEdit() || a.priv);
@@ -1150,9 +1151,9 @@ function openViewer(ids, index, opts = {}) {
     sl.querySelectorAll('[data-act]').forEach((b) => (b.onclick = (e) => { e.stopPropagation(); if (b.dataset.held) { delete b.dataset.held; return; } act(b.dataset.act, it, sl, b); }));
     for (const [sel, k] of [['.like', 'likes'], ['[data-act="seen"]', 'seen']]) { const b = sl.querySelector(sel); if (b) onHold(b, () => peopleSheet(it, k)); }
     const v = sl.querySelector('video');
-    if (v) bindVideo(v, sl);
+    if (v) { streamFallback(v, it); bindVideo(v, sl); }
     const au = sl.querySelector('audio');
-    if (au) bindAudio(au, sl);
+    if (au) { streamFallback(au, it); bindAudio(au, sl); }
     const img = sl.querySelector('img.rv-img');
     if (img) bindPinch(img);
   }
@@ -1542,6 +1543,31 @@ function albumMenu(aid) {
     if (!(await confirmBox(t('Albom o‘chirilsinmi?')))) return;
     try { await api(`album/a/${aid}`, { method: 'DELETE' }); S.albumFilter = 'all'; closeAllSheets(); await refreshAlbum(); } catch (err) { toast(err.message, true); }
   };
+}
+
+// Katta video Render'dagi oqim serveridan; u 8 soniyada javob bermasa (uxlagan/ishlamayapti) — Vercel orqali
+function streamFallback(m, it) {
+  if (!it.src2) return;
+  let done = false;
+  const go = () => {
+    if (done) return;
+    done = true;
+    clearTimeout(tm);
+    const play = !m.paused;
+    m.src = it.src2;
+    m.load();
+    if (play) m.play().catch(() => {});
+  };
+  const tm = setTimeout(go, 8000);
+  m.addEventListener('loadedmetadata', () => { done = true; clearTimeout(tm); }, { once: true });
+  m.addEventListener('error', go, { once: true });
+}
+// bepul Render 15 daqiqada uxlaydi — albom ochilganda oldindan uyg'otib qo'yamiz
+let streamWoke = 0;
+function wakeStream(u) {
+  if (!u || Date.now() - streamWoke < 10 * 60e3) return;
+  streamWoke = Date.now();
+  fetch(u + '/health', { mode: 'no-cors' }).catch(() => {});
 }
 
 async function refreshAlbum() {

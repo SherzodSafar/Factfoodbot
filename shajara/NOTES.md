@@ -51,3 +51,4 @@ Telegram bot **@ShajaraAiBot** + Mini App (oila shajarasi). Eski bot (@Shajara_i
 
 ## Foydalanuvchi afzalliklari
 O'zbekcha, qisqa javob, tokenlarni tejash, tez bajarish. Ruxsat umumiy berilgan ("hammasini o'zing qil").
+- Render oqim serveri (`stream/server.js`, https://shajara-stream.onrender.com, yangi akkaunt, `ccr-29541463-1vn1md` dan avto-deploy): kerakli env — BOT_TOKEN, TG_API_ID, TG_API_HASH, MT_SESSION=render (DATABASE_URL ixtiyoriy — sessiyani saqlash; APP_SECRET shart emas: imzoni Vercel `/api/media?...&chk=1` → 204 tekshiradi, kesh). Vercel'da `STREAM_URL` bo'lsa katta video `src` Render'ga, `src2` — Vercel zaxirasi (ilova 8 soniyada javob bo'lmasa yoki xatoda o'tadi), albom ochilganda `/health` bilan uyg'otiladi.

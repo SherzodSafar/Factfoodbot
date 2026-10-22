@@ -99,6 +99,7 @@ export function publicAlbum(doc, tree, uid) {
       return { ...base, owner: true, memberList: (a.members || []).map((id) => ({ id, name: nameOf(id) })) };
     }),
     // maxfiy albom fayli boshqalarga faqat «umumiyda ham ko'rsatish» yoqilgan bo'lsa ko'rinadi (umumiy albomda)
+    stream: STREAM_URL || null,
     items: doc.items.filter((it) => vis.get(it.album) !== false || (it.pub && it.alsoIn)).map((it) => {
       const kind = kindOf(it);
       const base = {
@@ -112,10 +113,13 @@ export function publicAlbum(doc, tree, uid) {
       // 20 MB dan katta video/audio — MTProto orqali oqim bilan (kalitlar sozlangan bo'lsa)
       const big = (kind === 'video' || kind === 'audio') && it.size > INLINE_MAX && mtprotoOn();
       const ok = kind === 'image' ? !it.size || it.size <= imgMax() : kind !== 'file' && (!it.size || it.size <= INLINE_MAX || big);
+      const u = ok ? mediaUrl(it.fileId, EXT[it.mime] || (it.type === 'voice' ? 'ogg' : it.type === 'photo' ? 'jpg' : '')) + (big ? `&z=${it.size}` : '') : null;
+      const viaStream = !!(u && big && STREAM_URL);
       return {
         ...base, ...pv,
         thumb: it.thumbId ? mediaUrl(it.thumbId) : null,
-        src: ok ? (big ? STREAM_URL : '') + mediaUrl(it.fileId, EXT[it.mime] || (it.type === 'voice' ? 'ogg' : it.type === 'photo' ? 'jpg' : '')) + (big ? `&z=${it.size}` : '') : null,
+        // src2 — Render javob bermasa (uxlagan/sozlanmagan) ilova Vercel orqali ochadi
+        src: viaStream ? STREAM_URL + u : u, src2: viaStream ? u : undefined,
       };
     }),
   };

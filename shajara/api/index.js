@@ -660,6 +660,7 @@ async function route(req, res) {
   if (path === 'media' && m === 'GET') {
     const f = url.searchParams.get('f') || '';
     if (!verifyMedia(f, url.searchParams.get('e'), url.searchParams.get('s'))) throw new HttpError(403, 'Havola eskirgan');
+    if (url.searchParams.get('chk')) { res.statusCode = 204; return res.end(); } // Render oqim serveri imzoni shu yerda tekshiradi
     // R2 keshida bo'lsa — to'g'ridan-to'g'ri o'sha yerga (tez, Range bilan, server trafigisiz)
     const xext = (url.searchParams.get('x') || '').toLowerCase().replace(/[^a-z0-9]/g, '');
     const r2 = await import('../lib/r2.js');
