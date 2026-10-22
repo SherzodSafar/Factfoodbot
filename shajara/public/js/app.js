@@ -78,8 +78,8 @@ async function confirmBox(text) {
 function openBot() {
   if (inTelegram && tg?.openTelegramLink) { tg.openTelegramLink(`https://t.me/${BOT}`); setTimeout(() => tg.close?.(), 300); } else window.open(`https://t.me/${BOT}`, '_blank');
 }
-// fayl/ZIP ni istalgan chatga: inline (papkali chat tanlash oynasi) yoki «Share with» oynasi
-function shareVia(q, prepared) {
+// fayl/ZIP ni istalgan chatga — Telegram «Share with» oynasi (savePreparedInlineMessage)
+function shareVia(prepared) {
   if (prepared && tg?.shareMessage) { tg.shareMessage(prepared, (ok) => ok && toast(t('Yuborildi 📩'))); return true; }
   return false;
 }
@@ -1228,7 +1228,7 @@ function openViewer(ids, index, opts = {}) {
       b.disabled = true;
       try {
         const sh = tg?.shareMessage && tg.isVersionAtLeast?.('8.0') && await api(`album/i/${it.id}/share`, { method: 'POST' }).catch(() => null);
-        const shared = shareVia(null, sh?.id);
+        const shared = shareVia(sh?.id);
         const r = shared ? {} : await api(`album/i/${it.id}/send`, { method: 'POST' });
         if (!shared) toast(t('Chatga yuborildi 📩'));
         it.sends = r.sends ?? (it.sends || 0) + 1;
@@ -1670,7 +1670,7 @@ async function selAction(k) {
         const j = await fetch(r.url + '&send=1').then((x) => x.json()).catch(() => ({ ok: false }));
         if (!j.ok) { toast(j.error || t('Yuborib bo‘lmadi'), true); b.disabled = false; b.textContent = '📤 ' + t('Telegramda yuborish'); return; }
         closeAllSheets();
-        if (!shareVia(null, j.prepared)) {
+        if (!shareVia(j.prepared)) {
           const s2 = openSheet(`<div class="sheet-head"><div class="h2 grow">🗜 ZIP</div><button class="icon-btn" data-close>${I.close}</button></div>
             <div class="sheet-body"><p>${t('ZIP {n} qismga bo‘linib bot chatiga yuborildi. U yerdan istalgan chatga yuboring (Forward).', { n: j.parts })}</p>
             ${j.skipped ? `<div class="hint">${t('{n} ta fayl 48 MB dan katta — ZIP’ga sig‘madi, ularni alohida yuboring.', { n: j.skipped })}</div>` : ''}
@@ -2992,7 +2992,7 @@ async function renderBranchWizard(treeId, bid) {
     const who = (x) => `<b>${esc(x.name || '?')}</b>${x.fname ? ` <span class="muted">(${t('otasining ismi')}: ${esc(x.fname)})</span>` : ''} · ${x.unk ? `<span class="muted">${t('Bilmayman')}</span>` : esc(x.birth ? fmtDate(x.birth) : '—')}${x.deceased ? ` · † ${esc(x.death ? fmtDate(x.death) : '')}` : ''}`;
     $app.innerHTML = `<div class="screen"><div class="topbar"><div class="grow"><div class="title ellipsis">📋 ${t('Tekshirib chiqing')}</div></div></div>
       <div class="scroll" style="padding:12px 16px"><div class="card note" style="margin-bottom:12px">${t('Yuborishdan oldin hammasini yana bir bor diqqat bilan o‘qib chiqing: ismlar, familiyalar va sanalar. Xato bo‘lsa — «✏️ Tuzatish»ni bosing va to‘g‘irlang.')}</div>
-      ${ids.map((id, k) => { const p = W.get(id); return `<div class="card" style="margin-bottom:10px"><div class="row" style="justify-content:space-between;align-items:flex-start;gap:8px"><div class="grow">
+      ${ids.map((id, k) => { const p = W.get(id); return `<div class="card" style="margin-bottom:10px;padding:12px 14px"><div class="row" style="justify-content:space-between;align-items:flex-start;gap:8px"><div class="grow">
         <div>👤 ${who(p)}</div>
         ${spousesOf(id).map((x) => `<div class="small" style="margin-top:4px">💍 ${who(x)}</div>`).join('')}
         ${kidsOf(id).map((x) => `<div class="small" style="margin-top:4px">${x.gender === 'f' ? '👧' : '👦'} ${who(x)}</div>`).join('')}</div>
@@ -3122,12 +3122,12 @@ async function branchesSheet() {
     };
     const c = r.complete;
     const MISS = { name: t('ism'), birth: t('tug‘ilgan'), death: t('vafot') };
-    const panel = `<div class="card" style="margin-bottom:12px"><div class="row" style="justify-content:space-between"><b>📊 ${t('To‘liqlik')}</b><b style="color:var(--primary)">${c.pct}%</b></div>
+    const panel = `<div class="card" style="margin-bottom:12px;padding:12px 14px"><div class="row" style="justify-content:space-between"><b>📊 ${t('To‘liqlik')}</b><b style="color:var(--primary)">${c.pct}%</b></div>
       <div class="bw-prog"><i style="width:${c.pct}%"></i></div>
       <div class="small muted">${c.missing.length ? t('Ma’lumoti to‘liq bo‘lmagan: {n} kishi', { n: c.missing.length }) : t('Barcha ma’lumotlar to‘liq ✓')}</div>
       ${c.missing.length ? `<details style="margin-top:6px"><summary class="small">${t('Ro‘yxatni ko‘rish')}</summary>${c.missing.map((x) => `<div class="pr-line" data-pp="${x.id}">👤 <b>${esc(nm(x.name || '?'))}</b> <span class="muted">— ${x.miss.map((k) => MISS[k]).join(', ')}</span></div>`).join('')}</details>` : ''}</div>`;
     const dirty = S.tree.persons.filter((p) => (p.father_id || p.mother_id) && stripSur(p.name) !== String(p.name || '').trim());
-    const clean = dirty.length ? `<div class="card" style="margin-bottom:12px"><b>✂️ ${t('{n} kishining ismida familiya yoki otasining ismi ham yozilgan', { n: dirty.length })}</b>
+    const clean = dirty.length ? `<div class="card" style="margin-bottom:12px;padding:12px 14px"><b>✂️ ${t('{n} kishining ismida familiya yoki otasining ismi ham yozilgan', { n: dirty.length })}</b>
       <div class="small muted" style="margin:4px 0 8px">${dirty.slice(0, 6).map((p) => `${esc(p.name)} → <b>${esc(stripSur(p.name))}</b>`).join('<br>')}${dirty.length > 6 ? '<br>…' : ''}</div>
       <button class="btn btn-primary btn-sm" id="clean-names">${t('Faqat ismni qoldirish')}</button></div>` : '';
     body.innerHTML = `${clean}${panel}${r.proposals.length ? r.proposals.map((pr, i) => `<div class="card pr-card"><div><b>${t('{name} oilasi', { name: esc(nm(pr.headName)) })}</b> · 👤 ${esc(pr.by?.name || '')} · <span class="muted">${esc(pr.at.slice(0, 10))}</span></div>
@@ -3154,8 +3154,9 @@ async function branchesSheet() {
       box.innerHTML = pr.ops.map((o, k) => {
         const keys = o.op === 'add' ? ['name', 'fname', 'birth', 'death'] : Object.keys(o.f || {}).filter((x) => LBL[x]);
         if (!keys.length) return line(o, pr);
-        return `<div class="pr-edit" data-op="${k}"><div class="small" style="margin:6px 0 2px"><b>${o.op === 'add' ? '➕' : `✏️ ${esc(pname(o.id))}`}</b></div>${keys.map((x) => `<label class="fl"><span>${LBL[x]}</span><input class="input" data-k="${x}" value="${esc(x === 'birth' || x === 'death' ? dateToInput(o.f[x]) : o.f[x] || '')}"${x === 'birth' || x === 'death' ? ' inputmode="numeric" placeholder="20.03.1958"' : ''}></label>`).join('')}</div>`;
+        return `<div class="pr-edit" data-op="${k}"><div class="small" style="margin:6px 0 2px"><b>${o.op === 'add' ? '➕' : `✏️ ${esc(pname(o.id))}`}</b></div>${keys.map((x) => `<label class="fl"><span>${LBL[x]}</span><input class="input" data-k="${x}" value="${esc(x === 'birth' || x === 'death' ? dateToInput(o.f[x]) : o.f[x] || '')}"${x === 'birth' || x === 'death' ? ` inputmode="numeric" placeholder="${x === 'birth' ? '20.03.1958' : '—'}"` : ''}></label>`).join('')}</div>`;
       }).join('');
+      box.style.maxHeight = 'none';
       b.remove();
     }));
     const edits = (card) => {

@@ -629,7 +629,7 @@ body:has(#sheet-root > *) .ai-fab, body:has(.rv) .ai-fab { opacity: 0; pointer-e
 .bw-warn { margin-top: 6px; font-size: 12px; color: #c77700; }
 .bw-nav { display: flex; gap: 8px; margin-top: 14px; }
 .bw-nav .btn { flex: 1; }
-.pr-card { margin: 8px 0; }
+.pr-card { margin: 8px 0; padding: 12px 14px; }
 .pr-ops { margin: 8px 0; font-size: 13px; max-height: 220px; overflow: auto; }
 .pr-line { padding: 2px 0; border-bottom: 1px dashed color-mix(in srgb, var(--ink) 10%, transparent); }
 
