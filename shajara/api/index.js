@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import crypto from 'node:crypto';
 import {
   verifyToken, signToken, verifyInitData, hashCode, normalizeCode, rateLimit, signInvite, parseInvite, checkInvite,
-  signMedia, verifyMedia, randomCode, randomId,
+  signMedia, verifyMedia, randomCode, randomId, signShare,
 } from '../lib/auth.js';
 import { readJson, writeJson, getFile, putFile, deleteKey, listKeys, updateJson } from '../lib/store.js';
 import {
@@ -444,7 +444,7 @@ async function route(req, res) {
       if (!canUpload(tree, uid, role)) throw new HttpError(403, 'Ruxsat yo‘q');
       const body = await readBody(req);
       if (body.priv) {
-        if (!uid || !myHeads().some((h) => h.id === body.priv)) throw new HttpError(403, 'Bu shox uchun albom ochishga ruxsat yo‘q');
+        if (!uid || !myHeads().some((h) => h.id === body.priv)) throw new HttpError(403, 'Bu oila uchun albom ochishga ruxsat yo‘q');
         const a = { id: randomId(8), name: cleanName(body.name) || 'Oilaviy albom', createdAt: new Date().toISOString(), by: by.name, owner: uid, priv: { head: body.priv }, members: [uid], invites: {}, req: [] };
         await mutateAlbum(tree.id, (doc) => { doc.albums.push(a); });
         return send(res, 200, { album: a });
@@ -699,7 +699,13 @@ async function route(req, res) {
         await mutateAlbum(tree.id, (d) => { const x = d.items.find((y) => y.id === iid); if (x) x.tags = tags; });
         return send(res, 200, { ok: true, tags });
       }
-      if (ia?.priv && !it.pub && ['c', 'send', 'share'].includes(parts[3]) && m === 'POST') throw new HttpError(400, 'Yopiq albom faylini chatga yuborib yoki izoh yozib bo‘lmaydi');
+      if (ia?.priv && !it.pub && ['c', 'send', 'share', 'link'].includes(parts[3]) && m === 'POST') throw new HttpError(400, 'Yopiq albom faylini chatga yuborib yoki izoh yozib bo‘lmaydi');
+      if (parts[3] === 'link' && m === 'POST') {
+        // istalgan odamga (Telegram'ning havola ulashish oynasi): havolani ochgan kishiga bot faylni yuboradi
+        if (!it.fileId) throw new HttpError(400, 'Bu faylni ulashib bo‘lmaydi');
+        const k = `${tree.id}_${iid}`;
+        return send(res, 200, { url: `https://t.me/${BOT()}?start=f_${k}_${signShare(k)}` });
+      }
       if (parts[3] === 'share' && m === 'POST') {
         // Telegram'ning «istalgan chatga yuborish» oynasi uchun tayyor xabar (Bot API 8.0: savePreparedInlineMessage)
         if (!uid || !it.fileId) throw new HttpError(400, 'Bu faylni ulashib bo‘lmaydi');

@@ -1,12 +1,12 @@
 // Telegram bot: buyruqlar, albomga yuklash, guruh va kanalni ulash, to'lovlar.
-import { tg, tgUpload, mediaOf, downloadFile } from './telegram.js';
+import { tg, tgUpload, mediaOf, downloadFile, sendStored } from './telegram.js';
 import { waitUntil } from '@vercel/functions';
 const ai = () => import('./ai.js'); // og'ir SDK faqat kerak bo'lganda yuklanadi
 import { importGraph, planGraph } from './tree.js';
 import { t, normLang, LANGS } from './i18n.js';
 import { randomQuote } from './quotes.js';
 import { readJson, writeJson, deleteKey, listKeys } from './store.js';
-import { signInvite, parseInvite } from './auth.js';
+import { signInvite, parseInvite, verifyShare } from './auth.js';
 import { loadTree, mutateTree, actor } from './tree.js';
 import { getUser, updateUser } from './users.js';
 import { loadAlbum, addToAlbum, canUpload, cleanName, mutateAlbum, albumAccess } from './album.js';
@@ -59,6 +59,9 @@ async function onPrivate(msg) {
     if (!user) await updateUser(from.id, from, () => {});
     const q = randomQuote();
     let extra = '';
+    // albom faylining ulashish havolasi: f_<tree>_<fayl>_<imzo>
+    const fs0 = /^f_([a-z0-9]{6,20})_([a-z0-9]{10})_([A-Za-z0-9_-]{12})$/.exec(payload);
+    if (fs0) return sendSharedFile(from, lang, fs0);
     const pinv = parseInvite(payload);
     const br = /^br_([a-z0-9]{6,20})_([A-Za-z0-9]{4,16})$/.exec(payload) || (payload.startsWith('d_') ? await (await import('./branch.js')).resolveDlg(payload) : null);
     if (br) {
@@ -278,6 +281,15 @@ async function onGroup(msg) {
   }
 }
 
+async function sendSharedFile(from, lang, [, treeId, iid, sig]) {
+  const doc = verifyShare(`${treeId}_${iid}`, sig) ? await loadAlbum(treeId).catch(() => null) : null;
+  const it = doc?.items.find((x) => x.id === iid);
+  const a = it && doc.albums.find((x) => x.id === it.album);
+  if (!it?.fileId || (a?.priv && !it.pub)) return send(from.id, t(lang, 'Havola eskirgan yoki bekor qilingan.'));
+  const r = await sendStored(from.id, it, `📁 <b>${escapeHtml(a?.name || '')}</b>${it.caption ? '\n' + escapeHtml(it.caption) : ''}`);
+  if (!r.ok) return send(from.id, t(lang, 'Havola eskirgan yoki bekor qilingan.'));
+}
+
 // ---------------------------------------------------------------- albomga yuklash --
 async function startUpload({ from, chatId, lang, msg, media, tree, replyTo }) {
   const user = await getUser(from.id);
@@ -289,15 +301,15 @@ async function startUpload({ from, chatId, lang, msg, media, tree, replyTo }) {
   if (!canUpload(tree, String(from.id), null)) return send(chatId, t(lang, 'Bu shajara albomiga fayl qo‘shishga ruxsatingiz yo‘q.'), { reply_to_message_id: replyTo });
 
   const group = msg.media_group_id || null;
+  const item = { ...media, cap: msg.caption || null, mid: msg.message_id }; // har faylning o'z izohi
   const { result: isNew } = await updateUser(from.id, from, (d) => {
     const p = d.pending;
     const fresh = p && p.treeId === treeId && p.chat === chatId && Date.now() - p.at < 5 * 60e3 && p.stage === 'pick';
     if (fresh && (group ? p.group === group : true) && p.items.length < 50) {
-      p.items.push(media);
-      if (msg.caption && !p.caption) p.caption = msg.caption;
+      p.items.push(item);
       return false;
     }
-    d.pending = { treeId, chat: chatId, items: [media], caption: msg.caption || null, group, stage: 'pick', at: Date.now() };
+    d.pending = { treeId, chat: chatId, items: [item], group, stage: 'pick', at: Date.now() };
     return true;
   });
   if (!isNew) return;
@@ -325,20 +337,31 @@ async function continueUpload({ from, chatId, lang, text, cmd, replyTo }) {
   if (p.stage === 'newalbum') {
     const name = cleanName(text);
     if (!name || cmd) return;
-    await updateUser(from.id, from, (d) => { d.pending.albumName = name; d.pending.stage = d.pending.caption ? 'done' : 'caption'; });
-    if (!p.caption) return askCaption(chatId, lang, replyTo);
-    return finishUpload(from, chatId, lang);
+    await updateUser(from.id, from, (d) => { d.pending.albumName = name; d.pending.stage = 'caption'; });
+    return askNextCaption(from, chatId, lang);
   }
   if (p.stage === 'caption') {
-    await updateUser(from.id, from, (d) => { d.pending.caption = cmd === '/skip' ? null : cleanName(text, 900); d.pending.stage = 'done'; });
-    return finishUpload(from, chatId, lang);
+    await updateUser(from.id, from, (d) => {
+      const it = d.pending?.items?.[d.pending.ci || 0];
+      if (it) it.cap = cmd === '/skip' ? '' : cleanName(text, 900) || '';
+    });
+    return askNextCaption(from, chatId, lang);
   }
 }
 
-const askCaption = (chatId, lang, replyTo) =>
-  send(chatId, t(lang, '✍️ Fayl(lar)ga izoh yozing — kim, qachon, qayerda? (o‘tkazib yuborish: /skip)'), {
-    reply_markup: { force_reply: true, selective: true }, reply_to_message_id: replyTo,
+// Har bir faylga alohida izoh: izohi yo'q fayllar uchun birma-bir, o'sha faylga javob tariqasida so'raymiz
+async function askNextCaption(from, chatId, lang) {
+  const p = (await getUser(from.id))?.pending;
+  if (!p) return;
+  const i = p.caption ? -1 : p.items.findIndex((x) => x.cap == null); // p.caption — eski (umumiy izohli) yuklamalar
+  if (i < 0) return finishUpload(from, chatId, lang);
+  await updateUser(from.id, from, (d) => { if (d.pending) d.pending.ci = i; });
+  const n = p.items.length;
+  return send(chatId, n > 1 ? t(lang, '✍️ {i}/{n}-fayl uchun izoh yozing — kim, qachon, qayerda? (o‘tkazib yuborish: /skip)', { i: i + 1, n }) : t(lang, '✍️ Fayl(lar)ga izoh yozing — kim, qachon, qayerda? (o‘tkazib yuborish: /skip)'), {
+    reply_markup: { force_reply: true, selective: true },
+    ...(p.items[i].mid ? { reply_parameters: { message_id: p.items[i].mid, allow_sending_without_reply: true } } : {}),
   });
+}
 
 async function finishUpload(from, chatId, lang) {
   const { result: p } = await updateUser(from.id, from, (d) => {
@@ -412,9 +435,8 @@ async function onCallback(cq) {
       await updateUser(from.id, from, (d) => { d.pending.stage = 'newalbum'; d.pending.at = Date.now(); });
       return send(chatId, t(lang, 'Yangi albom nomini yozing (masalan: To‘y 2024):'), { reply_markup: { force_reply: true, selective: true } });
     }
-    await updateUser(from.id, from, (d) => { d.pending.albumId = what; d.pending.stage = d.pending.caption ? 'done' : 'caption'; d.pending.at = Date.now(); });
-    if (!user.pending.caption) return askCaption(chatId, lang);
-    return finishUpload(from, chatId, lang);
+    await updateUser(from.id, from, (d) => { d.pending.albumId = what; d.pending.stage = 'caption'; d.pending.at = Date.now(); });
+    return askNextCaption(from, chatId, lang);
   }
   return answer();
 }

@@ -22,6 +22,10 @@ function safeEqual(a, b) {
   return a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
 }
 
+// Albom faylini havola bilan ulashish (t.me/bot?start=f_…): ochgan kishiga bot faylni yuboradi
+export const signShare = (s) => mac('share:' + s, 12);
+export const verifyShare = (s, sig) => safeEqual(String(sig || ''), signShare(s));
+
 /** Sessiya tokeni. role: 'view'|'edit'; ver: kodlar o'zgarsa eski tokenlar bekor; uid: Telegram foydalanuvchisi. */
 export function signToken({ treeId, role, ver, uid }, days = 120) {
   const payload = b64url(JSON.stringify({ t: treeId, r: role, v: ver, u: uid || 0, e: Date.now() + days * 864e5 }));

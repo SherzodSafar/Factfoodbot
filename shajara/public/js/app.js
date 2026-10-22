@@ -540,7 +540,7 @@ function renderTreeTab(el) {
       const open = !tv.collapsed.size;
       if (open) tv.collapseAll(); else tv.expandAll();
       tv.showRoot();
-      toast(open ? t('Shoxlar yig‘ildi — ochish uchun raqamni bosing') : t('Barcha shoxlar ochildi'));
+      toast(open ? t('Oilalar yig‘ildi — ochish uchun raqamni bosing') : t('Barcha oilalar ochildi'));
     }
   }));
   const input = el.querySelector('#ts');
@@ -808,7 +808,22 @@ async function renderAlbumTab(el) {
     sh.querySelectorAll('[data-pick]').forEach((b) => (b.onclick = () => { S.albumFilter = b.dataset.pick; haptic('light'); closeAllSheets(); renderAlbumTab(el); }));
   };
   const order = (f === 'all' ? A.albums.filter((a) => counts[a.id]).flatMap((a) => A.items.filter((it) => it.album === a.id)) : A.items.filter((it) => it.album === f)).map((it) => it.id);
+  el.querySelectorAll('[data-item]').forEach((b) => {
+    // bosib turish (0.45 s) — tanlash rejimi yoqiladi va shu fayl belgilanadi
+    let lp = null;
+    let xy = null;
+    const stop = () => { clearTimeout(lp); lp = null; };
+    b.addEventListener('pointerdown', (e) => {
+      xy = [e.clientX, e.clientY];
+      stop();
+      lp = setTimeout(() => { S.lpAt = Date.now(); haptic('medium'); (S.sel ||= new Set()).add(b.dataset.item); renderAlbumTab(el); }, 450);
+    });
+    b.addEventListener('pointermove', (e) => { if (lp && Math.hypot(e.clientX - xy[0], e.clientY - xy[1]) > 10) stop(); });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) => b.addEventListener(ev, stop));
+    b.addEventListener('contextmenu', (e) => e.preventDefault());
+  });
   el.querySelectorAll('[data-item]').forEach((b) => (b.onclick = () => {
+    if (Date.now() - (S.lpAt || 0) < 700) return; // bosib turishdan keyingi «click»
     if (!S.sel) return openViewer(order, order.indexOf(b.dataset.item));
     const id = b.dataset.item;
     S.sel.has(id) ? S.sel.delete(id) : S.sel.add(id);
@@ -842,7 +857,7 @@ async function privAlbumSheet() {
     return whoAmISheet();
   }
   const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">🔒 ${t('Oilaviy albom')}</div><button class="icon-btn" data-close>${I.close}</button></div>
-    <div class="sheet-body"><p class="small muted" style="margin-top:0">${t('Bu albomni faqat tanlangan shox oilasi a’zolari ko‘radi. Boshqa shoxlar va boshqalar ko‘ra olmaydi.')} ${t('Fayllar shu albom uchun alohida ochiladigan yopiq Telegram kanalda saqlanadi.')}</p>
+    <div class="sheet-body"><p class="small muted" style="margin-top:0">${t('Bu albomni faqat tanlangan oila a’zolari ko‘radi. Boshqa oilalar va begonalar ko‘ra olmaydi.')} ${t('Fayllar shu albom uchun alohida ochiladigan yopiq Telegram kanalda saqlanadi.')}</p>
     <div class="field"><label>${t('Qaysi oila uchun')}</label><select class="input" name="head">${heads.map((h) => `<option value="${h.id}">${esc(nm(h.name))} ${t('oilasi')}</option>`).join('')}</select></div>
     <div class="field"><label>${t('Albom nomi')}</label><input class="input" name="name" maxlength="60" value="${esc(t('{name} oilasi', { name: nm(heads[0].name) }))}"></div>
     <button class="btn btn-primary btn-block" id="pa-go">${t('Yaratish')}</button></div>`);
@@ -1200,7 +1215,8 @@ function openViewer(ids, index, opts = {}) {
       b.innerHTML = `${VI.heart(it.liked)}<span>${fmtN(it.likes)}</span>`;
       try { const r = await api(`album/i/${it.id}/like`, { method: 'POST' }); if (r.likes != null) { it.likes = r.likes; it.liked = r.liked; b.querySelector('span').textContent = fmtN(r.likes); } } catch {}
     }
-    if (k === 'send') {
+    if (k === 'send') return sendChoice(it, () => act('sendfile', it, sl, b));
+    if (k === 'sendfile') {
       b.disabled = true;
       try {
         const sh = tg?.shareMessage && tg.isVersionAtLeast?.('8.0') && await api(`album/i/${it.id}/share`, { method: 'POST' }).catch(() => null);
@@ -1653,6 +1669,25 @@ async function selAction(k) {
   } catch (err) { toast(err.message, true); }
 }
 
+// Yuborish: havola bilan istalgan odamga (Telegram'ning havola ulashish oynasi — kontaktlar, bir nechta chat)
+// yoki faylning o'zini tanlangan chatga
+function sendChoice(it, sendFile) {
+  const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">📤 ${t('Yuborish')}</div><button class="icon-btn" data-close>${I.close}</button></div>
+    <div class="sheet-body">
+      <button class="card banner up-way" id="s-link"><div style="font-size:24px">🔗</div><div class="grow"><b>${t('Istalgan odamga — havola bilan')}</b><div class="small muted">${t('Kontaktlar, chatlar, guruhlar — bir nechtasini birdan tanlash mumkin. Havolani ochgan kishiga bot faylni yuboradi.')}</div></div>${I.chev}</button>
+      <button class="card banner up-way" id="s-file"><div style="font-size:24px">📎</div><div class="grow"><b>${t('Faylning o‘zini chatga')}</b><div class="small muted">${t('Fayl tanlangan chatga to‘g‘ridan-to‘g‘ri boradi.')}</div></div>${I.chev}</button>
+    </div>`);
+  sh.querySelector('#s-link').onclick = async () => {
+    try {
+      const r = await api(`album/i/${it.id}/link`, { method: 'POST' });
+      const text = [it.caption || '', t('Faylni ochish uchun havolani bosing 👇')].filter(Boolean).join('\n');
+      closeTopSheet();
+      openLink(`https://t.me/share/url?url=${encodeURIComponent(r.url)}&text=${encodeURIComponent(text)}`);
+    } catch (err) { toast(err.message, true); }
+  };
+  sh.querySelector('#s-file').onclick = () => { closeTopSheet(); sendFile(); };
+}
+
 async function refreshAlbum() {
   await loadAlbum(true);
   const el = $app.querySelector('[data-view="album"]');
@@ -1683,7 +1718,7 @@ function uploadForm(sh) {
       <div class="thumbs" id="pv"></div>
       <div class="card note hidden" id="bigw"></div>
       <div class="field"><label>${t('Albom')}</label>${albumSelect(S.albumFilter !== 'all' ? S.albumFilter : S.album.albums[0]?.id)}</div>
-      <div class="field"><label>${t('Izoh — kim, qachon, qayerda?')}</label><textarea class="input" name="caption" maxlength="900" placeholder="${t('Masalan: Bobomning 80 yillik yubileyi, 2019')}"></textarea></div>
+      <div class="field" id="capf"><label>${t('Izoh — kim, qachon, qayerda?')}</label><textarea class="input" name="caption" maxlength="900" placeholder="${t('Masalan: Bobomning 80 yillik yubileyi, 2019')}"></textarea></div>
       <button class="btn btn-primary btn-block" id="ub" disabled>${t('Yuklash')}</button>
       <div class="hint" style="margin-top:12px">📦 ${t('50 MB dan katta fayllarni bot orqali yuboring: «Albomga qo‘shish» → «Bot orqali yuborish».')}</div>
     </form>`;
@@ -1694,7 +1729,14 @@ function uploadForm(sh) {
     const all = [...input.files];
     const big = all.filter((f) => f.size > UP_MAX);
     files = all.filter((f) => f.size <= UP_MAX).slice(0, 20);
-    sh.querySelector('#pv').innerHTML = files.map((f) => (/^image/.test(f.type) ? `<img src="${URL.createObjectURL(f)}" alt="">` : `<div class="tile-ic">${/^video/.test(f.type) ? '🎬' : /^audio/.test(f.type) ? '🎵' : '📄'}</div>`)).join('');
+    const prev = (f) => (/^image/.test(f.type) ? `<img src="${URL.createObjectURL(f)}" alt="">` : `<div class="tile-ic">${/^video/.test(f.type) ? '🎬' : /^audio/.test(f.type) ? '🎵' : '📄'}</div>`);
+    // bir nechta fayl — har biriga alohida izoh
+    const many = files.length > 1;
+    sh.querySelector('#pv').classList.toggle('up-list', many);
+    sh.querySelector('#pv').innerHTML = many
+      ? `<div class="small muted" style="margin-bottom:6px">${t('Har bir faylga alohida izoh yozing — kim, qachon, qayerda?')}</div>` + files.map((f, i) => `<div class="up-row"><div class="up-th">${prev(f)}</div><textarea class="input" data-cap="${i}" rows="2" maxlength="900" placeholder="${t('{i}-fayl izohi', { i: i + 1 })}"></textarea></div>`).join('')
+      : files.map(prev).join('');
+    sh.querySelector('#capf').classList.toggle('hidden', many);
     const bw = sh.querySelector('#bigw');
     bw.classList.toggle('hidden', !big.length);
     if (big.length) {
@@ -1718,8 +1760,10 @@ function uploadForm(sh) {
     const btn = sh.querySelector('#ub');
     btn.disabled = true;
     let ok = 0;
-    for (const file of files) {
+    const caps = [...sh.querySelectorAll('[data-cap]')].map((x) => x.value.trim());
+    for (const [i, file] of files.entries()) {
       btn.innerHTML = `<span class="spin"></span> ${ok + 1}/${files.length}`;
+      if (files.length > 1) body.caption = caps[i] || '';
       try {
         const r = await uploadOriginal(file, body, (k) => (btn.innerHTML = `<span class="spin"></span> ${ok + 1}/${files.length} · ${Math.round(k * 100)}%`));
         if (body.albumName) { body.album = r.album.id; delete body.albumName; }
@@ -1886,7 +1930,7 @@ const ACT = {
   add: ['🌱', '{name} qo‘shildi'], edit: ['✏️', '{name} tahrirlandi'], delete: ['🗑', '{name} o‘chirildi'], photo: ['🖼', '{name} surati qo‘yildi'],
   'photo-del': ['🖼', '{name} surati olib tashlandi'], settings: ['⚙️', 'Sozlamalar o‘zgardi'], create: ['🌱', 'Shajara boshlandi: {name}'],
   import: ['📥', 'Ma’lumotlar yuklandi: {name}'], album: ['📸', 'Albom: {name}'],
-  branch: ['📨', 'Shox ma’lumotlari qo‘shildi: {name}'], 'undo-import': ['↩️', 'Import bekor qilindi: {name}'], merge: ['🧹', 'Takror birlashtirildi: {name}'],
+  branch: ['📨', 'Oila ma’lumotlari yangilandi: {name}'], 'undo-import': ['↩️', 'Import bekor qilindi: {name}'], merge: ['🧹', 'Takror birlashtirildi: {name}'],
 };
 
 // Bildirishnomalar bo'limi (Instagram uslubi): Menga · Oila izohlari · Yangiliklar · Sozlamalar
@@ -3068,13 +3112,13 @@ async function branchesSheet() {
     const clean = dirty.length ? `<div class="card" style="margin-bottom:12px"><b>✂️ ${t('{n} kishining ismida familiya yoki otasining ismi ham yozilgan', { n: dirty.length })}</b>
       <div class="small muted" style="margin:4px 0 8px">${dirty.slice(0, 6).map((p) => `${esc(p.name)} → <b>${esc(stripSur(p.name))}</b>`).join('<br>')}${dirty.length > 6 ? '<br>…' : ''}</div>
       <button class="btn btn-primary btn-sm" id="clean-names">${t('Faqat ismni qoldirish')}</button></div>` : '';
-    body.innerHTML = `${clean}${panel}${r.proposals.length ? r.proposals.map((pr, i) => `<div class="card pr-card"><div><b>${esc(nm(pr.headName))}</b> ${t('shoxi')} · 👤 ${esc(pr.by?.name || '')} · <span class="muted">${esc(pr.at.slice(0, 10))}</span></div>
+    body.innerHTML = `${clean}${panel}${r.proposals.length ? r.proposals.map((pr, i) => `<div class="card pr-card"><div><b>${t('{name} oilasi', { name: esc(nm(pr.headName)) })}</b> · 👤 ${esc(pr.by?.name || '')} · <span class="muted">${esc(pr.at.slice(0, 10))}</span></div>
         <div class="pr-ops">${pr.ops.map((o) => line(o, pr)).join('')}</div>
         ${(pr.warn || []).length ? `<div class="pr-warn">${pr.warn.map((w) => `⚠️ ${esc(w)}`).join('<br>')}</div>` : ''}
         <div class="row" style="gap:8px;margin-top:8px"><button class="btn btn-primary btn-sm grow" data-ok="${i}">✅ ${t('Tasdiqlash')}</button><button class="btn btn-soft btn-sm" data-no="${i}">${t('Rad etish')}</button></div></div>`).join('')
       : `<div class="empty" style="padding:20px"><b>${t('Yangi takliflar yo‘q')}</b></div>`}
       <div class="h3" style="margin:18px 0 8px">🔗 ${t('Faol havolalar')}</div>
-      ${r.branches.length ? r.branches.map((b) => `<div class="card br-card"><div class="row" style="justify-content:space-between"><b>${esc(nm(b.headName))} ${t('shoxi')}</b><b style="color:var(--primary)">${b.pct}%</b></div>
+      ${r.branches.length ? r.branches.map((b) => `<div class="card br-card"><div class="row" style="justify-content:space-between"><b>${t('{name} oilasi', { name: esc(nm(b.headName)) })}</b><b style="color:var(--primary)">${b.pct}%</b></div>
         <div class="bw-prog"><i style="width:${b.pct}%"></i></div>
         <div class="small muted">${[b.noBirth && t('{n} kishining tug‘ilgan sanasi yo‘q', { n: b.noBirth }), b.noSpouse && t('{n} kishining turmush o‘rtog‘i noma’lum', { n: b.noSpouse }), b.noDeath && t('{n} kishining vafot sanasi yo‘q', { n: b.noDeath })].filter(Boolean).join(', ') || t('Barcha ma’lumotlar to‘liq ✓')}</div>
         <div class="small muted" style="margin-top:4px">${b.claimedName ? '👤 ' + esc(b.claimedName) : b.expired ? '⌛ ' + t('Muddati tugagan') : t('Hali ochilmagan') + (b.exp ? ' · ' + t('{d} gacha', { d: fmtDate(b.exp.slice(0, 10)) }) : '')}${b.parentName ? ' · ↳ ' + esc(nm(b.parentName)) : ''}</div>

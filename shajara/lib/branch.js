@@ -77,7 +77,7 @@ export function scopePersons(tree, head) {
 
 /** Zanjir: mas'ul o'z shoxi ichidagi oila uchun yangi havola yaratadi. */
 export async function subBranch(tree, bid, b, user, head) {
-  if (!branchScope(tree, b.head).has(head)) throw new HttpError(400, 'Bu shaxs sizning shoxingizda emas');
+  if (!branchScope(tree, b.head).has(head)) throw new HttpError(400, 'Bu shaxs sizning oilangizda emas');
   const ex = Object.entries(tree.branches || {}).find(([, x]) => !x.revoked && x.head === head && x.parent === bid && !x.claimed);
   const nb = ex ? ex[0] : await createBranch(tree.id, head, nameOf(user), { parent: bid, byUid: String(user.id) });
   return { bid: nb, link: brLink(tree.id, nb) };
@@ -178,7 +178,7 @@ export async function remindBranch(tree, bid) {
   const l = tree.members?.[b.claimed]?.lang || b.lang || 'uz';
   const head = tree.persons.find((p) => p.id === b.head)?.name || '';
   const r = await tg('sendMessage', { chat_id: b.claimed, parse_mode: 'HTML',
-    text: t(l, '🌳 <b>{name}</b> shoxi — {pct}%: {nb} kishining tug‘ilgan sanasi yo‘q, {ns} kishining turmush o‘rtog‘i noma’lum. Bir necha daqiqa ajratib to‘ldirib bersangiz — avlodlar uchun katta xizmat bo‘ladi 🙏', { name: esc(head), pct: st.pct, nb: st.noBirth, ns: st.noSpouse }),
+    text: t(l, '🌳 <b>{name}</b> oilasi — {pct}%: {nb} kishining tug‘ilgan sanasi yo‘q, {ns} kishining turmush o‘rtog‘i noma’lum. Bir necha daqiqa ajratib to‘ldirib bersangiz — avlodlar uchun katta xizmat bo‘ladi 🙏', { name: esc(head), pct: st.pct, nb: st.noBirth, ns: st.noSpouse }),
     reply_markup: { inline_keyboard: [[{ text: t(l, '💬 Shu yerda to‘ldirish'), callback_data: `bc:go:${tree.id}_${bid}` }], [{ text: t(l, '✍️ Ilovada to‘ldirish'), web_app: { url: `${URL_()}/?br=${tree.id}_${bid}` } }]] } });
   if (!r.ok) throw new HttpError(502, 'Xabar yuborilmadi (mas’ul botni bloklagan bo‘lishi mumkin)');
   return true;

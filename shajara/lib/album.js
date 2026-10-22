@@ -143,9 +143,10 @@ export async function addToAlbum(tree, { albumId, albumName, caption, media, by,
   if (priv && !album.ch?.id) throw new HttpError(400, 'Avval yopiq albom uchun alohida Telegram kanal ulang');
   const target = priv ? album.ch.id : tree.channel?.id;
   const name = album?.name || cleanName(albumName) || 'Umumiy';
-  const cap = cleanName(caption, 900);
   const stored = [];
-  for (const m of media) {
+  for (const { cap: own, mid, ...m } of media) {
+    // har fayl o'z izohi bilan (bot har biriga alohida so'raydi); bo'lmasa — umumiy izoh
+    const cap = cleanName(own != null ? own : caption, 900);
     const item = { ...m, id: randomId(10), caption: cap, by, at: new Date().toISOString() };
     if (target && !inChannel) {
       const text = `📁 <b>${escapeHtml(name)}</b>${cap ? '\n' + escapeHtml(cap) : ''}\n— ${escapeHtml(by?.name || '')}`;
