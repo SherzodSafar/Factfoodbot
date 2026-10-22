@@ -89,7 +89,7 @@ export function publicTree(tree, role, uid) {
     rootId: tree.meta?.root_id || null,
     persons: tree.persons,
     log: (tree.log || []).slice(0, 80),
-    me: me ? { notify: me.notify || {}, role: me.role } : null,
+    me: me ? { notify: me.notify || {}, role: me.role, pid: me.pid || null } : null,
     memberCount: Object.keys(tree.members || {}).length,
     groups: (tree.groups || []).map((g) => ({ id: g.id, title: g.title })),
     channel: tree.channel ? { title: tree.channel.title, invite: tree.channel.invite || null } : null,
@@ -110,6 +110,7 @@ export function upsertMember(tree, user, role, lang) {
   tree.members[id] = {
     name, username: user.username || null, role: nextRole, lang: lang || cur?.lang || null,
     at: cur?.at || new Date().toISOString(), notify: cur?.notify || { tree: true, album: true, bday: true },
+    ...(cur?.pid ? { pid: cur.pid } : {}),
   };
   if (!tree.owner && nextRole === 'edit') tree.owner = id;
   return true;

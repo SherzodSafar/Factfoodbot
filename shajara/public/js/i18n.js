@@ -653,6 +653,20 @@ const D = [
   ['{n} kishining ismida familiya yoki otasining ismi ham yozilgan', 'У {n} чел. в имени записаны фамилия или отчество', '{n} names also contain a surname or patronymic'],
   ['Faqat ismni qoldirish', 'Оставить только имя', 'Keep first name only'],
   ['{n} ta ism tozalandi ✓', 'Исправлено имён: {n} ✓', '{n} names cleaned ✓'],
+  ['Shajarada siz kimsiz?', 'Кто вы в древе?', 'Who are you in the tree?'],
+  ['O‘zingizni toping va tanlang. Shunda bot sizni taniydi: oilangiz, albomlaringiz va eslatmalar sizga moslashadi. Adashsangiz, «Ko‘proq» bo‘limida o‘zgartirasiz.', 'Найдите и выберите себя. Тогда бот вас узнает: семья, альбомы и напоминания подстроятся под вас. Ошиблись — измените в разделе «Ещё».', 'Find and select yourself. The bot will then know you: your family, albums and reminders adapt to you. Change it later under “More”.'],
+  ['Ismingizni yozing…', 'Введите ваше имя…', 'Type your name…'],
+  ['Men shajarada yo‘qman', 'Меня нет в древе', 'I’m not in the tree'],
+  ['Kamida 2 harf yozing', 'Введите минимум 2 буквы', 'Type at least 2 letters'],
+  ['Topilmadi', 'Не найдено', 'Not found'],
+  ['otasi: {name}', 'отец: {name}', 'father: {name}'],
+  ['Siz — {name}{sub}?', 'Вы — {name}{sub}?', 'You are {name}{sub}?'],
+  ['Rahmat! Endi bot sizni taniydi ✓', 'Спасибо! Теперь бот вас знает ✓', 'Thanks! The bot now knows you ✓'],
+  ['Shajarada men', 'Я в древе', 'Me in the tree'],
+  ['o‘zgartirish', 'изменить', 'change'],
+  ['Belgilanmagan — o‘zingizni tanlang', 'Не указано — выберите себя', 'Not set — select yourself'],
+  ['Siz', 'Вы', 'You'],
+  ['Avval shajarada o‘zingizni belgilang — shunda oilangiz uchun albom ochish mumkin', 'Сначала отметьте себя в древе — тогда можно открыть альбом семьи', 'First mark yourself in the tree — then you can open a family album'],
 ];
 
 const RU = new Map(D.map((r) => [r[0], r[1]]));

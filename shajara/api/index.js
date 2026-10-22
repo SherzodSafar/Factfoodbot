@@ -354,9 +354,18 @@ async function route(req, res) {
     if (!user) throw new HttpError(400, 'Bu funksiya faqat Telegram ichida ishlaydi');
     const lang = LANGS.includes(body.lang) ? body.lang : undefined;
     if (lang) await updateUser(user.id, user, (d) => { d.lang = lang; });
+    // «Shajarada men kimman»: a'zoni shaxsga bog'lash (keyin o'zgartirsa ham bo'ladi)
+    if ('pid' in body) {
+      const pid = body.pid ? String(body.pid) : null;
+      if (pid && !tree.persons.some((p) => p.id === pid)) throw new HttpError(404, 'Shaxs topilmadi');
+      const other = pid && Object.entries(tree.members || {}).find(([id, x]) => id !== uid && x.pid === pid);
+      if (other) throw new HttpError(409, `Bu shaxsni allaqachon ${other[1].name || 'boshqa foydalanuvchi'} tanlagan. Adashgan bo‘lsa, shajara egasiga ayting`);
+      await updateUser(user.id, user, (d) => { d.trees = d.trees || {}; d.trees[tree.id] = { ...(d.trees[tree.id] || {}), pid }; });
+    }
     await mutateTree(tree.id, (t) => {
       const mem = t.members?.[uid];
       if (!mem) return;
+      if ('pid' in body) mem.pid = body.pid ? String(body.pid) : null;
       if (lang) mem.lang = lang;
       if (body.notify && typeof body.notify === 'object') {
         mem.notify = { ...(mem.notify || {}) };
@@ -393,8 +402,14 @@ async function route(req, res) {
     }
     // shox oilasi albomini kim ocha oladi: tahrirchi — istalgan shox uchun, qolganlar — o'zi egallagan shox(lar) uchun
     const myHeads = () => {
-      const ids = role === 'edit' ? [tree.meta?.root_id || tree.persons[0]?.id, ...Object.values(tree.branches || {}).filter((b) => !b.revoked).map((b) => b.head)]
-        : Object.values(tree.branches || {}).filter((b) => !b.revoked && b.claimed === uid).map((b) => b.head);
+      // o'zining oilasi va ota-onasining oilasi (shajaradagi o'rni bo'yicha), egallagan shoxlari; tahrirchi — farzandi bor har bir oila
+      const me = tree.members?.[uid]?.pid && tree.persons.find((p) => p.id === tree.members[uid].pid);
+      const parents = new Set(tree.persons.flatMap((p) => [p.father_id, p.mother_id]).filter(Boolean));
+      const ids = [
+        ...(me ? [me.id, me.father_id || me.mother_id] : []),
+        ...Object.values(tree.branches || {}).filter((b) => !b.revoked && b.claimed === uid).map((b) => b.head),
+        ...(role === 'edit' ? tree.persons.filter((p) => parents.has(p.id) && p.blood !== false).sort((a, b) => (a.generation || 0) - (b.generation || 0)).map((p) => p.id) : []),
+      ];
       return [...new Set(ids.filter(Boolean))].map((id) => tree.persons.find((p) => p.id === id)).filter(Boolean).map((p) => ({ id: p.id, name: p.name }));
     };
     if (parts[1] === 'heads' && m === 'GET') return send(res, 200, { heads: uid ? myHeads() : [] });
@@ -413,7 +428,7 @@ async function route(req, res) {
       return send(res, 200, { album: r.result });
     }
     // maxfiy albom a'zoligi: bir martalik taklif, so'rov va uni egasi qabul qilishi
-    if (parts[1] === 'a' && parts[2] && ['invite', 'join', 'request', 'decide', 'remove'].includes(parts[3]) && m === 'POST') {
+    if (parts[1] === 'a' && parts[2] && ['invite', 'join', 'remove'].includes(parts[3]) && m === 'POST') {
       if (!uid) throw new HttpError(400, 'Bu funksiya faqat Telegram ichida ishlaydi');
       const aid = parts[2];
       const body = await readBody(req);
@@ -421,9 +436,6 @@ async function route(req, res) {
       const a0 = doc0.albums.find((x) => x.id === aid && x.priv);
       if (!a0) throw new HttpError(404, 'Albom topilmadi');
       const owner = albumOwner(a0, uid);
-      const { tg } = await import('../lib/telegram.js');
-      const URL0 = PUBLIC_URL();
-      const dm = (to, text) => tg('sendMessage', { chat_id: to, parse_mode: 'HTML', text, reply_markup: URL0 ? { inline_keyboard: [[{ text: '🔒 Albomni ochish', web_app: { url: URL0 + '/' } }]] } : undefined }).catch(() => {});
       if (parts[3] === 'invite') {
         if (!owner) throw new HttpError(403, 'Faqat albom egasi taklif qila oladi');
         const code = randomId(10);
@@ -438,25 +450,13 @@ async function route(req, res) {
           if (!inv || inv.used) return null; // bir martalik — ishlatilgan
           inv.used = uid;
           a.members = [...(a.members || []), uid];
-          a.req = (a.req || []).filter((x) => x.uid !== uid);
           return 'ok';
         });
         if (!r.result) throw new HttpError(410, 'Bu taklif havolasi allaqachon ishlatilgan. Albom egasidan yangisini so‘rang');
         return send(res, 200, { ok: true, name: a0.name });
       }
-      if (parts[3] === 'request') {
-        if ((a0.members || []).includes(uid)) return send(res, 200, { ok: true });
-        await mutateAlbum(tree.id, (d) => { const a = d.albums.find((x) => x.id === aid); if (!(a.req || []).some((x) => x.uid === uid)) a.req = [...(a.req || []), { uid, name: by.name, at: new Date().toISOString() }].slice(-100); });
-        if (a0.owner) await dm(a0.owner, `🔒 <b>${escapeHtml(by.name)}</b> «${escapeHtml(a0.name)}» albomini ko‘rish uchun so‘rov yubordi. Ilovada qabul qiling yoki rad eting.`);
-        return send(res, 200, { ok: true });
-      }
       if (!owner) throw new HttpError(403, 'Faqat albom egasi hal qila oladi');
       const target = String(body.uid || '');
-      if (parts[3] === 'decide') {
-        await mutateAlbum(tree.id, (d) => { const a = d.albums.find((x) => x.id === aid); a.req = (a.req || []).filter((x) => x.uid !== target); if (body.ok) a.members = [...new Set([...(a.members || []), target])]; });
-        if (body.ok) await dm(target, `✅ «${escapeHtml(a0.name)}» oilaviy albomiga qabul qilindingiz.`);
-        return send(res, 200, { ok: true });
-      }
       if (target === uid) throw new HttpError(400, 'O‘zingizni chiqara olmaysiz');
       await mutateAlbum(tree.id, (d) => { const a = d.albums.find((x) => x.id === aid); a.members = (a.members || []).filter((x) => x !== target); });
       return send(res, 200, { ok: true });

@@ -87,14 +87,13 @@ export function publicAlbum(doc, tree, uid) {
   const vis = new Map(doc.albums.map((a) => [a.id, albumAccess(tree, a, uid)]));
   const headName = (id) => tree.persons.find((p) => p.id === id)?.name || '';
   return {
-    // a'zo bo'lmaganlarga maxfiy albom faqat nomi bilan (qulf) ko'rinadi — so'rov yuborishi mumkin
-    albums: doc.albums.filter((a) => vis.get(a.id) || (a.priv && uid)).map((a) => {
+    // maxfiy albom a'zo bo'lmaganlarga umuman ko'rinmaydi
+    albums: doc.albums.filter((a) => vis.get(a.id)).map((a) => {
       if (!a.priv) return a;
       const base = { id: a.id, name: a.name, createdAt: a.createdAt, by: a.by, priv: { head: a.priv.head, headName: headName(a.priv.head) }, members: (a.members || []).length };
-      if (!vis.get(a.id)) return { ...base, locked: true, requested: (a.req || []).some((r) => r.uid === String(uid)) };
       if (!albumOwner(a, uid)) return base;
       const nameOf = (id) => users[id]?.name || 'Telegram';
-      return { ...base, owner: true, memberList: (a.members || []).map((id) => ({ id, name: nameOf(id) })), req: (a.req || []).map((r) => ({ ...r, name: nameOf(r.uid) || r.name })) };
+      return { ...base, owner: true, memberList: (a.members || []).map((id) => ({ id, name: nameOf(id) })) };
     }),
     // maxfiy albom fayli boshqalarga faqat «umumiyda ham ko'rsatish» yoqilgan bo'lsa ko'rinadi (umumiy albomda)
     items: doc.items.filter((it) => vis.get(it.album) !== false || (it.pub && it.alsoIn)).map((it) => {

@@ -716,3 +716,4 @@ img { pointer-events: none; }
 .rv-b.pubb b { font-size: 20px; line-height: 1; }
 .rv-b.pubb span { font-size: 10px; }
 .rv-b.pubb.on { color: #4cc38a; }
+.me-badge { font: 800 11px/1 system-ui, sans-serif; vertical-align: middle; padding: 4px 8px; border-radius: 99px; background: var(--primary); color: var(--primary-ink); }
