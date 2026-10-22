@@ -10,7 +10,7 @@ import { readJson, writeJson, getFile, putFile, deleteKey, listKeys, updateJson 
 import {
   HttpError, findTreeByCode, loadTree, createTree, mutateTree, publicTree, addPerson, updatePerson, deletePerson,
   savePhoto, changeSettings, upsertMember, importRows, replacePersons, importGraph, planGraph,
-  undoImport, findDuplicates, mergePersons, branchScope, applyProposal,
+  undoImport, findDuplicates, mergePersons, branchScope, applyProposal, actor, actorUid,
 } from '../lib/tree.js';
 import { tg, tgUpload, sendDocument, sendStored, mediaOf, downloadFile, fetchFilePart } from '../lib/telegram.js';
 const MIME = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', heic: 'image/heic', mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', mkv: 'video/x-matroska', m4v: 'video/mp4', mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac', ogg: 'audio/ogg', oga: 'audio/ogg', opus: 'audio/ogg', wav: 'audio/wav', flac: 'audio/flac', pdf: 'application/pdf' };
@@ -83,11 +83,13 @@ const fullName = (tree, p) => {
   const yr = Number(String(p.birth || '').slice(0, 4)) || (Number(String(f?.birth || '').slice(0, 4)) + 25) || (p.deceased ? 1950 : NEW_STYLE_FROM);
   return yr < NEW_STYLE_FROM ? `${name} ${ovEv(first, p.gender === 'f')}` : `${name} ${first} ${p.gender === 'f' ? 'qizi' : 'o‘g‘li'}`;
 };
-const addLogSafe = (t, who, n) => { t.log = t.log || []; t.log.unshift({ at: new Date().toISOString(), who: who || 'Tahrirchi', action: 'edit', name: `✂️ ${n}` }); };
+const addLogSafe = (t, who, n) => { t.log = t.log || []; t.log.unshift({ at: new Date().toISOString(), who: who || 'Tahrirchi', action: 'edit', name: `✂️ ${n}`, uid: actorUid() }); };
+// so'rov egasini eslab qolamiz (jurnal yozuvlari uchun)
+const seenUser = (u) => { const st = actor.getStore(); if (st && u) st.uid = String(u.id); return u; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function tgUser(req) {
-  const u = verifyInitData(req.headers['x-init-data']);
+  const u = seenUser(verifyInitData(req.headers['x-init-data']));
   if (!u && REQUIRE_TG()) throw new HttpError(401, 'Ilovani Telegram ichida oching');
   return u;
 }
@@ -271,7 +273,7 @@ async function route(req, res) {
         p.photoItem = null; // yangi asl nusxa alohida (bo'laklab) yuklanadi va shu yerga bog'lanadi
         t.updatedAt = new Date().toISOString();
         t.log = t.log || [];
-        t.log.unshift({ at: t.updatedAt, who: actor || 'Tahrirchi', action: file ? 'photo' : 'photo-del', name: p.name });
+        t.log.unshift({ at: t.updatedAt, who: actor || 'Tahrirchi', action: file ? 'photo' : 'photo-del', name: p.name, uid: actorUid() });
       });
       if (old && old !== file) await deleteKey(`photos/${t0.id}/${old}`);
       if (file) { note = (lang) => t(lang, '🖼 <b>{who}</b> {name} suratini yangiladi', { who: escapeHtml(actor || ''), name: escapeHtml(name) }); open = '_' + pid; }
@@ -858,7 +860,7 @@ async function route(req, res) {
 
   // Shox havolasi orqali kirgan qarindosh (Telegram foydalanuvchisi) uchun
   if (parts[0] === 'br' && parts[1] && parts[2]) {
-    const user = verifyInitData(req.headers['x-init-data']);
+    const user = seenUser(verifyInitData(req.headers['x-init-data']));
     if (!user) throw new HttpError(401, 'Havolani Telegram ichida oching');
     const B = await import('../lib/branch.js');
     const { tree, b } = await B.claimBranch(parts[1], parts[2], user);
@@ -905,7 +907,7 @@ async function route(req, res) {
     const jobKey = (id) => `aijobs/${String(id).replace(/[^a-z0-9]/gi, '')}.json`;
     if (parts[1] === 'file' && m === 'POST') {
       const body = await readBody(req);
-      const user = verifyInitData(req.headers['x-init-data']);
+      const user = seenUser(verifyInitData(req.headers['x-init-data']));
       if (!await rateLimit('aifile:' + (user?.id || clientIp(req)), 10, 60 * 60e3)) throw new HttpError(429, 'Juda ko‘p fayl. Birozdan so‘ng urinib ko‘ring');
       const buf = Buffer.from(String(body.data || ''), 'base64');
       if (!buf.length) throw new HttpError(400, 'Fayl bo‘sh');
@@ -959,7 +961,7 @@ async function route(req, res) {
     }
     if (parts[1] === 'csv' && m === 'POST') {
       const body = await readBody(req);
-      const user = verifyInitData(req.headers['x-init-data']);
+      const user = seenUser(verifyInitData(req.headers['x-init-data']));
       if (!user) throw new HttpError(400, 'Bu funksiya faqat Telegram ichida ishlaydi');
       const d = (await readJson(jobKey(body.job || '')))?.data;
       if (d?.status !== 'done') throw new HttpError(404, 'Ma’lumot eskirgan. Faylni qayta yuboring');
@@ -973,7 +975,7 @@ async function route(req, res) {
   // Mini App ichidagi AI yordamchi
   if (path === 'ai' && m === 'POST') {
     const body = await readBody(req);
-    const user = verifyInitData(req.headers['x-init-data']);
+    const user = seenUser(verifyInitData(req.headers['x-init-data']));
     if (!await rateLimit('ai:' + (user?.id || clientIp(req)), 20, 60 * 60e3)) throw new HttpError(429, 'Juda ko‘p savol. Birozdan so‘ng urinib ko‘ring');
     const q = String(body.q || '').trim().slice(0, 2000);
     if (!q) throw new HttpError(400, 'Savol bo‘sh');
@@ -1132,13 +1134,15 @@ async function route(req, res) {
   throw new HttpError(404, 'Topilmadi');
 }
 
-export default async function handler(req, res) {
-  try {
-    await route(req, res);
-  } catch (e) {
-    if (e instanceof HttpError) return send(res, e.status, { error: e.message });
-    if (e instanceof SyntaxError) return send(res, 400, { error: "So'rov noto'g'ri" });
-    console.error(e);
-    send(res, 500, { error: 'Serverda xatolik. Birozdan so‘ng qayta urinib ko‘ring' });
-  }
+export default function handler(req, res) {
+  return actor.run({}, async () => {
+    try {
+      await route(req, res);
+    } catch (e) {
+      if (e instanceof HttpError) return send(res, e.status, { error: e.message });
+      if (e instanceof SyntaxError) return send(res, 400, { error: "So'rov noto'g'ri" });
+      console.error(e);
+      send(res, 500, { error: 'Serverda xatolik. Birozdan so‘ng qayta urinib ko‘ring' });
+    }
+  });
 }

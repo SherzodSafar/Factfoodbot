@@ -34,6 +34,7 @@ http.createServer(async (req, res) => {
   if (!size) return fail(res, 400, 'Hajm yo‘q');
   if (!mtprotoOn()) return fail(res, 503, 'MTProto sozlanmagan');
   const x = (url.searchParams.get('x') || '').toLowerCase();
+  console.log('▶', x || '?', `${Math.round(size / 1048576)} MB`, req.headers.range || ''); // video Render orqali berilganini logda ko'rish uchun
   try {
     // bitta javob 64 MB gacha — brauzer keyingisini o'zi so'raydi
     await sendRange(req, res, { fileId: f, size, type: MIME[x] || 'application/octet-stream', max: 64 * 1024 * 1024 });

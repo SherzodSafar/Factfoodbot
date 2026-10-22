@@ -1,4 +1,5 @@
 // Shajara hujjati ustidagi amallar: yaratish, ochish, shaxs qo'shish/tahrirlash.
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { readJson, writeJson, updateJson, deleteKey, putFile, ConflictError } from './store.js';
 import { hashCode, normalizeCode, randomId } from './auth.js';
 
@@ -63,9 +64,13 @@ function nextId(tree) {
   return 'p' + String(n).padStart(4, '0');
 }
 
+// So'rov kimdan (Telegram id) — jurnal yozuvida: o'z amallari o'ziga «Yangiliklar»da ko'rinmasin
+export const actor = new AsyncLocalStorage();
+export const actorUid = () => actor.getStore()?.uid || undefined;
+
 export function addLog(tree, who, action, name) {
   tree.log = tree.log || [];
-  tree.log.unshift({ at: new Date().toISOString(), who: who || 'Tahrirchi', action, name });
+  tree.log.unshift({ at: new Date().toISOString(), who: who || 'Tahrirchi', action, name, uid: actorUid() });
   if (tree.log.length > MAX_LOG) tree.log.length = MAX_LOG;
   tree.updatedAt = new Date().toISOString();
 }

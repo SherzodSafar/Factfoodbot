@@ -1,7 +1,7 @@
 // Shox mas'uli: havola orqali oila tarmog'ini to'ldirish (ilova yoki bot yozishmasi),
 // zanjirli topshirish, to'liqlik hisobi va kunlik eslatmalar.
 import { readJson, writeJson, updateJson, deleteKey } from './store.js';
-import { loadTree, mutateTree, branchScope, flexDate, HttpError, applyProposal, fuzzyName } from './tree.js';
+import { loadTree, mutateTree, branchScope, flexDate, HttpError, applyProposal, fuzzyName, actorUid } from './tree.js';
 import { randomId, signShort } from './auth.js';
 import { tg } from './telegram.js';
 import { escapeHtml as esc } from './notify.js';
@@ -154,7 +154,7 @@ export async function undoProposal(treeId, pr, who) {
       if (old) Object.assign(p, old);
     }
     t.log = t.log || [];
-    t.log.unshift({ at: new Date().toISOString(), who, action: 'undo-import', name: `${gone.size} / ${(pr.undo?.prev || []).length}` });
+    t.log.unshift({ at: new Date().toISOString(), who, action: 'undo-import', name: `${gone.size} / ${(pr.undo?.prev || []).length}`, uid: actorUid() });
   });
 }
 

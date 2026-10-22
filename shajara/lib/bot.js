@@ -7,7 +7,7 @@ import { t, normLang, LANGS } from './i18n.js';
 import { randomQuote } from './quotes.js';
 import { readJson, writeJson, deleteKey, listKeys } from './store.js';
 import { signInvite, parseInvite } from './auth.js';
-import { loadTree, mutateTree } from './tree.js';
+import { loadTree, mutateTree, actor } from './tree.js';
 import { getUser, updateUser } from './users.js';
 import { loadAlbum, addToAlbum, canUpload, cleanName, mutateAlbum, albumAccess } from './album.js';
 import { escapeHtml } from './notify.js';
@@ -30,6 +30,9 @@ const LANG_KB = {
 const send = (chat_id, text, extra = {}) => tg('sendMessage', { chat_id, text, parse_mode: 'HTML', disable_web_page_preview: true, ...extra });
 
 export async function handleUpdate(u) {
+  const st = actor.getStore();
+  const from = (u.message || u.callback_query)?.from;
+  if (st && from) st.uid = String(from.id);
   if (u.pre_checkout_query) return onPreCheckout(u.pre_checkout_query);
   if (u.callback_query) return onCallback(u.callback_query);
   if (u.my_chat_member) return onMembership(u.my_chat_member);

@@ -426,7 +426,7 @@ function renderMain() {
 // o'qilmaganlar: me — shaxsiy (server), fam — oila izohlari, log — shajara yangiliklari
 function unreadParts() {
   const seen = store.get('sh_seen_' + S.tree.id, null);
-  return { me: S.inboxUnread || 0, fam: S.famUnread || 0, log: seen ? (S.tree.log || []).filter((l) => l.at > seen).length : 0 };
+  return { me: S.inboxUnread || 0, fam: S.famUnread || 0, log: seen ? (S.tree.log || []).filter((l) => l.at > seen && !myLog(l)).length : 0 };
 }
 function unreadCount() { const u = unreadParts(); return u.me + u.fam + u.log; }
 function refreshBell() {
@@ -1783,12 +1783,19 @@ const ACT = {
 };
 
 // Bildirishnomalar bo'limi (Instagram uslubi): Menga · Oila izohlari · Yangiliklar · Sozlamalar
+// o'zim qilgan amal (eski yozuvlarda uid yo'q — ism bo'yicha)
+function myLog(l) {
+  const u = tg?.initDataUnsafe?.user;
+  if (!u) return false;
+  return l.uid ? l.uid === String(u.id) : l.who === ([u.first_name, u.last_name].filter(Boolean).join(' ') || (u.username ? '@' + u.username : 'Telegram'));
+}
+
 function notificationsSheet(tab) {
   const U = unreadParts();
   tab ||= U.me ? 'me' : U.fam ? 'fam' : U.log ? 'log' : 'me';
   const tr = S.tree;
   const seen = store.get('sh_seen_' + tr.id, '');
-  const log = tr.log || [];
+  const log = (tr.log || []).filter((l) => !myLog(l));
   const n = tr.me?.notify || {};
   const sw = (k, label) => `<label class="row card" style="padding:12px 14px;margin-bottom:8px"><div class="grow" style="font-weight:700">${label}</div><span class="switch"><input type="checkbox" data-n="${k}" ${(n[k] ?? true) ? 'checked' : ''}><span></span></span></label>`;
   const tabs = [['me', '🔔 ' + t('Menga')], ['fam', '💬 ' + t('Oila izohlari')], ['log', '🌳 ' + t('Yangiliklar')], ['set', '⚙️']];
