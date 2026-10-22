@@ -14,7 +14,7 @@ import {
 } from '../lib/tree.js';
 import { tg, tgUpload, sendDocument, sendStored, mediaOf, downloadFile, fetchFilePart } from '../lib/telegram.js';
 const MIME = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', heic: 'image/heic', mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', mkv: 'video/x-matroska', m4v: 'video/mp4', mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac', ogg: 'audio/ogg', oga: 'audio/ogg', opus: 'audio/ogg', wav: 'audio/wav', flac: 'audio/flac', pdf: 'application/pdf' };
-import { handleUpdate, setupBot, BOT, PLANS, chatKey, linkKey } from '../lib/bot.js';
+import { handleUpdate, setupBot, BOT, PLANS, chatKey, linkKey, waitKey } from '../lib/bot.js';
 import { webhookSecret, todayText } from '../lib/events.js';
 import { notify, escapeHtml } from '../lib/notify.js';
 import { updateUser, getUser } from '../lib/users.js';
@@ -336,6 +336,7 @@ async function route(req, res) {
     const code = randomCode(8);
     const exp = Date.now() + 30 * 60e3;
     await writeJson(linkKey(code), { treeId: tree.id, kind, exp, by: user?.id || null });
+    if (kind === 'channel' && user?.id) await writeJson(waitKey(user.id), { code, exp });
     return send(res, 200, { code, exp, bot: BOT() });
   }
   if (path === 'unlink' && m === 'POST') {
@@ -403,7 +404,18 @@ async function route(req, res) {
     if (!verifyMedia('u:' + parts[1], url.searchParams.get('e'), url.searchParams.get('s'))) throw new HttpError(403, 'Havola eskirgan');
     const ph = (await tg('getUserProfilePhotos', { user_id: Number(parts[1]), limit: 1 })).result?.photos?.[0];
     const f = ph && await downloadFile(ph[0].file_id);
-    if (!f) return send(res, 404, { ok: false }, { 'cache-control': 'public, max-age=21600' });
+    if (!f) {
+      // Telegram'da rasm yo'q (yoki yopiq) — shajarada o'zini belgilagan bo'lsa, o'sha shaxsning surati
+      const ud = await getUser(parts[1]).catch(() => null);
+      for (const tid of [...new Set([ud?.active, ...Object.keys(ud?.trees || {})].filter(Boolean))].slice(0, 3)) {
+        const tr = await loadTree(tid).catch(() => null);
+        const pid = tr?.members?.[parts[1]]?.pid;
+        const p = pid && tr.persons.find((x) => x.id === pid);
+        const pf = p?.photo && await getFile(`photos/${tr.id}/${p.photo}`).catch(() => null);
+        if (pf) return send(res, 200, pf.buffer, { 'content-type': pf.contentType, 'cache-control': 'private, max-age=86400' });
+      }
+      return send(res, 404, { ok: false }, { 'cache-control': 'private, max-age=3600' });
+    }
     return send(res, 200, f.buffer, { 'content-type': 'image/jpeg', 'cache-control': 'private, max-age=86400' });
   }
 
@@ -460,6 +472,7 @@ async function route(req, res) {
         if (!owner) throw new HttpError(403, 'Faqat albom egasi kanal ulay oladi');
         const code = randomCode(8);
         await writeJson(linkKey(code), { treeId: tree.id, kind: 'pchannel', album: aid, exp: Date.now() + 30 * 60e3, by: uid });
+        await writeJson(waitKey(uid), { code, exp: Date.now() + 30 * 60e3 });
         return send(res, 200, { code, bot: BOT() });
       }
       if (parts[3] === 'join') {

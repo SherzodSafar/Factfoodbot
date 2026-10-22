@@ -18,6 +18,8 @@ const URL_ = () => (process.env.PUBLIC_URL || '').replace(/\/$/, '');
 const PENDING_TTL = 60 * 60e3;
 export const chatKey = (id) => `chats/${id}.json`;
 export const linkKey = (code) => `links/${code}.json`;
+// ilovada «Botni kanalga qo'shish» bosilgan: kanal tanlanib bot admin qilingach, kodsiz ulanadi
+export const waitKey = (uid) => `linkwait/${uid}.json`;
 
 const appButton = (lang, q = '') => ({ inline_keyboard: [[{ text: t(lang, '🌳 Shajarani ochish'), web_app: { url: `${URL_()}/${q}` } }]] });
 const LANG_KB = {
@@ -503,6 +505,14 @@ async function onMembership(cm) {
     return;
   }
   if ((status === 'member' || status === 'administrator') && chat.type !== 'private') {
+    if (chat.type === 'channel' && status === 'administrator' && cm.from?.id) {
+      const w = (await readJson(waitKey(cm.from.id)).catch(() => null))?.data;
+      if (w?.code && w.exp > Date.now()) {
+        await deleteKey(waitKey(cm.from.id));
+        await linkChat(chat, w.code, cm.from, lang);
+        return send(cm.from.id, t(lang, '✅ «{title}» kanali ulandi. Ilovaga qayting.', { title: escapeHtml(chat.title || '') }));
+      }
+    }
     const linked = await readJson(chatKey(chat.id));
     // yangi bot albom kanaliga admin qilindi — fayl identifikatorlarini shu bot uchun yangilaymiz
     if (status === 'administrator' && chat.type === 'channel' && linked?.data?.kind === 'channel') bg(refreshAlbumFiles(linked.data.treeId, cm.from?.id));

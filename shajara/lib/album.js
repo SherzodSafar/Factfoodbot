@@ -93,7 +93,7 @@ export function publicAlbum(doc, tree, uid) {
     // maxfiy albom a'zo bo'lmaganlarga umuman ko'rinmaydi
     albums: doc.albums.filter((a) => vis.get(a.id)).map((a) => {
       if (!a.priv) return a;
-      const base = { id: a.id, name: a.name, createdAt: a.createdAt, by: a.by, priv: { head: a.priv.head, headName: headName(a.priv.head) }, members: (a.members || []).length, ch: a.ch ? { title: a.ch.title } : null };
+      const base = { id: a.id, name: a.name, createdAt: a.createdAt, by: a.by, priv: { head: a.priv.head, headName: headName(a.priv.head) }, members: (a.members || []).length, ch: a.ch ? { id: a.ch.id, title: a.ch.title } : null };
       if (!albumOwner(a, uid)) return base;
       const nameOf = (id) => users[id]?.name || 'Telegram';
       return { ...base, owner: true, memberList: (a.members || []).map((id) => ({ id, name: nameOf(id) })) };

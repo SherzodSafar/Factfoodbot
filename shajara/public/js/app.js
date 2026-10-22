@@ -788,15 +788,21 @@ async function renderAlbumTab(el) {
     const a = A.albums.find((x) => x.id === f);
     body = a ? section(a, A.items.filter((it) => it.album === f)) : '';
   }
+  const cur = A.albums.find((a) => a.id === f);
   el.innerHTML = `<div class="scroll" style="padding-top:8px">
     ${banner}
-    <div class="chips"><button class="chip ${f === 'all' ? 'on' : ''}" data-af="all">${t('Hammasi')} · ${A.items.length}</button>${albums.map((a) => `<button class="chip ${f === a.id ? 'on' : ''}" data-af="${a.id}">${a.priv ? '🔒 ' : ''}${esc(nm(a.name))} · ${counts[a.id] || 0}</button>`).join('')}
-</div>
-    ${A.canUpload && inTelegram ? `<button class="card banner" id="priv-new"><div style="font-size:24px">🔒</div><div class="grow"><b>${t('Oilaviy (yopiq) albom ochish')}</b><div class="small muted">${t('Faqat siz tanlagan oila a’zolari ko‘radi')}</div></div>${I.chev}</button>` : ''}
+    <div class="alb-bar"><button class="chip on alb-pick" id="alb-pick"><span class="ellipsis">${cur ? `${cur.priv ? '🔒' : '📁'} ${esc(nm(cur.name))} · ${counts[cur.id] || 0}` : `📚 ${t('Hammasi')} · ${A.items.length}`}</span><b>▾</b></button>
+      ${A.canUpload && inTelegram ? `<button class="chip" id="priv-new">🔒 ${t('Yopiq albom ochish')}</button>` : ''}</div>
     ${body}
     <div style="height:90px"></div></div>
     ${A.canUpload ? `<button class="fab" id="add">${I.plus}<span>${t('Qo‘shish')}</span></button>` : ''}`;
-  el.querySelectorAll('[data-af]').forEach((b) => (b.onclick = () => { S.albumFilter = b.dataset.af; haptic('light'); renderAlbumTab(el); }));
+  // albomlar ro'yxati — bitta tugmada; tanlangani ochiladi
+  el.querySelector('#alb-pick').onclick = () => {
+    const row = (id, ic, name, n) => `<button class="card alb-opt ${f === id ? 'on' : ''}" data-pick="${id}"><span style="font-size:20px">${ic}</span><b class="grow ellipsis">${name}</b><span class="muted small">${n}</span></button>`;
+    const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">📚 ${t('Albomlar')}</div><button class="icon-btn" data-close>${I.close}</button></div>
+      <div class="sheet-body">${row('all', '📚', t('Hammasi'), A.items.length)}${albums.map((a) => row(a.id, a.priv ? '🔒' : '📁', esc(nm(a.name)), counts[a.id] || 0)).join('')}</div>`);
+    sh.querySelectorAll('[data-pick]').forEach((b) => (b.onclick = () => { S.albumFilter = b.dataset.pick; haptic('light'); closeAllSheets(); renderAlbumTab(el); }));
+  };
   const order = (f === 'all' ? A.albums.filter((a) => counts[a.id]).flatMap((a) => A.items.filter((it) => it.album === a.id)) : A.items.filter((it) => it.album === f)).map((it) => it.id);
   el.querySelectorAll('[data-item]').forEach((b) => (b.onclick = () => openViewer(order, order.indexOf(b.dataset.item))));
   el.querySelectorAll('[data-alb-menu]').forEach((b) => (b.onclick = () => albumMenu(b.dataset.albMenu)));
@@ -835,31 +841,30 @@ async function privAlbumSheet() {
     } catch (err) { toast(err.message, true); e.target.disabled = false; }
   };
 }
-// Yopiq albomning alohida kanali: egasi yopiq kanal ochib, botni admin qiladi va «/ulash KOD» yozadi
+// Yopiq albomning alohida kanali: egasi hech kim kirmaydigan yangi yopiq kanal ochadi va botni qo'shadi — o'zi ulanadi
 function privChannelSheet(aid) {
   const a = S.album?.albums.find((x) => x.id === aid);
+  const old = a?.ch?.id || null;
   const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">📡 ${t('Yopiq albom kanali')}</div><button class="icon-btn" data-close>${I.close}</button></div>
-    <div class="sheet-body"><p class="small muted" style="margin-top:0">${t('Yopiq albom fayllari alohida yopiq Telegram kanalda saqlanadi — umumiy albom kanali a’zolari ularni ko‘rmaydi. Kanalga faqat shu oila a’zolarini qo‘shing.')}</p>
+    <div class="sheet-body"><p class="small muted" style="margin-top:0">${t('Bu albom fayllari alohida yopiq Telegram kanalda saqlanadi. Oila a’zolari ularni shu ilovada ko‘radi — kanalga hech kim kirmasligi kerak.')}</p>
       ${a?.ch ? `<div class="card" style="padding:4px 0;margin-bottom:12px"><div class="log-item"><div class="dot">✅</div><div class="grow"><b>${esc(a.ch.title)}</b></div></div></div>` : ''}
-      <div id="lk"><button class="btn btn-primary btn-block" id="gen">${t(a?.ch ? 'Boshqa kanal ulash' : 'Kanal ulash')}</button></div></div>`);
+      <div id="lk"><ol class="steps"><li>${t('Telegramda <b>yangi yopiq kanal</b> oching (masalan: «{title} albomi»). Unga hech kimni qo‘shmang va havolasini hech kimga bermang.', { title: esc(nm(a?.name || '')) })}</li>
+        <li>${t('Pastdagi tugmani bosing va o‘sha kanalni tanlang — bot admin bo‘ladi va kanal avtomatik ulanadi.')}</li></ol>
+      <button class="btn btn-primary btn-block" id="gen">${t(a?.ch ? 'Boshqa kanal ulash' : 'Botni kanalga qo‘shish')}</button></div></div>`);
   sh.querySelector('#gen').onclick = async (e) => {
     const gen = e.currentTarget;
     gen.disabled = true;
     try {
       const r = await api(`album/a/${aid}/linkcode`, { method: 'POST', body: {} });
-      sh.querySelector('#lk').innerHTML = `<ol class="steps"><li>${t('Telegramda yangi <b>yopiq kanal</b> oching (masalan: «{title} albomi»).', { title: esc(nm(a?.name || '')) })}</li>
-          <li>${t('Pastdagi tugma orqali botni kanalga <b>admin</b> qilib qo‘shing.')}</li>
-          <li>${t('Kanalga quyidagi xabarni yozing:')}<div class="code-pill">/ulash ${r.code}</div></li></ol>
-        <button class="btn btn-primary btn-block" id="addb">${t('Botni kanalga qo‘shish')}</button>
-        <button class="btn btn-ghost btn-block" style="margin-top:8px" id="cpc">${t('Buyruqdan nusxa olish')}</button>
-        <button class="btn btn-soft btn-block" style="margin-top:8px" id="chk">${t('Uladim — tekshirish')}</button>
-        <div class="hint" style="text-align:center;margin-top:8px">${t('Kod 30 daqiqa amal qiladi')}</div>`;
-      sh.querySelector('#addb').onclick = () => openLink(`https://t.me/${r.bot}?startchannel&admin=post_messages+edit_messages+delete_messages+invite_users`);
-      sh.querySelector('#cpc').onclick = () => copyText(`/ulash ${r.code}`);
-      sh.querySelector('#chk').onclick = async () => {
-        await refreshAlbum();
-        if (S.album.albums.find((x) => x.id === aid)?.ch) { closeAllSheets(); toast(t('Kanal ulandi ✅')); } else toast(t('Hali ulanmagan — kanalga /ulash kodini yozing'), true);
-      };
+      awaitLink(sh, {
+        code: r.code, url: `https://t.me/${r.bot}?startchannel&admin=post_messages+edit_messages+delete_messages+invite_users`,
+        done: async () => {
+          const ch = (await loadAlbum(true)).albums.find((x) => x.id === aid)?.ch;
+          const ok = !!ch && ch.id !== old;
+          if (ok) { closeAllSheets(); toast(t('Kanal ulandi ✅')); refreshAlbum(); }
+          return ok;
+        },
+      });
     } catch (err) { toast(err.message, true); gen.disabled = false; }
   };
 }
@@ -1576,27 +1581,51 @@ async function refreshAlbum() {
   if (el && S.tab === 'album') renderAlbumTab(el);
 }
 
+const UP_MAX = 50 * 1024 * 1024; // Telegram Bot API fayl yuborish chegarasi (server faylni kanalga shu orqali joylaydi)
 function uploadSheet() {
   const sh = openSheet(`<div class="sheet-head"><div class="h2">${t('Albomga qo‘shish')}</div><button class="icon-btn" data-close>${I.close}</button></div>
-    <form class="sheet-body" id="uf">
-      <label class="drop">${I.image}<b>${t('Rasmlarni tanlang')}</b><span class="small muted">${t('Bir nechta rasmni birdaniga tanlash mumkin')}</span><input type="file" accept="image/*,video/*" multiple hidden name="files"></label>
+    <div class="sheet-body" id="uw">
+      <button class="card banner up-way" id="w-app"><div style="font-size:26px">📱</div><div class="grow"><b>${t('Ilovada yuklash')}</b><div class="small muted">${t('Rasm, video, audio va hujjatlar — har biri 50 MB gacha, bir nechtasini birdan. Asl sifatda saqlanadi.')}</div></div>${I.chev}</button>
+      ${inTelegram ? `<button class="card banner up-way" id="w-bot"><div style="font-size:26px">🤖</div><div class="grow"><b>${t('Bot orqali yuborish')}</b><div class="small muted">${t('50 MB dan katta video va fayllar (2 GB gacha) hamda ovozli xabarlar. Telegram o‘zi yuklaydi: tez, internet uzilsa ham davom etadi.')}</div></div>${I.chev}</button>` : ''}
+      <div class="hint">${t('Qaysi birini tanlash kerak? Fayl 50 MB gacha bo‘lsa — ilovada. Kattaroq bo‘lsa yoki internet sekin bo‘lsa — bot orqali.')}</div>
+    </div>`);
+  sh.querySelector('#w-app').onclick = () => uploadForm(sh);
+  sh.querySelector('#w-bot')?.addEventListener('click', () => {
+    sh.querySelector('#uw').innerHTML = `<ol class="steps"><li>${t('«Botni ochish» tugmasini bosing.')}</li>
+        <li>${t('Faylni botga yuboring (📎 → Fayl). Asl sifatda saqlanishi uchun «Fayl» sifatida yuboring.')}</li>
+        <li>${t('Bot qaysi albomga qo‘shishni so‘raydi (🔒 yopiq albomlar ham bor), so‘ng izoh yozasiz.')}</li></ol>
+      <button class="btn btn-primary btn-block" id="tobot">🤖 ${t('Botni ochish')}</button>`;
+    sh.querySelector('#tobot').onclick = () => openLink(`https://t.me/${BOT}`);
+  });
+}
+
+function uploadForm(sh) {
+  sh.querySelector('#uw').outerHTML = `<form class="sheet-body" id="uf">
+      <label class="drop">${I.image}<b>${t('Fayllarni tanlang')}</b><span class="small muted">${t('Rasm, video, audio, hujjat — har biri 50 MB gacha')}</span><input type="file" multiple hidden name="files"></label>
       <div class="thumbs" id="pv"></div>
+      <div class="card note hidden" id="bigw"></div>
       <div class="field"><label>${t('Albom')}</label>${albumSelect(S.albumFilter !== 'all' ? S.albumFilter : S.album.albums[0]?.id)}</div>
       <div class="field"><label>${t('Izoh — kim, qachon, qayerda?')}</label><textarea class="input" name="caption" maxlength="900" placeholder="${t('Masalan: Bobomning 80 yillik yubileyi, 2019')}"></textarea></div>
       <button class="btn btn-primary btn-block" id="ub" disabled>${t('Yuklash')}</button>
-      <div class="card note" style="margin-top:14px">🎬 ${t('Video, ovozli xabar va hujjatlarni botga yuboring — bot albom va izohni so‘raydi. Oilaviy guruhda esa faylga javoban /albom yozing.')}
-        ${inTelegram ? `<button type="button" class="btn btn-ghost btn-sm" style="margin-top:10px;width:100%" id="tobot">📎 ${t('Botga fayl yuborish')}</button>` : ''}</div>
-    </form>`);
+      <div class="hint" style="margin-top:12px">📦 ${t('50 MB dan katta fayllarni bot orqali yuboring: «Albomga qo‘shish» → «Bot orqali yuborish».')}</div>
+    </form>`;
   bindAlbumSelect(sh);
   const input = sh.querySelector('[name=files]');
   let files = [];
   input.onchange = () => {
-    files = [...input.files].slice(0, 20);
-    sh.querySelector('#pv').innerHTML = files.map((f) => (/^video/.test(f.type) ? `<div class="tile-ic">🎬</div>` : `<img src="${URL.createObjectURL(f)}" alt="">`)).join('');
+    const all = [...input.files];
+    const big = all.filter((f) => f.size > UP_MAX);
+    files = all.filter((f) => f.size <= UP_MAX).slice(0, 20);
+    sh.querySelector('#pv').innerHTML = files.map((f) => (/^image/.test(f.type) ? `<img src="${URL.createObjectURL(f)}" alt="">` : `<div class="tile-ic">${/^video/.test(f.type) ? '🎬' : /^audio/.test(f.type) ? '🎵' : '📄'}</div>`)).join('');
+    const bw = sh.querySelector('#bigw');
+    bw.classList.toggle('hidden', !big.length);
+    if (big.length) {
+      bw.innerHTML = `⚠️ ${t('{n} ta fayl 50 MB dan katta — ularni bot orqali yuboring.', { n: big.length })}${inTelegram ? `<button type="button" class="btn btn-ghost btn-sm" style="margin-top:8px;width:100%" id="tobot2">🤖 ${t('Botni ochish')}</button>` : ''}`;
+      bw.querySelector('#tobot2')?.addEventListener('click', () => openLink(`https://t.me/${BOT}`));
+    }
     sh.querySelector('#ub').disabled = !files.length;
-    sh.querySelector('#ub').textContent = t('Yuklash ({n})', { n: files.length });
+    sh.querySelector('#ub').textContent = files.length ? t('Yuklash ({n})', { n: files.length }) : t('Yuklash');
   };
-  sh.querySelector('#tobot')?.addEventListener('click', () => openLink(`https://t.me/${BOT}`));
   sh.querySelector('#uf').onsubmit = async (e) => {
     e.preventDefault();
     const f = new FormData(e.target);
@@ -1720,7 +1749,7 @@ function renderMoreTab(el) {
     ${canEdit() ? `<div class="section"><h3 class="h3">${t('Tahrirchi uchun')}</h3></div><div class="card menu">
       ${item('m-edit', isEdit() ? '🔓' : '🔒', isEdit() ? t('Tahrir rejimini yopish') : t('Tahrir rejimini yoqish'), '', `<span class="switch"><input type="checkbox" ${isEdit() ? 'checked' : ''} tabindex="-1"><span></span></span>`)}
       ${item('m-channel', '🗄', t('Albom kanali'), tr.channel ? '✅ ' + esc(tr.channel.title) : t('Ulanmagan — fayllarni kanalda saqlang'))}
-      ${item('m-branches', '📨', t('Shox havolalari va takliflar'), t('To‘liqlik paneli, oilalarga to‘ldirtirish va tasdiqlash'))}
+      ${item('m-branches', '📨', t('Oila havolalari va takliflar'), t('To‘liqlik paneli, oilalarga to‘ldirtirish va tasdiqlash'))}
       ${item('m-dupes', '🧹', t('Takroriy odamlar'), t('Ikkilangan yozuvlarni topish va birlashtirish'))}
       ${item('m-members', '👥', t('A’zolar va huquqlar'), t('{n} kishi kirgan', { n: tr.memberCount }))}
       ${item('m-settings', '⚙️', t('Shajara sozlamalari'), t('Nomi, kodlar, albom huquqlari'))}
@@ -1928,7 +1957,10 @@ function linkSheet(kind) {
         : t('Bot oilaviy guruhingizda ishlaydi: albom va shajara yangiliklari, tug‘ilgan kunlar guruhga keladi. Guruhda /shajara, /tugilgan va faylga javoban /albom buyruqlari ishlaydi.')}</p>
       ${linked.length ? `<div class="card" style="padding:4px 0;margin-bottom:12px">${linked.map((g) => `<div class="log-item"><div class="dot">✅</div><div class="grow"><b>${esc(g.title)}</b></div>${canEdit() ? `<button class="btn btn-danger btn-sm" data-unlink="${g.id}">${t('Uzish')}</button>` : ''}</div>`).join('')}</div>` : ''}
       ${isCh && tr.channel?.invite ? `<button class="btn btn-soft btn-block" id="joinch" style="margin-bottom:12px">${t('Kanalga qo‘shilish')}</button>` : ''}
-      ${canEdit() ? `<div id="lk"><button class="btn btn-primary btn-block" id="gen">${t(isCh ? 'Kanal ulash' : 'Guruhga qo‘shish')}</button></div>` : `<div class="hint">${t('Ulash uchun tahrir huquqi kerak.')}</div>`}
+      ${canEdit() ? `<div id="lk"><ol class="steps">${isCh
+        ? `<li>${t('Telegramda yangi <b>yopiq kanal</b> oching (masalan: «{title} albomi»).', { title: esc(nm(tr.title)) })}</li><li>${t('Pastdagi tugmani bosing va o‘sha kanalni tanlang — bot admin bo‘ladi va kanal avtomatik ulanadi.')}</li>`
+        : `<li>${t('Pastdagi tugmani bosing va oilaviy guruhingizni tanlang — bot avtomatik ulanadi.')}</li>`}</ol>
+        <button class="btn btn-primary btn-block" id="gen">${t(isCh ? 'Botni kanalga qo‘shish' : 'Guruhni tanlash')}</button></div>` : `<div class="hint">${t('Ulash uchun tahrir huquqi kerak.')}</div>`}
     </div>`);
   sh.querySelector('#joinch')?.addEventListener('click', () => openLink(tr.channel.invite));
   sh.querySelectorAll('[data-unlink]').forEach((b) => (b.onclick = async () => {
@@ -1944,21 +1976,46 @@ function linkSheet(kind) {
     gen.disabled = true;
     try {
       const r = await api('linkcode', { method: 'POST', body: { kind } });
-      const add = isCh ? `https://t.me/${r.bot}?startchannel&admin=post_messages+edit_messages+delete_messages+invite_users`
-        : `https://t.me/${r.bot}?startgroup=${r.code}`;
-      const tail = `<button class="btn btn-ghost btn-block" style="margin-top:8px" id="cpc">${t('Buyruqdan nusxa olish')}</button><div class="hint" style="text-align:center;margin-top:8px">${t('Kod 30 daqiqa amal qiladi')}</div>`;
-      sh.querySelector('#lk').innerHTML = isCh
-        ? `<ol class="steps"><li>${t('Telegramda yangi <b>yopiq kanal</b> oching (masalan: «{title} albomi»).', { title: esc(nm(tr.title)) })}</li>
-            <li>${t('Pastdagi tugma orqali botni kanalga <b>admin</b> qilib qo‘shing.')}</li>
-            <li>${t('Kanalga quyidagi xabarni yozing:')}<div class="code-pill">/ulash ${r.code}</div></li></ol>
-           <button class="btn btn-primary btn-block" id="addb">${t('Botni kanalga qo‘shish')}</button>${tail}`
-        : `<ol class="steps"><li>${t('Pastdagi tugmani bosing va oilaviy guruhingizni tanlang — bot avtomatik ulanadi.')}</li>
-            <li>${t('Agar ulanmasa, guruhga shu buyruqni yozing:')}<div class="code-pill">/ulash ${r.code}</div></li></ol>
-           <button class="btn btn-primary btn-block" id="addb">${t('Guruhni tanlash')}</button>${tail}`;
-      sh.querySelector('#addb').onclick = () => openLink(add);
-      sh.querySelector('#cpc').onclick = () => copyText(`/ulash ${r.code}`);
+      const n0 = (tr.groups || []).length;
+      awaitLink(sh, {
+        code: r.code, group: !isCh,
+        url: isCh ? `https://t.me/${r.bot}?startchannel&admin=post_messages+edit_messages+delete_messages+invite_users` : `https://t.me/${r.bot}?startgroup=${r.code}`,
+        done: async () => {
+          const fresh = await api('tree');
+          const ok = isCh ? !!fresh.tree.channel : (fresh.tree.groups || []).length > n0;
+          if (ok) { closeAllSheets(); onTreeChanged(fresh.tree); toast(t(isCh ? 'Kanal ulandi ✅' : 'Guruh ulandi ✅')); }
+          return ok;
+        },
+      });
     } catch (err) { toast(err.message, true); gen.disabled = false; }
   });
+}
+
+// Bot kanal/guruhga qo'shilishi bilan o'zi ulanadi (kod shart emas): ilovaga qaytilganda va har 6 soniyada tekshiramiz
+function awaitLink(sh, { code, url, group, done }) {
+  openLink(url);
+  sh.querySelector('#lk').innerHTML = `<div class="card note" style="text-align:center">⏳ ${t(group ? 'Guruh tanlangach, bot o‘zi ulanadi' : 'Kanal tanlangach, bot o‘zi ulanadi')}</div>
+    <button class="btn btn-primary btn-block" style="margin-top:10px" id="again">${t(group ? 'Guruhni tanlash' : 'Botni kanalga qo‘shish')}</button>
+    <button class="btn btn-soft btn-block" style="margin-top:8px" id="chk">${t('Uladim — tekshirish')}</button>
+    <div class="hint" style="margin-top:12px">${t(group ? 'Agar ulanmasa, guruhga shu buyruqni yozing:' : 'Avtomatik ulanmasa, kanalga shu buyruqni yozing:')}<div class="code-pill">/ulash ${code}</div></div>
+    <button class="btn btn-ghost btn-block btn-sm" id="cpc">${t('Buyruqdan nusxa olish')}</button>`;
+  let stop = false;
+  let n = 0;
+  const check = async (loud) => {
+    if (stop || !sh.isConnected) return;
+    if (await done().catch(() => false)) stop = true;
+    else if (loud) toast(t('Hali ulanmagan — kanalni tanlang yoki /ulash buyrug‘ini yozing'), true);
+  };
+  const onVis = () => document.visibilityState === 'visible' && check();
+  const iv = setInterval(() => {
+    if (stop || !sh.isConnected || ++n > 20) { clearInterval(iv); document.removeEventListener('visibilitychange', onVis); tg?.offEvent?.('activated', onVis); return; }
+    check();
+  }, 6000);
+  document.addEventListener('visibilitychange', onVis);
+  tg?.onEvent?.('activated', onVis);
+  sh.querySelector('#again').onclick = () => openLink(url);
+  sh.querySelector('#chk').onclick = () => check(true);
+  sh.querySelector('#cpc').onclick = () => copyText(`/ulash ${code}`);
 }
 
 function membersSheet() {
@@ -2063,7 +2120,7 @@ const CLIP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-
 async function uploadOriginal(file, meta = {}, onProgress) {
   const CH = 2.5 * 1024 * 1024;
   const n = Math.max(1, Math.ceil(file.size / CH));
-  if (file.size > 50 * 1024 * 1024) throw new Error(t('Fayl juda katta (50 MB gacha)'));
+  if (file.size > UP_MAX) throw new Error(t('Fayl juda katta (50 MB gacha)'));
   const u = Math.random().toString(36).slice(2, 12) + Date.now().toString(36);
   for (let i = 0; i < n; i++) {
     onProgress?.(i / n);
@@ -2384,7 +2441,7 @@ function personSheet(id) {
         <button class="btn btn-ghost btn-sm" data-add="child">👶 ${t('Farzand')}</button>
         <button class="btn btn-ghost btn-sm" data-add="spouse">💍 ${t('Turmush o‘rtog‘i')}</button>
         ${!fatherP || !motherP ? `<button class="btn btn-ghost btn-sm full" data-add="parent">👴 ${t(!fatherP && !motherP ? 'Ota yoki onasini qo‘shish' : !fatherP ? 'Otasini qo‘shish' : 'Onasini qo‘shish')}</button>` : ''}
-        <button class="btn btn-ghost btn-sm full" id="br-link">🔗 ${t('Shox havolasi — oilasiga to‘ldirtirish')}</button>
+        <button class="btn btn-ghost btn-sm full" id="br-link">🔗 ${t('{name} oilasi havolasi — o‘zlari to‘ldirsin', { name: esc(nm(p.name)) })}</button>
         <button class="btn btn-ghost btn-sm" id="edit">${I.edit} ${t('Tahrirlash')}</button>
         <button class="btn btn-danger btn-sm" id="del">${I.trash} ${t('O‘chirish')}</button>` : canEdit() ? '' : `<button class="btn btn-ghost btn-sm full" id="ask-edit">${I.lock} ${t('Tahrirlash uchun kod kiriting')}</button>`}
     </div><div style="height:8px"></div></div>`);
@@ -2685,15 +2742,15 @@ async function renderBranchWizard(treeId, bid) {
     const kids = kidsOf(p.id);
     const row = (x, kind) => `<div class="bw-row" data-id="${x.id}" data-kind="${kind}" data-unk="${x.unk ? 1 : ''}">
         ${kind === 'sp' ? (() => { const [f0, ...sur] = String(x.name || '').split(' '); return `<div class="bw-names">
-          <input class="input" name="first" value="${esc(f0 || '')}" placeholder="${t('Ismi')}">
-          <input class="input" name="sur" value="${esc(sur.join(' '))}" placeholder="${t('Familiyasi')}">
-          <input class="input" name="fname" value="${esc(x.fname || '')}" placeholder="${t('Otasining ismi')}"></div>`; })()
-          : `<input class="input" name="name" value="${esc(x.name || '')}" placeholder="${t('Faqat ismi (masalan: Go‘zal)')}">`}
-        <div class="bw-sub">${kind === 'kid' ? `<select class="input" name="gender"><option value="m" ${x.gender !== 'f' ? 'selected' : ''}>👦 ${t('O‘g‘il')}</option><option value="f" ${x.gender === 'f' ? 'selected' : ''}>👧 ${t('Qiz')}</option></select>` : ''}
-          <input class="input" name="birth" value="${esc(dateToInput(x.birth))}" placeholder="${t('Tug‘ilgan sana: 20.03.1958')}" inputmode="numeric">
+          <label class="fl"><span>${t('Ismi')}</span><input class="input" name="first" value="${esc(f0 || '')}" placeholder="${t('Ismi')}"></label>
+          <label class="fl"><span>${t('Familiyasi')}</span><input class="input" name="sur" value="${esc(sur.join(' '))}" placeholder="${t('Familiyasi')}"></label>
+          <label class="fl"><span>${t('Otasining ismi')}</span><input class="input" name="fname" value="${esc(x.fname || '')}" placeholder="${t('Otasining ismi')}"></label></div>`; })()
+          : `<label class="fl"><span>${t('Ismi')}</span><input class="input" name="name" value="${esc(x.name || '')}" placeholder="${t('Faqat ismi (masalan: Go‘zal)')}"></label>`}
+        <div class="bw-sub">${kind === 'kid' ? `<label class="fl"><span>${t('Jinsi')}</span><select class="input" name="gender"><option value="m" ${x.gender !== 'f' ? 'selected' : ''}>👦 ${t('O‘g‘il')}</option><option value="f" ${x.gender === 'f' ? 'selected' : ''}>👧 ${t('Qiz')}</option></select></label>` : ''}
+          <label class="fl"><span>${t('Tug‘ilgan sana')}</span><input class="input" name="birth" value="${esc(dateToInput(x.birth))}" placeholder="${t('Tug‘ilgan sana: 20.03.1958')}" inputmode="numeric"></label>
           <button type="button" class="bw-unk ${x.unk ? 'on' : ''}" data-unk-btn>🤷 ${t('Bilmayman')}</button>
           <label class="bw-dec"><input type="checkbox" name="deceased" ${x.deceased ? 'checked' : ''}> ${t('Marhum')}</label></div>
-        <input class="input bw-death ${x.deceased ? '' : 'hidden'}" name="death" value="${esc(dateToInput(x.death))}" placeholder="${t('Vafot sanasi: 05.06.2001')}" inputmode="numeric">
+        <label class="fl bw-death ${x.deceased ? '' : 'hidden'}"><span>${t('Vafot sanasi')}</span><input class="input" name="death" value="${esc(dateToInput(x.death))}" placeholder="${t('Vafot sanasi: 05.06.2001')}" inputmode="numeric"></label>
         ${kind === 'kid' && sps.length > 1 ? `<select class="input" name="other">${sps.map((s) => `<option value="${s.id}" ${[x.father_id, x.mother_id].includes(s.id) ? 'selected' : ''}>${t(p.gender === 'f' ? 'Otasi' : 'Onasi')}: ${esc(s.name)}</option>`).join('')}</select>` : ''}
         ${String(x.id).startsWith('n') ? `<button type="button" class="bw-del" data-del="${x.id}">✕</button>` : ''}
         <div class="bw-warn hidden"></div></div>`;
@@ -2727,7 +2784,7 @@ async function renderBranchWizard(treeId, bid) {
       w.textContent = bad ? t('Diqqat: farzand ota-onasidan 14 yoshdan kam kichik') : '';
     });
     form.oninput = warn;
-    form.onchange = (e) => { if (e.target.name === 'deceased') e.target.closest('.bw-row').querySelector('[name=death]').classList.toggle('hidden', !e.target.checked); };
+    form.onchange = (e) => { if (e.target.name === 'deceased') e.target.closest('.bw-row').querySelector('.bw-death').classList.toggle('hidden', !e.target.checked); };
     warn();
     // strict — «Keyingisi»/«Yuborish»da: hech qaysi maydon bo'sh qolmasin
     const save = (strict) => {
@@ -2850,7 +2907,7 @@ async function branchLinkSheet(p) {
   // havola va xabar tanlangan tilda boradi (bot ham, ilova ham shu tilda ochiladi)
   let lang = LANG;
   const links = {};
-  const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">🔗 ${t('Shox havolasi')}</div><button class="icon-btn" data-close>${I.close}</button></div>
+  const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">🔗 ${t('{name} oilasi havolasi', { name: esc(nm(p.name)) })}</div><button class="icon-btn" data-close>${I.close}</button></div>
     <div class="sheet-body"><p class="small muted">${t('Bu havolani {name} oilasidan bir kishiga yuboring. U shu oila va avlodlari ma’lumotlarini savol-javob orqali to‘ldiradi. Siz tasdiqlagach, shajaraga qo‘shiladi.', { name: `<b>${esc(nm(p.name))}</b>` })}</p>
     <div class="h3" style="margin:6px 2px 8px">🌐 ${t('Havola tili')}</div>
     <div class="seg" data-seg="bl">${Object.entries(LANG_NAMES).map(([k, v]) => `<button type="button" data-v="${k}" class="${k === lang ? 'on' : ''}">${v}</button>`).join('')}</div>
@@ -2880,7 +2937,7 @@ function quickStartSheet() {
   const root = S.tree?.persons?.[0];
   if (!root || S.tree.persons.length > 1) return;
   const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">🌱 ${t('Tez boshlash')}</div><button class="icon-btn" data-close>${I.close}</button></div>
-    <div class="sheet-body"><p class="small muted" style="margin-top:0">${t('{name}ning farzandlari ismlarini yozing (har birini yangi qatorda). So‘ng har bir farzandga shox havolasini yuborasiz — ular o‘z oilasini o‘zlari to‘ldiradi.', { name: `<b>${esc(nm(root.name))}</b>` })}</p>
+    <div class="sheet-body"><p class="small muted" style="margin-top:0">${t('{name}ning farzandlari ismlarini yozing (har birini yangi qatorda). So‘ng har bir farzandga oila havolasini yuborasiz — ular o‘z oilasini o‘zlari to‘ldiradi.', { name: `<b>${esc(nm(root.name))}</b>` })}</p>
     <textarea class="input" id="qs-kids" rows="6" placeholder="${t('Masalan:\nKarimboy\nJumaboy\nOydin')}"></textarea>
     <button class="btn btn-primary btn-block" id="qs-go" style="margin-top:10px">${t('Qo‘shish va havolalarni olish')}</button><div id="qs-list" style="margin-top:12px"></div></div>`);
   sh.querySelector('#qs-go').onclick = async (e) => {
@@ -2897,7 +2954,7 @@ function quickStartSheet() {
     }
     sh.querySelector('#qs-kids').closest('.sheet-body').querySelector('textarea').remove();
     e.target.remove();
-    sh.querySelector('#qs-list').innerHTML = `<div class="small muted" style="margin-bottom:8px">${t('Har bir farzandga shox havolasini yuboring 👇')}</div>` +
+    sh.querySelector('#qs-list').innerHTML = `<div class="small muted" style="margin-bottom:8px">${t('Har bir farzandga oila havolasini yuboring 👇')}</div>` +
       added.map((p, i) => `<div class="dp-row"><b class="grow">${esc(nm(p.name))}</b><button class="btn btn-primary btn-sm" data-ql="${i}">🔗 ${t('Havola')}</button></div>`).join('');
     sh.querySelectorAll('[data-ql]').forEach((b) => (b.onclick = () => branchLinkSheet(added[Number(b.dataset.ql)])));
   };
@@ -2905,7 +2962,7 @@ function quickStartSheet() {
 
 // Tahrirchi: kelgan takliflar va faol havolalar
 async function branchesSheet() {
-  const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">📨 ${t('Shox havolalari va takliflar')}</div><button class="icon-btn" data-close>${I.close}</button></div>
+  const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">📨 ${t('Oila havolalari va takliflar')}</div><button class="icon-btn" data-close>${I.close}</button></div>
     <div class="sheet-body" id="bsb"><div class="empty"><span class="spin" style="color:var(--primary)"></span></div></div>`);
   const body = sh.querySelector('#bsb');
   const load = async () => {
@@ -2946,7 +3003,7 @@ async function branchesSheet() {
         ${b.claimedName ? `<label class="row small" style="gap:8px;margin-top:8px"><span class="switch"><input type="checkbox" data-trust="${b.bid}" ${b.trust ? 'checked' : ''}><span></span></span>${t('Ishonchli mas’ul — tasdiqsiz qo‘shilsin')}</label>` : ''}
         <div class="row" style="gap:6px;margin-top:8px">${b.claimedName && b.pct < 100 ? `<button class="btn btn-primary btn-sm grow" data-rem="${b.bid}">🔔 ${t('Mas’ulga eslatma yuborish')}</button>` : '<span class="grow"></span>'}
           <button class="btn btn-soft btn-sm" data-copy="${esc(b.link)}">📋</button><button class="btn btn-ghost btn-sm" data-rev="${b.bid}">${t('Bekor qilish')}</button></div></div>`).join('')
-      : `<div class="small muted">${t('Havola yaratish: daraxtda oila boshini oching → «Shox havolasi».')}</div>`}
+      : `<div class="small muted">${t('Havola yaratish: daraxtda oila boshini oching → «Oila havolasi».')}</div>`}
       ${r.applied?.length ? `<div class="h3" style="margin:18px 0 8px">↩️ ${t('Qo‘shilganlar tarixi')}</div>${r.applied.map((a, i) => `<div class="dp-row"><div class="grow"><b>${esc(nm(a.headName))}</b><div class="small muted">👤 ${esc(a.by?.name || '')} · ${relTime(a.at)} · ${a.n} ${t('o‘zgarish')}</div></div>
         <button class="btn btn-ghost btn-sm" data-undo="${i}">↩️ ${t('Qaytarish')}</button></div>`).join('')}` : ''}`;
     const act = async (pr, action, btn) => {
