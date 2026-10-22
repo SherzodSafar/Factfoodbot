@@ -411,6 +411,11 @@ function renderMain() {
   if (go) setTimeout(() => { S.treeView?.focus(go, { k: 1 }); personSheet(go); }, 250);
   fetchUnread();
   if (S.goInbox) { const k = { f: 'fam', l: 'log' }[S.goInbox] || 'me'; S.goInbox = null; setTimeout(() => notificationsSheet(k), 300); }
+  if (S.goAlbumJoin) {
+    const [, aid, sig] = S.goAlbumJoin;
+    S.goAlbumJoin = null;
+    api(`album/a/${aid}/join`, { method: 'POST', body: { sig } }).then(async (r) => { S.albumFilter = aid; await loadAlbum(true); switchTab('album'); toast(t('«{name}» albomiga qo‘shildingiz 🔒', { name: r.name })); }).catch((err) => toast(err.message, true));
+  }
   if (S.goItem) { const id = S.goItem; S.goItem = null; setTimeout(() => openMediaComments(id, false), 300); }
   if (S.goMedia) { const mid = S.goMedia; S.goMedia = null; setTimeout(() => openMediaComments(mid), 300); }
   if (S.openProps && canEdit()) { S.openProps = false; setTimeout(branchesSheet, 300); }
@@ -753,27 +758,30 @@ async function renderAlbumTab(el) {
   try { A = await loadAlbum(); } catch (err) { el.innerHTML = `<div class="empty">${esc(err.message)}</div>`; return; }
   const counts = {};
   for (const it of A.items) counts[it.album] = (counts[it.album] || 0) + 1;
-  const albums = A.albums.filter((a) => counts[a.id] || isEdit());
+  const albums = A.albums.filter((a) => counts[a.id] || isEdit() || a.priv);
   const f = S.albumFilter;
   const tr = S.tree;
   const banner = A.hasChannel ? '' : isEdit()
     ? `<button class="card banner" id="ch-banner"><div style="font-size:26px">🗄</div><div class="grow"><b>${t('Albom yaratish uchun avval kanal ulang')}</b><div class="small muted">${t('Fayllar sizning yopiq Telegram kanalingizda abadiy saqlanadi')}</div></div>${I.chev}</button>`
     : `<div class="card banner"><div style="font-size:26px">🗄</div><div class="grow"><b>${t('Albom hali ochilmagan')}</b><div class="small muted">${t('Albomni ochish uchun shajara tahrirchisi albom kanalini ulashi kerak.')}</div></div></div>`;
-  const section = (a, items) => `<div class="alb-head"><div class="grow"><div class="h2 ellipsis">📁 ${esc(nm(a.name))}</div><div class="small muted">${t('{n} ta fayl', { n: items.length })}</div></div>
+  const section = (a, items) => `<div class="alb-head"><div class="grow"><div class="h2 ellipsis">${a.priv ? '🔒' : '📁'} ${esc(nm(a.name))}</div><div class="small muted">${t('{n} ta fayl', { n: items.length })}${a.priv ? ` · ${t('{name} oilasi uchun maxfiy', { name: esc(nm(a.priv.headName)) })} · 👥 ${a.members}` : ''}</div></div>
+      ${a.priv ? `<button class="btn btn-soft btn-sm" data-alb-inv="${a.id}">➕👥 ${t('Taklif')}</button>` : ''}
       ${isEdit() ? `<button class="icon-btn" data-alb-menu="${a.id}">${I.more}</button>` : ''}</div>
+    ${a.priv && !items.length ? `<div class="small muted" style="padding:4px 2px 10px">${t('Bu albomni faqat shu oila a’zolari ko‘radi. «Qo‘shish» orqali surat va videolarni yuklang.')}</div>` : ''}
     <div class="grid">${items.map(tile).join('')}</div>`;
   let body;
   if (!A.items.length) {
     body = `<div class="empty"><div class="big">📸</div><b>${t('Albom hali bo‘sh')}</b><p class="small">${t('Oilaviy rasm, video va hujjatlarni qo‘shing — butun oila ko‘ra oladi.')}</p></div>`;
   } else if (f === 'all') {
-    body = A.albums.filter((a) => counts[a.id]).map((a) => section(a, A.items.filter((it) => it.album === a.id))).join('');
+    body = A.albums.filter((a) => counts[a.id] || a.priv).map((a) => section(a, A.items.filter((it) => it.album === a.id))).join('');
   } else {
     const a = A.albums.find((x) => x.id === f);
     body = a ? section(a, A.items.filter((it) => it.album === f)) : '';
   }
   el.innerHTML = `<div class="scroll" style="padding-top:8px">
     ${banner}
-    <div class="chips"><button class="chip ${f === 'all' ? 'on' : ''}" data-af="all">${t('Hammasi')} · ${A.items.length}</button>${albums.map((a) => `<button class="chip ${f === a.id ? 'on' : ''}" data-af="${a.id}">${esc(nm(a.name))} · ${counts[a.id] || 0}</button>`).join('')}</div>
+    <div class="chips"><button class="chip ${f === 'all' ? 'on' : ''}" data-af="all">${t('Hammasi')} · ${A.items.length}</button>${albums.map((a) => `<button class="chip ${f === a.id ? 'on' : ''}" data-af="${a.id}">${a.priv ? '🔒 ' : ''}${esc(nm(a.name))} · ${counts[a.id] || 0}</button>`).join('')}
+      ${A.canUpload && inTelegram ? `<button class="chip" id="priv-new">➕ 🔒 ${t('Oilaviy albom')}</button>` : ''}</div>
     ${body}
     <div style="height:90px"></div></div>
     ${A.canUpload ? `<button class="fab" id="add">${I.plus}<span>${t('Qo‘shish')}</span></button>` : ''}`;
@@ -781,15 +789,54 @@ async function renderAlbumTab(el) {
   const order = (f === 'all' ? A.albums.filter((a) => counts[a.id]).flatMap((a) => A.items.filter((it) => it.album === a.id)) : A.items.filter((it) => it.album === f)).map((it) => it.id);
   el.querySelectorAll('[data-item]').forEach((b) => (b.onclick = () => openViewer(order, order.indexOf(b.dataset.item))));
   el.querySelectorAll('[data-alb-menu]').forEach((b) => (b.onclick = () => albumMenu(b.dataset.albMenu)));
+  el.querySelectorAll('[data-alb-inv]').forEach((b) => (b.onclick = () => privInvite(A.albums.find((a) => a.id === b.dataset.albInv))));
+  el.querySelector('#priv-new')?.addEventListener('click', privAlbumSheet);
   el.querySelector('#add')?.addEventListener('click', uploadSheet);
   el.querySelector('#ch-banner')?.addEventListener('click', () => linkSheet('channel'));
+}
+
+// Shox oilasining maxfiy albomi: yaratish (o'zi egallagan shox uchun) va oila a'zolarini taklif qilish
+async function privAlbumSheet() {
+  let heads = [];
+  try { heads = (await api('album/heads')).heads; } catch (err) { return toast(err.message, true); }
+  if (!heads.length) return toast(t('Oilaviy albom ochish uchun avval shox havolasi orqali o‘z oilangizni oling'), true);
+  const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">🔒 ${t('Oilaviy albom')}</div><button class="icon-btn" data-close>${I.close}</button></div>
+    <div class="sheet-body"><p class="small muted" style="margin-top:0">${t('Bu albomni faqat tanlangan shox oilasi a’zolari ko‘radi. Boshqa shoxlar va boshqalar ko‘ra olmaydi.')}</p>
+    <div class="field"><label>${t('Qaysi oila uchun')}</label><select class="input" name="head">${heads.map((h) => `<option value="${h.id}">${esc(nm(h.name))} ${t('oilasi')}</option>`).join('')}</select></div>
+    <div class="field"><label>${t('Albom nomi')}</label><input class="input" name="name" maxlength="60" value="${esc(t('{name} oilasi', { name: nm(heads[0].name) }))}"></div>
+    <button class="btn btn-primary btn-block" id="pa-go">${t('Yaratish')}</button></div>`);
+  const sel = sh.querySelector('[name=head]');
+  sel.onchange = () => (sh.querySelector('[name=name]').value = t('{name} oilasi', { name: nm(heads.find((h) => h.id === sel.value)?.name || '') }));
+  sh.querySelector('#pa-go').onclick = async (e) => {
+    e.currentTarget.disabled = true;
+    try {
+      const r = await api('album', { method: 'POST', body: { priv: sel.value, name: sh.querySelector('[name=name]').value } });
+      closeAllSheets();
+      S.albumFilter = r.album.id;
+      await refreshAlbum();
+      toast(t('Oilaviy albom yaratildi 🔒'));
+      privInvite({ ...r.album, inv: null });
+    } catch (err) { toast(err.message, true); e.target.disabled = false; }
+  };
+}
+async function privInvite(a) {
+  if (!a) return;
+  if (!a.inv) { await loadAlbum(true).catch(() => {}); a = S.album.albums.find((x) => x.id === a.id) || a; }
+  if (!a.inv) return;
+  const link = `${S.tree.invite}_k${a.id}${a.inv}`;
+  const text = t('Assalomu alaykum! «{name}» — oilamizning maxfiy albomi. Havola orqali kiring va oilaviy suratlarni birga saqlaylik.', { name: a.name });
+  const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">➕👥 ${t('Oila a’zolarini taklif qilish')}</div><button class="icon-btn" data-close>${I.close}</button></div>
+    <div class="sheet-body"><p class="small muted" style="margin-top:0">${t('Bu havolani faqat shu oila a’zolariga yuboring — u orqali kirgan kishi albomni ko‘radi va fayl qo‘sha oladi.')}</p>
+    <div class="card note" style="word-break:break-all;font-weight:700">${esc(link)}</div>
+    <button class="btn btn-primary btn-block" id="pi-share" style="margin-top:10px">📤 ${t('Ulashish')}</button></div>`);
+  sh.querySelector('#pi-share').onclick = () => openLink(`https://t.me/share/url?url=${encodeURIComponent(`${text} ${link}`)}`);
 }
 
 function tile(it) {
   const img = it.thumb ? `<img src="${it.thumb}" alt="" loading="lazy">` : `<div class="tile-ic">${TYPE_ICON[it.type] || '📄'}</div>`;
   const badge = it.type === 'video' || it.type === 'animation' || it.type === 'video_note' ? `<span class="tile-badge">▶ ${fmtDur(it.dur)}</span>`
     : it.type !== 'photo' && it.kind !== 'image' ? `<span class="tile-badge">${TYPE_ICON[it.type] || ''} ${esc((it.name || '').slice(0, 14))}</span>` : '';
-  return `<div class="tile-w"><button class="tile" data-item="${it.id}">${img}${badge}</button>
+  return `<div class="tile-w"><button class="tile" data-item="${it.id}">${img}${badge}${it.priv ? `<span class="tile-lock">${it.pub ? '🌐' : '🔒'}</span>` : ''}</button>
     <div class="tile-st"><span>${VI.eye}${fmtN(it.views)}</span><span class="${it.liked ? 'on' : ''}">${VI.heart(it.liked)}${fmtN(it.likes)}</span><span>${VI.cm}${fmtN(it.cm)}</span></div></div>`;
 }
 
@@ -892,10 +939,11 @@ function openViewer(ids, index, opts = {}) {
       <div class="rv-side rv-ui">
         <button class="rv-b like ${it.liked ? 'on' : ''}" data-act="like">${VI.heart(it.liked)}<span>${fmtN(it.likes)}</span></button>
         <button class="rv-b" data-act="seen">${VI.eye}<span class="vw">${fmtN(it.views)}</span></button>
-        <button class="rv-b" data-act="cm">${VI.cm}<span class="cmn">${fmtN(it.cm)}</span></button>
+        ${it.priv && !it.pub ? '' : `<button class="rv-b" data-act="cm">${VI.cm}<span class="cmn">${fmtN(it.cm)}</span></button>`}
+        ${it.priv && it.member ? `<button class="rv-b pubb ${it.pub ? 'on' : ''}" data-act="pub"><b>🌐</b><span>${it.pub ? t('Umumiyda') : t('Umumiy')}</span></button>` : ''}
         ${it.kind === 'video' && it.type !== 'animation' ? `<button class="rv-b" data-act="mute">${VI.mute(false)}</button>` : ''}
         ${it.kind === 'video' && it.src ? `<button class="rv-b spd" data-act="spd"><b>1×</b></button>` : ''}
-        ${inTelegram ? `<button class="rv-b" data-act="send">${VI.send}<span class="sn">${fmtN(it.sends)}</span></button>` : ''}
+        ${inTelegram && !it.priv ? `<button class="rv-b" data-act="send">${VI.send}<span class="sn">${fmtN(it.sends)}</span></button>` : ''}
       </div>
       ${land ? `<button class="rv-full rv-ui" data-act="full">${VI.full}</button>` : ''}
       <div class="rv-info rv-ui">
@@ -916,6 +964,13 @@ function openViewer(ids, index, opts = {}) {
 
   async function act(k, it, sl, b) {
     haptic('light');
+    if (k === 'pub') {
+      // umumiy albomda ham ko'rsatish — avval tasdiqlash
+      const on = !it.pub;
+      if (!(await confirmBox(on ? t('Bu fayl shajaraning umumiy albomida ham hammaga ko‘rinadigan bo‘ladi. Rozimisiz?') : t('Fayl umumiy albomdan olinib, faqat oilaviy albomda qoladi. Davom etilsinmi?')))) return;
+      try { await api(`album/i/${it.id}/pub`, { method: 'POST', body: { on } }); it.pub = on; b.classList.toggle('on', on); b.querySelector('span').textContent = on ? t('Umumiyda') : t('Umumiy'); toast(on ? t('Umumiy albomda ham ko‘rinadi 🌐') : t('Faqat oilaviy albomda 🔒')); } catch (err) { toast(err.message, true); }
+      return;
+    }
     if (k === 'like') {
       it.liked = !it.liked;
       it.likes = Math.max(0, (it.likes || 0) + (it.liked ? 1 : -1));
@@ -2072,7 +2127,7 @@ function personSheet(id) {
   const edit = isEdit();
   const sh = openSheet(`<div class="sheet-body">
     <div class="p-hero"><div style="position:relative">${avatar(p, 112, 'ring')}${edit ? `<button class="photo-edit" id="ph">${I.camera}</button>` : ''}</div>
-      <h2>${esc(nm(p.name))}</h2><div class="dates">${esc(yearsLabel(p)) || '&nbsp;'}</div>
+      <h2>${esc(nm(p.name))}</h2>${patronymic(p) ? `<div class="patr">${esc(nm(patronymic(p)))}</div>` : ''}<div class="dates">${esc(yearsLabel(p)) || '&nbsp;'}</div>
       <div class="badges">${p.blood ? `<span class="badge green">🩸 ${t('Qon qarindosh')}</span>` : `<span class="badge grey">💍 ${t('Kelin/kuyov')}</span>`}${p.deceased ? `<span class="badge grey">🤲 ${t('Marhum')}</span>` : ''}<span class="badge gold">${t('{n}-avlod', { n: fam.gen(p) })}</span></div></div>
     ${lin.length > 1 ? `<div class="card lineage"><span class="h3" style="width:100%;margin-bottom:4px">${t('Nasl yo‘li')}</span>${lin.map((x, i) => `${i ? '<span class="sep">›</span>' : ''}<button data-go="${x.id}" class="${x.id === p.id ? 'me' : ''}">${esc(nm(x.name))}</button>`).join('')}${!p.blood ? `<span class="sep">💍</span><button class="me">${esc(nm(p.name))}</button>` : ''}</div>` : ''}
     <dl class="card info-list">${info.map(([k, v]) => `<div><dt>${k}</dt><dd>${String(v).startsWith('<a') ? v : esc(v)}</dd></div>`).join('')}</dl>
@@ -2116,6 +2171,16 @@ function personSheet(id) {
   // rasmga bosilsa — to'liq hajmda (albomdagi asl nusxa, bo'lmasa avatarning o'zi)
   sh.querySelector('.p-hero .avatar img')?.closest('.avatar').addEventListener('click', () => openPortrait(p));
   if (p.photoItem && !S.album?.items.some((x) => x.id === p.photoItem)) loadAlbum(true).catch(() => {});
+}
+// Otasining ismi bo'yicha: 2000-yilgacha «Jumaboyevich/…evna», keyin «Jumaboy o‘g‘li/qizi» (portret izohidagi qoida bilan bir xil)
+function patronymic(p) {
+  const f = S.fam.get(p.father_id);
+  const first = String(f?.name || p.fname || '').trim().split(/\s+/)[0];
+  if (!first) return '';
+  const yr = Number(String(p.birth || '').slice(0, 4)) || (Number(String(f?.birth || '').slice(0, 4)) + 25) || (p.deceased ? 1950 : 2000);
+  const l = first.slice(-1).toLowerCase();
+  const fem = p.gender === 'f';
+  return yr < 2000 ? first + (/[aeiou]/.test(l) ? 'yev' : l === 'y' ? 'ev' : 'ov') + (fem ? 'na' : 'ich') : `${first} ${fem ? 'qizi' : 'o‘g‘li'}`;
 }
 async function openPortrait(p) {
   // darhol avatar ko'rinadi, albomdagi asl nusxa tayyor bo'lgach o'sha ochiladi
@@ -2660,6 +2725,7 @@ function boot() {
   S.goMedia = /_m([a-z0-9]{10})$/.exec(inv.slice(30))?.[1] || null;
   S.goInbox = /_([nfl])$/.exec(inv.slice(30))?.[1] || null;
   S.goItem = /_a([a-z0-9]{10})$/.exec(inv.slice(30))?.[1] || null;
+  S.goAlbumJoin = /_k([A-Za-z0-9]{8})([A-Za-z0-9_-]{10})$/.exec(inv.slice(30)) || null;
   const startCode = params.get('code') || (!inv ? sp : '');
   const br = /^([a-z0-9]{6,20})_([A-Za-z0-9]{4,16})$/.exec(params.get('br') || '');
   if (br) return renderBranchWizard(br[1], br[2]);

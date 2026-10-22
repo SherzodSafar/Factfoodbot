@@ -297,7 +297,7 @@ async function startUpload({ from, chatId, lang, msg, media, tree, replyTo }) {
   });
   if (!isNew) return;
   const doc = await loadAlbum(treeId);
-  const rows = doc.albums.slice(-8).reverse().map((a) => [{ text: `📁 ${a.name}`, callback_data: `alb:${a.id}:${from.id}` }]);
+  const rows = doc.albums.filter((a) => !a.priv).slice(-8).reverse().map((a) => [{ text: `📁 ${a.name}`, callback_data: `alb:${a.id}:${from.id}` }]);
   rows.push([{ text: t(lang, '➕ Yangi albom'), callback_data: `alb:new:${from.id}` }, { text: t(lang, '✖️ Bekor qilish'), callback_data: `alb:x:${from.id}` }]);
   // Telegram «rasm» sifatida yuborilganini siqadi — asl sifat faqat «fayl» sifatida saqlanadi
   const hint = media.type === 'photo' ? '\n\n' + t(lang, '💡 Rasm siqilgan holda keldi. Asl sifatda saqlash uchun uni «Fayl» sifatida yuboring (📎 → Fayl).') : '';

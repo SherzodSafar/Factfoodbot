@@ -42,6 +42,7 @@ Telegram bot **@ShajaraAiBot** + Mini App (oila shajarasi). Eski bot (@Shajara_i
 - Asl sifat: mini app yuklamalari `album/up/chunk` (2.5 MB bo'laklar, `tmp/up/`) + `album/up/finish` → kanalga sendDocument (siqilmaydi). Avatar: 640px kvadrat ko'rsatish uchun + asl nusxa «Portretlar» albomiga (`person.photoItem`). Katta rasmlar `/api/media` da R2 ga ko'chirilib 302. Botga «rasm» sifatida yuborilganlar siqilgan — bot «Fayl» sifatida yuborishni maslahat beradi.
 - Bildirishnoma tugmalari: `notify(..., { open })` — `_p<id>` shaxs, `_a<itemId>` albom fayli.
 - 3-bosqich (shox): bot yozishmasi — birma-bir savollar (`nextQ`/`askQ`: nm,g,b,al,d,ot,sp,k; «🤷 Bilmayman», «Orqaga», «Bu oilani o‘zi to‘ldirsin» → subBranch + `s.skip`), daftar rasmi → `chatMedia` (Gemini extractFamily + planGraph); ovozli rejim olib tashlangan. Takliflarda `warn` (14 yosh, takror), ishonchli mas'ul `branches[bid].trust` (avto-qo'shish), `applyWithUndo`/`undoProposal`, havola muddati `exp` (30 kun, ochilmagan bo'lsa), `branchStats` + `remindBranch`. Yangi shajara: `quickStartSheet` (farzand ismlari → havolalar).
+- Shox oilasi maxfiy albomi: `album.priv={head}`, `members`; kirish — `albumAccess` (a'zolar + shox ichidagi havola egalari). Fayllar kanalga emas, R2 `p/<tree>/<iid>` (`/api/pm/...` imzoli 302). `item.pub` + `alsoIn` (Umumiy) — tasdiqdan so'ng hammaga. Taklif: `<inv>_k<aid><signShort>` → `album/a/<aid>/join`. Bot albom ro'yxatida maxfiylar yo'q.
 - Keyingi g'oyalar: ovozli javob (bot chat), AI bilan Q&A.
 
 ## Foydalanuvchi afzalliklari

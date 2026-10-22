@@ -19,7 +19,7 @@ import { webhookSecret, todayText } from '../lib/events.js';
 import { notify, escapeHtml } from '../lib/notify.js';
 import { updateUser, getUser } from '../lib/users.js';
 import { waitUntil } from '@vercel/functions';
-import { loadAlbum, mutateAlbum, publicAlbum, addToAlbum, canUpload, cleanName, ensureAlbum } from '../lib/album.js';
+import { loadAlbum, mutateAlbum, publicAlbum, addToAlbum, canUpload, cleanName, ensureAlbum, albumAccess, albumInvite } from '../lib/album.js';
 import { t, LANGS } from '../lib/i18n.js';
 
 const PUBLIC_URL = () => (process.env.PUBLIC_URL || '').replace(/\/$/, '');
@@ -390,11 +390,34 @@ async function route(req, res) {
       const doc = await loadAlbum(tree.id);
       return send(res, 200, { ...publicAlbum(doc, tree, uid), hasChannel: !!tree.channel, canUpload: canUpload(tree, uid, role), canEdit: role === 'edit', me: uid });
     }
+    // shox oilasi albomini kim ocha oladi: tahrirchi — istalgan shox uchun, qolganlar — o'zi egallagan shox(lar) uchun
+    const myHeads = () => {
+      const ids = role === 'edit' ? [tree.meta?.root_id || tree.persons[0]?.id, ...Object.values(tree.branches || {}).filter((b) => !b.revoked).map((b) => b.head)]
+        : Object.values(tree.branches || {}).filter((b) => !b.revoked && b.claimed === uid).map((b) => b.head);
+      return [...new Set(ids.filter(Boolean))].map((id) => tree.persons.find((p) => p.id === id)).filter(Boolean).map((p) => ({ id: p.id, name: p.name }));
+    };
+    if (parts[1] === 'heads' && m === 'GET') return send(res, 200, { heads: uid ? myHeads() : [] });
     if (parts.length === 1 && m === 'POST') {
       if (!canUpload(tree, uid, role)) throw new HttpError(403, 'Ruxsat yo‘q');
       const body = await readBody(req);
+      if (body.priv) {
+        if (!uid || !myHeads().some((h) => h.id === body.priv)) throw new HttpError(403, 'Bu shox uchun albom ochishga ruxsat yo‘q');
+        const { r2On } = await import('../lib/r2.js');
+        if (!r2On()) throw new HttpError(400, 'Maxfiy albom uchun fayl ombori (R2) sozlanmagan');
+        const a = { id: randomId(8), name: cleanName(body.name) || 'Oilaviy albom', createdAt: new Date().toISOString(), by: by.name, priv: { head: body.priv }, members: [uid] };
+        await mutateAlbum(tree.id, (doc) => { doc.albums.push(a); });
+        return send(res, 200, { album: a });
+      }
       const r = await mutateAlbum(tree.id, (doc) => ensureAlbum(doc, body.name, by));
       return send(res, 200, { album: r.result });
+    }
+    // maxfiy albomga taklif havolasi orqali qo'shilish
+    if (parts[1] === 'a' && parts[2] && parts[3] === 'join' && m === 'POST') {
+      const body = await readBody(req);
+      if (!uid || body.sig !== albumInvite(parts[2])) throw new HttpError(403, 'Taklif havolasi noto‘g‘ri');
+      const r = await mutateAlbum(tree.id, (d) => { const a = d.albums.find((x) => x.id === parts[2] && x.priv); if (!a) return null; a.members = [...new Set([...(a.members || []), uid])]; return a.name; });
+      if (!r.result) throw new HttpError(404, 'Albom topilmadi');
+      return send(res, 200, { ok: true, name: r.result });
     }
     // Asl sifatda yuklash: fayl 2.5 MB bo'laklarda keladi, so'ng kanalga «fayl» (document) sifatida — siqilmaydi
     if (parts[1] === 'up' && m === 'POST') {
@@ -423,6 +446,20 @@ async function route(req, res) {
         for (let i = 0; i < n; i++) await deleteKey(dir + i).catch(() => {});
         const buf = Buffer.concat(bufs);
         if (buf.length > 50 * 1024 * 1024) throw new HttpError(413, 'Fayl juda katta (50 MB gacha)');
+        const name0 = cleanName(body.name, 120).replace(/[\\/]/g, '_') || 'file';
+        const mime0 = /^[a-z]+\/[a-z0-9.+-]+$/i.test(body.mime || '') ? body.mime : 'application/octet-stream';
+        const pa = (await loadAlbum(tree.id)).albums.find((a) => a.id === body.album && a.priv);
+        if (pa) {
+          // shox oilasining maxfiy albomi: kanalga emas, faqat R2 omboriga (boshqalar ko'rmaydi)
+          if (!albumAccess(tree, pa, uid)) throw new HttpError(403, 'Bu albomga ruxsatingiz yo‘q');
+          const r2 = await import('../lib/r2.js');
+          const iid = randomId(10);
+          const key = `p/${tree.id}/${iid}`;
+          await r2.r2Store(key, buf.length, mime0, async (a, b) => buf.subarray(a, b + 1));
+          const item = { id: iid, album: pa.id, type: 'document', mime: mime0, size: buf.length, name: name0, caption: cleanName(body.caption, 900), by, at: new Date().toISOString(), r2: key };
+          await mutateAlbum(tree.id, (d) => { d.items.unshift(item); });
+          return send(res, 200, { ok: true, album: { id: pa.id, name: pa.name }, item: iid });
+        }
         const target = tree.channel?.id;
         if (!target) throw new HttpError(400, 'Avval albom kanalini ulang');
         const pid = body.pid && role === 'edit' ? String(body.pid) : null; // shaxs portreti
@@ -476,6 +513,8 @@ async function route(req, res) {
       if (m === 'DELETE') {
         // Albom o'chsa, fayllar yo'qolmaydi — "Umumiy" albomiga o'tadi.
         await mutateAlbum(tree.id, (d) => {
+          // maxfiy albom o'chsa — fayllari ham o'chadi (umumiyga o'tib qolmasin)
+          if (d.albums.find((x) => x.id === aid)?.priv) d.items = d.items.filter((x) => x.album !== aid);
           const left = d.items.filter((x) => x.album === aid);
           d.albums = d.albums.filter((x) => x.id !== aid);
           if (left.length) {
@@ -491,6 +530,17 @@ async function route(req, res) {
       const doc = await loadAlbum(tree.id);
       const it = doc.items.find((x) => x.id === iid);
       if (!it) throw new HttpError(404, 'Fayl topilmadi');
+      const ia = doc.albums.find((a) => a.id === it.album);
+      const member = albumAccess(tree, ia, uid);
+      if (!member && !it.pub) throw new HttpError(404, 'Fayl topilmadi');
+      // maxfiy albom fayli: umumiy albomda ham ko'rsatish (a'zo yoqadi/o'chiradi; ilovada oldin tasdiqlanadi)
+      if (parts[3] === 'pub' && m === 'POST') {
+        if (!ia?.priv || !member) throw new HttpError(403, 'Ruxsat yo‘q');
+        const body = await readBody(req);
+        await mutateAlbum(tree.id, (d) => { const x = d.items.find((y) => y.id === iid); if (!x) return; x.pub = !!body.on; if (x.pub && !x.alsoIn) x.alsoIn = ensureAlbum(d, 'Umumiy', by).id; });
+        return send(res, 200, { ok: true, pub: !!body.on });
+      }
+      if (it.r2 && !it.pub && (parts[3] === 'c' || parts[3] === 'send') && m === 'POST') throw new HttpError(400, 'Maxfiy albom faylini chatga yuborib yoki izoh yozib bo‘lmaydi');
       if (parts[3] === 'send' && m === 'POST') {
         if (!uid) throw new HttpError(400, 'Bu funksiya faqat Telegram ichida ishlaydi');
         const a = doc.albums.find((x) => x.id === it.album);
@@ -604,6 +654,16 @@ async function route(req, res) {
       'content-type': type, 'accept-ranges': 'bytes', 'cache-control': 'private, max-age=86400',
       'content-range': `bytes ${start}-${start + file.buffer.length - 1}/${file.total}`,
     });
+  }
+
+  // ---- Shox oilasi maxfiy albomi fayli: imzo albom ro'yxatini ko'rishga haqli kishiga beriladi → R2 havolasi
+  if (parts[0] === 'pm' && parts[1] && /^[a-z0-9]{10}$/.test(parts[2] || '') && m === 'GET') {
+    if (!verifyMedia('pm:' + parts[2], url.searchParams.get('e'), url.searchParams.get('s'))) throw new HttpError(403, 'Havola eskirgan');
+    const r2 = await import('../lib/r2.js');
+    res.statusCode = 302;
+    res.setHeader('location', await r2.r2Url(`p/${parts[1].replace(/[^a-z0-9]/g, '')}/${parts[2]}`));
+    res.setHeader('cache-control', 'private, max-age=3600');
+    return res.end();
   }
 
   // ---- Shaxs suratlari (maxfiy do'kondan, imzo bilan)

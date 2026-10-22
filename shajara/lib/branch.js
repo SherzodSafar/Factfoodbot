@@ -377,7 +377,7 @@ async function askQ(from, s) {
   let kb = [];
   if (f === 'nm') {
     s.wait = { f: 'name', id };
-    text = inLaw(s, x) ? t(L, '✍️ {who} — ismi, familiyasi va otasining ismini yozing (masalan: Xadicha Bobojonova Rahim qizi):', { who: nm })
+    text = inLaw(s, x) ? t(L, '✍️ {who} — ismi, familiyasi va otasining ismini yozing (masalan: Toshmat Eshmatov Yormatovich):', { who: nm })
       : par && isNew(id) ? t(L, '✍️ {name}ning {n}-farzandi ismini yozing:', { name: esc(par.name || ''), n: kidsOf(W, par.id).findIndex((k) => k.id === id) + 1 }) : t(L, '✍️ Ismini yozing:');
     if (x.name) kb = [[U]];
   } else if (f === 'g') {
@@ -403,7 +403,7 @@ async function askQ(from, s) {
     kb = [...spousesOf(W, x.father_id || x.mother_id).map((sp) => [{ text: sp.name, callback_data: `bc:op:${sp.id}` }]), [U]];
   } else if (f === 'sp') {
     s.wait = { f: 'sp', id };
-    text = t(L, '💍 {who}ning turmush o‘rtog‘i kim? Ismi, familiyasi va otasining ismini yozing (masalan: Xadicha Bobojonova Rahim qizi).', { who: nm });
+    text = t(L, '💍 {who}ning turmush o‘rtog‘i kim? Ismi, familiyasi va otasining ismini yozing (masalan: Toshmat Eshmatov Yormatovich).', { who: nm });
     kb = [[{ text: t(L, '🚫 Turmush qurmagan'), callback_data: 'bc:u' }], [U]];
   } else if (f === 'k') {
     const kids = kidsOf(W, id);
@@ -443,7 +443,7 @@ export async function chatText(from, text) {
     if (w.f === 'sp' || inLaw(s, x)) {
       // «Xadicha Bobojonova Rahim qizi» → ism+familiya va otasining ismi
       const [full, fn] = splitFull(name);
-      if (words(full) < 2) { await send(from.id, t(L, 'Familiyasi ham kerak. Ismi, familiyasi va otasining ismini yozing (masalan: Xadicha Bobojonova Rahim qizi):'), [[{ text: t(L, '🤷 Bilmayman'), callback_data: 'bc:u' }]]); return true; }
+      if (words(full) < 2) { await send(from.id, t(L, 'Familiyasi ham kerak. Ismi, familiyasi va otasining ismini yozing (masalan: Toshmat Eshmatov Yormatovich):'), [[{ text: t(L, '🤷 Bilmayman'), callback_data: 'bc:u' }]]); return true; }
       if (w.f === 'sp') {
         const id = 'n' + (++s.seq);
         s.W[id] = { id, name: full, fname: fn, gender: x.gender === 'f' ? 'm' : 'f', birth: null, death: null, deceased: false, father_id: null, mother_id: null, spouse_ids: [w.id] };
@@ -538,7 +538,7 @@ export async function chatCallback(cq, lang) {
   if (act === 'ef') {
     s.wait = { f: arg === 'name' ? 'name' : 'birth', id: cid };
     await save(from.id, s);
-    return send(from.id, arg === 'name' ? (inLaw(s, x) ? t(L, '✍️ Ism va familiyasini yozing (masalan: Xadicha Rahimova):') : t(L, '✍️ Ismini yozing:'))
+    return send(from.id, arg === 'name' ? (inLaw(s, x) ? t(L, '✍️ Ismi, familiyasi va otasining ismini yozing (masalan: Toshmat Eshmatov Yormatovich):') : t(L, '✍️ Ismini yozing:'))
       : t(L, '📅 {who} qachon tug‘ilgan? To‘liq sanani yozing: kun.oy.yil (masalan: 20.03.1958).', { who: `<b>${esc(x.name)}</b>` }));
   }
   if (act === 'g' && cf === 'g') { x.gender = arg === 'f' ? 'f' : 'm'; markDone(s, cur); return askQ(from, s); }
