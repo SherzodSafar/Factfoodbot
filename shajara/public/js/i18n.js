@@ -626,7 +626,7 @@ const D = [
   ['Oilaviy albom yaratildi 🔒', 'Семейный альбом создан 🔒', 'Family album created 🔒'],
   ['Albomlar', 'Альбомы', 'Albums'],
   ['Telegramda yuborish', 'Отправить в Telegram', 'Send via Telegram'],
-  ['ZIP Telegram’ga yuklanadi, so‘ng istalgan odam yoki chatni tanlaysiz. 50 MB dan katta ZIP bir necha qismga bo‘linib bot chatiga keladi.', 'ZIP загрузится в Telegram, затем выберете любого человека или чат. ZIP больше 50 МБ придёт в чат с ботом несколькими частями.', 'The ZIP is uploaded to Telegram, then you pick any person or chat. A ZIP over 50 MB arrives in the bot chat in several parts.'],
+  ['ZIP Telegram’ga yuklanadi (2 GB gacha bitta fayl), so‘ng istalgan odam yoki chatni tanlaysiz. Katta ZIP bir necha daqiqa oladi — ilovani yopsangiz ham bot chatiga keladi.', 'ZIP загрузится в Telegram (одним файлом до 2 ГБ), затем выберете любого человека или чат. Большой ZIP займёт несколько минут — даже если закроете приложение, он придёт в чат с ботом.', 'The ZIP is uploaded to Telegram (one file up to 2 GB), then you pick any person or chat. A big ZIP takes a few minutes — it still arrives in the bot chat if you close the app.'],
   ['ZIP {n} qismga bo‘linib bot chatiga yuborildi. U yerdan istalgan chatga yuboring (Forward).', 'ZIP разбит на {n} частей и отправлен в чат с ботом. Перешлите оттуда в любой чат.', 'The ZIP was split into {n} parts and sent to the bot chat. Forward them to any chat.'],
   ['{n} ta fayl 48 MB dan katta — ZIP’ga sig‘madi, ularni alohida yuboring.', '{n} файл(ов) больше 48 МБ — не вошли в ZIP, отправьте их отдельно.', '{n} file(s) over 48 MB didn’t fit into the ZIP — send them separately.'],
   ['Istalgan odamga — havola bilan', 'Кому угодно — ссылкой', 'To anyone — via link'],

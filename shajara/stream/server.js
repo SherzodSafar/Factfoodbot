@@ -3,7 +3,7 @@
 // (natija keshlanadi). Fayl serverda saqlanmaydi.
 import http from 'node:http';
 import { verifyMedia } from '../lib/auth.js';
-import { mtprotoOn, sendRange, readRange } from '../lib/mtproto.js';
+import { mtprotoOn, sendRange, readRange, canReachUser, uploadDocument, encodeFileId } from '../lib/mtproto.js';
 
 const PORT = Number(process.env.PORT || 10000);
 const MIME = { mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', mkv: 'video/x-matroska', m4v: 'video/mp4', mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac', ogg: 'audio/ogg', oga: 'audio/ogg', opus: 'audio/ogg', wav: 'audio/wav', flac: 'audio/flac' };
@@ -99,8 +99,38 @@ async function zipRoute(req, res, id, url) {
   const fname = `${job.title || 'Shajara'}.zip`;
   console.log('🗜', job.files.length, 'fayl', url.searchParams.get('send') ? '→ chat' : '→ yuklab olish');
   if (url.searchParams.get('send')) {
-    // ZIP ≤ 48 MB qismlarga bo'linadi (Bot API 50 MB chegarasi) va bot chatiga hujjat bo'lib boradi
-    const json = (code, o) => { res.writeHead(code, { 'content-type': 'application/json', ...cors }); res.end(JSON.stringify(o)); };
+    const json = (code, o) => { if (!res.writableEnded) { res.writeHead(code, { 'content-type': 'application/json', ...cors }); res.end(JSON.stringify(o)); } };
+    const prepare = async (fileId, name) => {
+      const p = await (await fetch(TGA('savePreparedInlineMessage'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({
+        user_id: Number(job.uid), allow_user_chats: true, allow_bot_chats: true, allow_group_chats: true, allow_channel_chats: true,
+        result: { type: 'document', id: id.slice(0, 32), document_file_id: fileId, title: name, caption: `🗜 ${job.title}` },
+      }) })).json().catch(() => ({}));
+      return p.ok ? p.result.id : null;
+    };
+    // katta ZIP — MTProto orqali bitta fayl (2 GB gacha; undan kattasi 1.9 GB lik ZIP'larga bo'linadi)
+    if (mtprotoOn() && await canReachUser(job.uid)) {
+      const BIG = 1900 * 1048576;
+      const fits = job.files.filter((f) => f.z + 200 < BIG);
+      const groups = [];
+      for (const f of fits) {
+        const g = groups.find((x) => x.size + f.z + 200 < BIG);
+        if (g) { g.files.push(f); g.size += f.z + 200; } else groups.push({ files: [f], size: f.z + 200 });
+      }
+      try {
+        let prepared = null;
+        for (const [i, g] of groups.entries()) {
+          const name = groups.length > 1 ? `${job.title || 'Shajara'} (${i + 1}).zip` : fname;
+          const doc = await uploadDocument(job.uid, name, `🗜 ${job.title} · ${g.files.length}`, (out) => writeZip({ files: g.files }, out));
+          if (groups.length === 1 && doc) prepared = await prepare(encodeFileId(doc, job.files[0].f), name).catch(() => null);
+        }
+        console.log('🗜 MTProto', groups.length, 'ZIP');
+        return json(200, { ok: true, parts: groups.length, prepared, skipped: job.files.length - fits.length });
+      } catch (err) {
+        console.error('zip mtproto', err?.errorMessage || err?.message);
+        return json(500, { ok: false, error: err?.errorMessage || err?.message });
+      }
+    }
+    // zaxira: ZIP ≤ 48 MB qismlarga bo'linadi (Bot API 50 MB chegarasi) va bot chatiga hujjat bo'lib boradi
     const LIM = 48 * 1048576;
     const fits = job.files.filter((f) => f.z + 200 < LIM);
     const groups = [];
@@ -121,13 +151,7 @@ async function zipRoute(req, res, id, url) {
         form.append('document', new Blob([Buffer.concat(bufs)], { type: 'application/zip' }), name);
         const r = await (await fetch(TGA('sendDocument'), { method: 'POST', body: form })).json();
         if (!r.ok) return json(502, { ok: false, error: r.description });
-        if (groups.length === 1) {
-          const p = await (await fetch(TGA('savePreparedInlineMessage'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({
-            user_id: Number(job.uid), allow_user_chats: true, allow_bot_chats: true, allow_group_chats: true, allow_channel_chats: true,
-            result: { type: 'document', id: id.slice(0, 32), document_file_id: r.result.document.file_id, title: name, caption: `🗜 ${job.title}` },
-          }) })).json().catch(() => ({}));
-          prepared = p.ok ? p.result.id : null;
-        }
+        if (groups.length === 1) prepared = await prepare(r.result.document.file_id, name);
       }
       return json(200, { ok: true, parts: groups.length, prepared, skipped: job.files.length - fits.length });
     } catch (err) {

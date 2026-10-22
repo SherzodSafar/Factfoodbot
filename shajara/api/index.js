@@ -656,7 +656,7 @@ async function route(req, res) {
         const list = items.filter((it) => it.fileId && it.size);
         const size = list.reduce((a, x) => a + x.size, 0);
         if (!list.length) throw new HttpError(400, 'ZIP uchun fayl yo‘q');
-        if (size > 1024 ** 3) throw new HttpError(413, 'ZIP 1 GB dan oshmasin — kamroq fayl tanlang');
+        if (size > 4 * 1024 ** 3) throw new HttpError(413, 'ZIP 4 GB dan oshmasin — kamroq fayl tanlang');
         const safe = (v) => String(v || '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').trim().slice(0, 80);
         const EXTS = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'video/mp4': 'mp4', 'video/quicktime': 'mov', 'audio/mpeg': 'mp3', 'audio/ogg': 'ogg', 'audio/mp4': 'm4a', 'application/pdf': 'pdf' };
         const TEXT = { photo: 'jpg', video: 'mp4', animation: 'mp4', video_note: 'mp4', voice: 'ogg', audio: 'mp3' };

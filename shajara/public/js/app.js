@@ -1656,7 +1656,7 @@ async function selAction(k) {
         <div class="sheet-body"><p style="margin-top:0"><b>${esc(r.name)}</b><br><span class="muted small">${t('{n} ta fayl', { n: r.count })} · ${fmtSize(r.size)}</span></p>
         <p class="small muted">${t('ZIP ichida har bir albom alohida papka bo‘ladi.')}</p>
         <button class="btn btn-primary btn-block" id="z-send">📤 ${t('Telegramda yuborish')}</button>
-        <div class="hint">${t('ZIP Telegram’ga yuklanadi, so‘ng istalgan odam yoki chatni tanlaysiz. 50 MB dan katta ZIP bir necha qismga bo‘linib bot chatiga keladi.')}</div></div>`);
+        <div class="hint">${t('ZIP Telegram’ga yuklanadi (2 GB gacha bitta fayl), so‘ng istalgan odam yoki chatni tanlaysiz. Katta ZIP bir necha daqiqa oladi — ilovani yopsangiz ham bot chatiga keladi.')}</div></div>`);
       sh.querySelector('#z-send').addEventListener('click', async (e) => {
         const b = e.currentTarget;
         b.disabled = true;

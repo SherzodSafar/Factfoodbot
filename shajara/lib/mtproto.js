@@ -3,6 +3,7 @@
 import { TelegramClient, Api, errors } from 'telegram';
 import { StringSession } from 'telegram/sessions/index.js';
 import bigInt from 'big-integer';
+import crypto from 'node:crypto';
 import { readJson, writeJson } from './store.js';
 
 export const mtprotoOn = () => !!(process.env.TG_API_ID && process.env.TG_API_HASH);
@@ -161,6 +162,70 @@ export async function sendRange(req, res, { fileId, size, type, max = Infinity }
   }
   res.end();
   return end;
+}
+
+// ---- Katta faylni (ZIP) foydalanuvchining bot chatiga yuklash: 512 KB lik bo'laklar oqim bilan (hajmi oldindan
+// noma'lum — oxirgi bo'lakkacha file_total_parts = -1), 2 GB gacha. Bot uchun access_hash = 0 yetadi.
+const rid = () => bigInt(crypto.randomBytes(8).readBigInt64LE().toString());
+const userPeer = (uid) => new Api.InputPeerUser({ userId: bigInt(String(uid)), accessHash: bigInt(0) });
+
+export async function canReachUser(uid) {
+  try {
+    const r = await (await client()).invoke(new Api.users.GetUsers({ id: [new Api.InputUser({ userId: bigInt(String(uid)), accessHash: bigInt(0) })] }));
+    return r.some((u) => u.className === 'User');
+  } catch (e) { console.error('mtproto user', e?.errorMessage || e?.message); return false; }
+}
+
+/** produce(out) — ma'lumotni out(buf) bilan beradi. Qaytaradi: yuborilgan hujjat (Api.Document). */
+export async function uploadDocument(uid, name, caption, produce) {
+  const c = await client();
+  const fileId = rid();
+  const PART = 512 * 1024;
+  const inflight = new Set();
+  let n = 0;
+  let buf = Buffer.alloc(0);
+  const put = async (bytes, last) => {
+    while (inflight.size >= 4) await Promise.race(inflight);
+    const i = n++;
+    const req = () => c.invoke(new Api.upload.SaveBigFilePart({ fileId, filePart: i, fileTotalParts: last ? i + 1 : -1, bytes }));
+    const p = req().catch(async (e) => { await sleep(1500); return req(); }); // bir marta qayta urinish
+    inflight.add(p);
+    p.then(() => inflight.delete(p), () => inflight.delete(p));
+  };
+  await produce(async (chunk) => {
+    buf = buf.length ? Buffer.concat([buf, chunk]) : chunk;
+    while (buf.length > PART) { await put(buf.subarray(0, PART), false); buf = buf.subarray(PART); }
+  });
+  await put(buf, true);
+  await Promise.all(inflight);
+  const r = await c.invoke(new Api.messages.SendMedia({
+    peer: userPeer(uid), message: caption, randomId: rid(),
+    media: new Api.InputMediaUploadedDocument({ file: new Api.InputFileBig({ id: fileId, parts: n, name }), mimeType: 'application/zip', attributes: [new Api.DocumentAttributeFilename({ fileName: name })] }),
+  }));
+  return (r.updates || []).find((u) => u.message?.media?.document)?.message.media.document || null;
+}
+
+/** MTProto hujjatidan Bot API file_id (ulashish oynasi uchun); like — shu botning mavjud file_id si (versiya baytlari). */
+export function encodeFileId(doc, like) {
+  const tail = rleDecode(Buffer.from(like, 'base64url')).subarray(-2);
+  const ref = Buffer.from(doc.fileReference || []);
+  const head = ref.length < 254 ? Buffer.from([ref.length]) : Buffer.from([254, ref.length & 255, (ref.length >> 8) & 255, (ref.length >> 16) & 255]);
+  const b = Buffer.alloc(8);
+  b.writeUInt32LE((5 | (1 << 25)) >>> 0, 0); // 5 — hujjat, 25-bit — file_reference bor
+  b.writeUInt32LE(doc.dcId, 4);
+  const ids = Buffer.alloc(16);
+  ids.writeBigInt64LE(BigInt(doc.id.toString()), 0);
+  ids.writeBigInt64LE(BigInt(doc.accessHash.toString()), 8);
+  const raw = Buffer.concat([b, head, ref, Buffer.alloc((4 - ((head.length + ref.length) % 4)) % 4), ids, tail]);
+  const out = [];
+  for (let i = 0; i < raw.length; i++) {
+    if (raw[i] !== 0) { out.push(raw[i]); continue; }
+    let z = 0;
+    while (i < raw.length && raw[i] === 0 && z < 250) { z++; i++; }
+    i--;
+    out.push(0, z);
+  }
+  return Buffer.from(out).toString('base64url');
 }
 
 // ---- Kanal xabarlari matnini o'qish (albom izohlari uchun)
