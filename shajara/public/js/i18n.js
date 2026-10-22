@@ -684,6 +684,9 @@ const D = [
   ['Hali hech kim belgilanmagan', 'Пока никто не отмечен', 'Nobody tagged yet'],
   ['Saqlash', 'Сохранить', 'Save'],
   ['Shajaraga qaytish', 'Вернуться к древу', 'Back to the tree'],
+  ['Shajarada o‘zingizni belgilang', 'Отметьте себя в древе', 'Mark yourself in the tree'],
+  ['Profilingizga surat qo‘ying', 'Добавьте фото в профиль', 'Add a profile photo'],
+  ['Qo‘yish', 'Добавить', 'Add'],
 ];
 
 const RU = new Map(D.map((r) => [r[0], r[1]]));

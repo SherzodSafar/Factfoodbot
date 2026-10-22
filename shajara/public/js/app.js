@@ -411,7 +411,7 @@ function renderMain() {
   if (go) setTimeout(() => { S.treeView?.focus(go, { k: 1 }); personSheet(go); }, 250);
   fetchUnread();
   // shajarada o'rnini hali belgilamagan bo'lsa — bir marta so'raymiz ("yo'qman" desa 30 kun so'ramaymiz)
-  if (inTelegram && S.tree.me && !S.tree.me.pid && S.tree.persons.length > 1 && !S.goInbox && !S.goItem && !S.goMedia && Date.now() - (store.get('sh_noself_' + S.tree.id, 0) || 0) > 30 * 864e5) setTimeout(whoAmISheet, 900);
+  if (inTelegram && S.tree.me && !S.tree.me.pid && S.tree.persons.length > 1 && !S.goInbox && !S.goItem && !S.goMedia && Date.now() - (store.get('sh_noself_' + S.tree.id, 0) || 0) > 30 * 864e5) setTimeout(() => whoAmISheet(true), 900);
   if (S.goInbox) { const k = { f: 'fam', l: 'log' }[S.goInbox] || 'me'; S.goInbox = null; setTimeout(() => notificationsSheet(k), 300); }
   if (S.goAlbumJoin) {
     const [, aid, code] = S.goAlbumJoin;
@@ -870,13 +870,11 @@ function myBar(el) {
   const bar = el.querySelector('#my-bar');
   const go = (id) => { if (!id) return; haptic('light'); S.treeView?.focus(id, { k: 1 }); setTimeout(() => personSheet(id), 250); };
   const st = myFamilyStats();
-  const ob = store.get('sh_ob_off_' + tr.id, 0);
-  const s1 = !!me, s2 = !!store.get('sh_ob2_' + tr.id, 0) || st?.pct === 100, s3 = !!store.get('sh_ob3_' + tr.id, 0);
-  const steps = !ob && !(s1 && s2 && s3) ? `<div class="card ob-card"><div class="row" style="justify-content:space-between"><b>👋 ${t('Xush kelibsiz! 3 qadam')}</b><button class="icon-btn sm" id="ob-x">${I.close}</button></div>
-      <button class="ob-step ${s1 ? 'done' : ''}" id="ob1">${s1 ? '✅' : '1️⃣'} ${t('O‘zingizni belgilang')}</button>
-      <button class="ob-step ${s2 ? 'done' : ''}" id="ob2" ${s1 ? '' : 'disabled'}>${s2 ? '✅' : '2️⃣'} ${t('Oilangizni tekshiring')}${st && !s2 ? ` · ${st.pct}%` : ''}</button>
-      <button class="ob-step ${s3 ? 'done' : ''}" id="ob3">${s3 ? '✅' : '3️⃣'} ${t('Bitta surat qo‘shing')}</button></div>`
-    : st && st.pct < 100 && me ? `<button class="card ob-card ob-fill" id="ob2">📋 ${t('Oilangiz {pct}% to‘liq — to‘ldirasizmi?', { pct: st.pct })}</button>` : '';
+  // 1) o'zini belgilash — majburiy; 2) oila to'liqligi — shunchaki eslatma; 3) avatar yo'q bo'lsa — ixtiyoriy taklif
+  const steps = !me ? `<button class="card ob-card ob-fill" id="ob1">👤 ${t('Shajarada o‘zingizni belgilang')}</button>`
+    : (st && st.pct < 100 ? `<button class="card ob-card ob-fill" id="ob2">📋 ${t('Oilangiz {pct}% to‘liq — to‘ldirasizmi?', { pct: st.pct })}</button>` : '')
+      + (!me.photo && !store.get('sh_noph_' + tr.id, 0) ? `<div class="card ob-card ob-fill row" style="flex-direction:row;align-items:center;gap:8px"><span class="grow">📷 ${t('Profilingizga surat qo‘ying')}</span>
+          <button class="btn btn-primary btn-sm" id="ob3">${t('Qo‘yish')}</button><button class="icon-btn sm" id="ob3x">${I.close}</button></div>` : '');
   const kids = me ? S.fam.children(me.id) : [];
   const sp = me ? S.fam.spouses(me)[0] : null;
   const par = me && (S.fam.father(me) || S.fam.mother(me));
@@ -898,10 +896,10 @@ function myBar(el) {
       if (a) { S.albumFilter = a.id; switchTab('album'); } else privAlbumSheet();
     }
   }));
-  bar.querySelector('#ob-x')?.addEventListener('click', () => { store.set('sh_ob_off_' + tr.id, 1); myBar(el); });
-  bar.querySelector('#ob1')?.addEventListener('click', whoAmISheet);
+  bar.querySelector('#ob1')?.addEventListener('click', () => whoAmISheet(true));
   bar.querySelector('#ob2')?.addEventListener('click', fillMyFamily);
-  bar.querySelector('#ob3')?.addEventListener('click', async () => { switchTab('album'); await loadAlbum().catch(() => {}); uploadSheet(); });
+  bar.querySelector('#ob3')?.addEventListener('click', () => photoMenu(me));
+  bar.querySelector('#ob3x')?.addEventListener('click', () => { store.set('sh_noph_' + tr.id, 1); myBar(el); });
 }
 // «Rasmdagilar kim?» — shajaradan belgilash
 function tagSheet(it, onDone) {
@@ -930,9 +928,10 @@ function tagSheet(it, onDone) {
 }
 
 // «Shajarada siz kimsiz?»: foydalanuvchini shaxsga bog'lash (keyin o'zgartirish mumkin)
-function whoAmISheet() {
+function whoAmISheet(must) {
   const tr = S.tree;
   if (!inTelegram || !tr.me) return;
+  must = must === true && !tr.me.pid;
   const label = (p) => `${nm(p.name)}${patronymic(p) ? ' ' + nm(patronymic(p)) : ''}`;
   const sub = (p) => [p.birth ? String(p.birth).slice(0, 4) : '', S.fam.get(p.father_id) ? t('otasi: {name}', { name: nm(S.fam.get(p.father_id).name) }) : ''].filter(Boolean).join(' · ');
   const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">👤 ${t('Shajarada siz kimsiz?')}</div><button class="icon-btn" data-close>${I.close}</button></div>
@@ -940,6 +939,14 @@ function whoAmISheet() {
     <input class="input" id="wa-q" placeholder="${t('Ismingizni yozing…')}" autocomplete="off">
     <div id="wa-list" style="margin-top:8px"></div>
     <button class="btn btn-ghost btn-block" id="wa-none" style="margin-top:10px">${t('Men shajarada yo‘qman')}</button></div>`);
+  const wrap = sh.parentElement;
+  if (must) {
+    // majburiy qadam: yopib bo'lmaydi (faqat tanlash yoki «shajarada yo'qman»)
+    wrap.dataset.lock = 1;
+    sh.querySelector('[data-close]')?.remove();
+    wrap.querySelector('.backdrop').onclick = null;
+  }
+  const unlock = () => delete wrap.dataset.lock;
   const list = sh.querySelector('#wa-list');
   const draw = () => {
     const q = sh.querySelector('#wa-q').value.trim().toLowerCase();
@@ -950,7 +957,7 @@ function whoAmISheet() {
       const p = S.fam.get(b.dataset.wa);
       if (!(await confirmBox(t('Siz — {name}{sub}?', { name: label(p), sub: sub(p) ? ` (${sub(p)})` : '' })))) return;
       try {
-        await api('me', { method: 'PATCH', body: { pid: p.id } }); tr.me.pid = p.id; closeAllSheets(); toast(t('Rahmat! Endi bot sizni taniydi ✓')); haptic('success');
+        await api('me', { method: 'PATCH', body: { pid: p.id } }); tr.me.pid = p.id; unlock(); closeAllSheets(); toast(t('Rahmat! Endi bot sizni taniydi ✓')); haptic('success');
         const host = document.querySelector('.view[data-view="tree"]'); if (host) myBar(host);
         S.treeView?.focus(p.id, { k: 1 });
       } catch (err) { toast(err.message, true); }
@@ -958,7 +965,7 @@ function whoAmISheet() {
   };
   sh.querySelector('#wa-q').oninput = draw;
   draw();
-  sh.querySelector('#wa-none').onclick = () => { store.set('sh_noself_' + tr.id, Date.now()); closeAllSheets(); };
+  sh.querySelector('#wa-none').onclick = () => { store.set('sh_noself_' + tr.id, Date.now()); unlock(); closeAllSheets(); };
 }
 
 // Albom egasi: a'zolar va bir martalik taklif havolasi
@@ -1552,7 +1559,7 @@ function uploadSheet() {
       }
     }
     closeAllSheets();
-    if (ok) { toast(t('{n} ta fayl qo‘shildi 📸', { n: ok })); store.set('sh_ob3_' + S.tree.id, 1); }
+    if (ok) toast(t('{n} ta fayl qo‘shildi 📸', { n: ok }));
     await refreshAlbum();
   };
 }
@@ -2247,7 +2254,7 @@ function openSheet(html) {
   return sh;
 }
 function closeSheet(wrap) {
-  if (!wrap || wrap.dataset.closing) return;
+  if (!wrap || wrap.dataset.closing || wrap.dataset.lock) return;
   wrap.dataset.closing = 1;
   wrap.querySelector('.backdrop').classList.add('out');
   wrap.querySelector('.sheet').classList.add('out');

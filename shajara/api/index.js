@@ -237,7 +237,10 @@ async function route(req, res) {
 
   // ---- Shaxslar
   if (parts[0] === 'person') {
-    const { tok, user, uid, tree: t0 } = await authTree(req, 'edit');
+    // o'z avatarini (shajarada o'zini belgilagan bo'lsa) tahrir kodisiz qo'ya oladi
+    const selfPhoto = parts[2] === 'photo';
+    const { tok, user, uid, tree: t0, role: prole } = await authTree(req, selfPhoto ? 'view' : 'edit');
+    if (selfPhoto && prole !== 'edit' && (!uid || t0.members?.[uid]?.pid !== parts[1])) throw new HttpError(403, 'Tahrirlash uchun maxsus kod kerak');
     const actor = nameOf(user);
     const pid = parts[1];
     let r;
@@ -514,7 +517,7 @@ async function route(req, res) {
         }
         const target = tree.channel?.id;
         if (!target) throw new HttpError(400, 'Avval albom kanalini ulang');
-        const pid = body.pid && role === 'edit' ? String(body.pid) : null; // shaxs portreti
+        const pid = body.pid && (role === 'edit' || tree.members?.[uid]?.pid === String(body.pid)) ? String(body.pid) : null; // shaxs portreti (o'ziniki ham)
         const person = pid && tree.persons.find((p) => p.id === pid);
         const doc = await loadAlbum(tree.id);
         const albumName = person ? 'Portretlar' : cleanName(body.albumName);
