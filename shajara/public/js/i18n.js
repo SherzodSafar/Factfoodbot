@@ -149,6 +149,7 @@ const D = [
   ['Yubordi — tasdiqlashingizni kutmoqda', 'Отправлено — ждёт вашего подтверждения', 'Sent — waiting for your approval'],
   ['Qayta yuborish', 'Отправить снова', 'Send again'],
   ['Eslatma yuborildi: {n} kishi ✓', 'Напоминание отправлено: {n} ✓', 'Reminder sent: {n} ✓'],
+  ['Kalendardan tanlash', 'Выбрать в календаре', 'Pick from calendar'],
   ['Xotira sahifasi', 'Страница памяти', 'Memorial page'],
   ['vafotiga {n} yil', '{n} лет со дня смерти', '{n} years since passing'],
   ['Xotira va duolar', 'Воспоминания и молитвы', 'Memories and prayers'],

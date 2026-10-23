@@ -16,7 +16,7 @@ import { tg, tgUpload, sendDocument, sendStored, mediaOf, downloadFile, fetchFil
 const MIME = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', heic: 'image/heic', mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', mkv: 'video/x-matroska', m4v: 'video/mp4', mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac', ogg: 'audio/ogg', oga: 'audio/ogg', opus: 'audio/ogg', wav: 'audio/wav', flac: 'audio/flac', pdf: 'application/pdf' };
 import { handleUpdate, setupBot, BOT, PLANS, chatKey, linkKey, waitKey } from '../lib/bot.js';
 import { webhookSecret, todayText } from '../lib/events.js';
-import { notify, escapeHtml } from '../lib/notify.js';
+import { notify, escapeHtml, whoLink } from '../lib/notify.js';
 import { updateUser, getUser } from '../lib/users.js';
 import { waitUntil } from '@vercel/functions';
 import { loadAlbum, mutateAlbum, publicAlbum, addToAlbum, canUpload, cleanName, ensureAlbum, albumAccess, albumOwner } from '../lib/album.js';
@@ -140,9 +140,9 @@ async function remember(tree, user, role) {
     if (fresh && tree.log?.[0]?.ref === 'u:' + uid) {
       // ismlar 'id|ism' ko'rinishida — qabul qiluvchining o'zi ro'yxatda ko'rinmaydi
       const text = (l, n, names, to) => {
-        const xs = names.filter((x) => !to || !x.startsWith(to + '|')).map((x) => x.slice(x.indexOf('|') + 1));
-        return xs.length > 1 ? t(l, '👋 Shajaraga {n} ta yangi a’zo qo‘shildi: {names}', { n: xs.length, names: xs.map((x) => `<b>${escapeHtml(x)}</b>`).join(', ') })
-          : t(l, '👋 <b>{name}</b> shajaraga qo‘shildi', { name: escapeHtml(xs[0] || '') });
+        const xs = names.filter((x) => !to || !x.startsWith(to + '|')).map((x) => [x.slice(0, x.indexOf('|')), x.slice(x.indexOf('|') + 1)]);
+        return xs.length > 1 ? t(l, '👋 Shajaraga {n} ta yangi a’zo qo‘shildi: {names}', { n: xs.length, names: xs.map(([id, nm]) => whoLink(tree, id, nm)).join(', ') })
+          : t(l, '👋 <b>{name}</b> shajaraga qo‘shildi', { name: whoLink(tree, xs[0]?.[0], xs[0]?.[1]) });
       };
       await notify(tree, 'tree', text, { except: uid, open: '_u' + uid, agg: { key: 'join', n: 1, add: `${uid}|${tree.members[uid].name}` } }).catch(() => {});
     }
@@ -272,8 +272,8 @@ async function route(req, res) {
     if (parts.length === 1 && m === 'POST') {
       const body = await readBody(req);
       r = await mutateTree(t0.id, (t) => (checkVer(t, tok), addPerson(t, body, actor)));
-      note = (lang, n, names) => n > 1 ? t(lang, '🌱 <b>{who}</b> shajaraga {n} kishi qo‘shdi: {names}', { who: escapeHtml(actor || ''), n, names: escapeHtml(names.join(', ')) })
-        : t(lang, '🌱 <b>{who}</b> shajaraga yangi a’zo qo‘shdi: {name}', { who: escapeHtml(actor || ''), name: escapeHtml(r.result.name) });
+      note = (lang, n, names) => n > 1 ? t(lang, '🌱 <b>{who}</b> shajaraga {n} kishi qo‘shdi: {names}', { who: whoLink(t0, uid, actor), n, names: escapeHtml(names.join(', ')) })
+        : t(lang, '🌱 <b>{who}</b> shajaraga yangi a’zo qo‘shdi: {name}', { who: whoLink(t0, uid, actor), name: escapeHtml(r.result.name) });
       agg = { key: 'add:' + uid, n: 1, add: r.result.name };
     } else if (parts.length === 2 && m === 'PATCH') {
       const body = await readBody(req);
@@ -300,8 +300,8 @@ async function route(req, res) {
       });
       if (old && old !== file) await deleteKey(`photos/${t0.id}/${old}`);
       if (file) {
-        note = (lang, n, names) => n > 1 ? t(lang, '🖼 <b>{who}</b> {n} kishining suratini yangiladi: {names}', { who: escapeHtml(actor || ''), n, names: escapeHtml(names.join(', ')) })
-          : t(lang, '🖼 <b>{who}</b> {name} suratini yangiladi', { who: escapeHtml(actor || ''), name: escapeHtml(name) });
+        note = (lang, n, names) => n > 1 ? t(lang, '🖼 <b>{who}</b> {n} kishining suratini yangiladi: {names}', { who: whoLink(t0, uid, actor), n, names: escapeHtml(names.join(', ')) })
+          : t(lang, '🖼 <b>{who}</b> {name} suratini yangiladi', { who: whoLink(t0, uid, actor), name: escapeHtml(name) });
         open = '_' + pid;
         agg = { key: 'photo:' + uid, n: 1, add: name };
       }

@@ -6,7 +6,7 @@ import { signMedia, randomId } from './auth.js';
 import { mtprotoOn } from './mtproto.js';
 import { r2On } from './r2.js';
 import { HttpError, PAYWALL, LIMITS, isPremium, mutateTree, addLog, branchScope } from './tree.js';
-import { notify, escapeHtml } from './notify.js';
+import { notify, escapeHtml, whoLink } from './notify.js';
 import { t } from './i18n.js';
 
 export const albumKey = (treeId) => `albums/${treeId}.json`;
@@ -182,7 +182,7 @@ export async function addToAlbum(tree, { albumId, albumName, caption, media, by,
       Object.assign(tr.log[0], { aid: album.id, n: stored.length });
     }
   });
-  if (!silent) await notify(tree, 'album', (lang, n) => t(lang, '📸 <b>{who}</b> «{album}» albomiga {n} ta fayl qo‘shdi', { who: escapeHtml(by?.name || ''), album: escapeHtml(album.name), n }),
+  if (!silent) await notify(tree, 'album', (lang, n) => t(lang, '📸 <b>{who}</b> «{album}» albomiga {n} ta fayl qo‘shdi', { who: whoLink(tree, by?.id, by?.name), album: escapeHtml(album.name), n }),
     { except: by?.id, open: `_a${stored[0].id}`, agg: { key: `album:${by?.id || by?.name}:${album.id}`, n: stored.length } }).catch(() => {});
   return { album, count: stored.length };
 }

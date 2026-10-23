@@ -4,7 +4,7 @@
 import { readJson, writeJson, updateJson } from './store.js';
 import { tg } from './telegram.js';
 import { t } from './i18n.js';
-import { escapeHtml } from './notify.js';
+import { escapeHtml, mergeLines } from './notify.js';
 import { signInvite, signMedia } from './auth.js';
 
 const key = (uid) => `inbox/${uid}.json`;
@@ -95,8 +95,7 @@ export async function commentDigest(tree, doc) {
     const lang = g.lang || 'uz';
     const r = await tg('sendMessage', { chat_id: g.id, parse_mode: 'HTML', disable_web_page_preview: true,
       text: [t(lang, '🌙 <b>Bugungi yangiliklar</b>'),
-        ...evs.slice(-25).map((e) => '• ' + (e.text[lang] || e.text.uz || Object.values(e.text)[0] || '')),
-        ...(evs.length > 25 ? [t(lang, '…va yana {n} ta', { n: evs.length - 25 })] : []),
+        ...mergeLines(evs.map((e) => e.text[lang] || e.text.uz || Object.values(e.text)[0] || '')).slice(-25).map((x) => '• ' + x),
         ...(n ? [t(lang, '💬 Bugun {albums} albomlaridagi fayllarga <b>{n} ta</b> izoh yozildi', { albums: names, n })] : [])].join('\n'),
       reply_markup: { inline_keyboard: [[{ text: t(lang, '👀 Ko‘rish'), url: link }]] } }).catch(() => null);
     if (r?.ok) sent++;

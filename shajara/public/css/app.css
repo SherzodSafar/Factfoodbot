@@ -777,3 +777,13 @@ img { pointer-events: none; }
 .pr-edit { padding: 6px 0; border-bottom: 1px dashed var(--line); }
 .pr-edit .input { margin-bottom: 6px; }
 .log-item.tap { cursor: pointer; }
+/* «kim?» va «umumiy» — yuborish tugmasi ostida; ustidagi tugmalar joyi o'zgarmaydi */
+.rv-side { overflow: visible; }
+.rv-below { position: absolute; top: calc(100% + 12px); left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 12px; align-items: center; }
+.rv-below:empty { display: none; }
+/* sana: matn maydoni + ustiga yopishgan shaffof kalendar (📅 bosilsa tizim kalendari ochiladi) */
+.dp-wrap { position: relative; display: block; }
+.dp-wrap > input:first-child { padding-right: 32px; width: 100%; }
+.dp-btn { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 28px; height: 36px; display: grid; place-items: center; font-size: 17px; pointer-events: none; }
+.dp-cal { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 28px; height: 36px; opacity: 0; border: 0; padding: 0; cursor: pointer; }
+.dp-cal::-webkit-calendar-picker-indicator { position: absolute; inset: 0; width: 100%; height: 100%; cursor: pointer; }

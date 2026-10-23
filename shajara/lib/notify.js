@@ -75,6 +75,32 @@ export async function notify(tree, kind, text0, { except, button = true, open = 
   return sent;
 }
 
+/** Ism — bosilsa ilovada o'sha a'zo profili (Telegram va shajaradagi o'rni) ochiladi. */
+export function whoLink(tree, uid, name) {
+  const n = escapeHtml(name || '');
+  if (!uid || !/^\d+$/.test(String(uid))) return `<b>${n}</b>`;
+  return `<a href="https://t.me/${process.env.BOT_USERNAME || 'ShajaraAiBot'}?startapp=${signInvite(tree.id, tree.ver || 1)}_u${uid}"><b>${n}</b></a>`;
+}
+/** Dayjest qatorlari: bir xil hodisalar (faqat soni farq qiladi) bitta qatorga — sonlar qo'shiladi. */
+export function mergeLines(lines) {
+  const out = new Map();
+  // birinchi son (HTML teglari ichidagi havolalardagi raqamlar hisobga olinmaydi)
+  const num = (s) => {
+    const parts = String(s).split(/(<[^>]*>)/);
+    for (let i = 0; i < parts.length; i++) {
+      if (parts[i].startsWith('<')) continue;
+      const m = /\d+/.exec(parts[i]);
+      if (m) return { n: Number(m[0]), k: [...parts.slice(0, i), parts[i].replace(m[0], '#'), ...parts.slice(i + 1)].join('') };
+    }
+    return { n: NaN, k: String(s) };
+  };
+  for (const s of lines) {
+    const { k, n } = num(s);
+    const cur = out.get(k);
+    if (cur && Number.isFinite(n) && Number.isFinite(cur.n)) cur.n += n; else if (!cur) out.set(k, { s, n });
+  }
+  return [...out.entries()].map(([k, v]) => (Number.isFinite(v.n) && k.includes('#') ? k.replace('#', String(v.n)) : v.s));
+}
 export const escapeHtml = (s) => String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
 
 /** Shajara egasi va tahrirchilariga xabar (ilovani ochish tugmasi bilan). */
@@ -106,7 +132,7 @@ export async function memberDigest(tree) {
     if (!m || !list?.length) continue;
     const lang = m.lang || 'uz';
     const r = await tg('sendMessage', { chat_id: uid, parse_mode: 'HTML', disable_web_page_preview: true,
-      text: [`🌙 <b>${escapeHtml(tree.title)}</b> — ${t(lang, 'bugungi yangiliklar')}`, ...list.slice(-25).map((x) => '• ' + x.text)].join('\n').slice(0, 4000),
+      text: [`🌙 <b>${escapeHtml(tree.title)}</b> — ${t(lang, 'bugungi yangiliklar')}`, ...mergeLines(list.map((x) => x.text)).slice(-25).map((x) => '• ' + x)].join('\n').slice(0, 4000),
       reply_markup: url ? { inline_keyboard: [[{ text: t(lang, '👀 Ko‘rish'), web_app: { url: `${url}/?inv=${inv}` } }]] } : undefined });
     if (r.ok) sent++;
   }

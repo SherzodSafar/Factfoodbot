@@ -66,6 +66,8 @@ function updateBackButton() {
   show ? tg.BackButton.show() : tg.BackButton.hide();
 }
 function goBack() {
+  // ko'rish oynasi ustidagi oyna (izohlar, «kim?») — avval o'sha yopiladi, video emas
+  if (viewerOpen && $sheets.lastElementChild?.querySelector('.sheet.over-rv') && closeTopSheet()) return;
   if (viewerOpen) return viewerOpen();
   if (closeTopSheet()) return;
   document.querySelector('.screen[data-back]')?.dispatchEvent(new CustomEvent('back'));
@@ -1141,8 +1143,8 @@ function openViewer(ids, index, opts = {}) {
     const vid = e.target.closest('.rv-slide')?.querySelector('video.rv-vid');
     if (vid) {
       const r = vid.getBoundingClientRect();
-      const R = Math.min(r.width, r.height) * 0.25;
-      if (Math.hypot(e.clientX - (r.left + r.width / 2), e.clientY - (r.top + r.height / 2)) < Math.max(R, 60)) {
+      // faqat markazdagi ▶ tugma doirasi (64px) — undan tashqarisi pauza qilmaydi
+      if (Math.hypot(e.clientX - (r.left + r.width / 2), e.clientY - (r.top + r.height / 2)) < 34) {
         clearTimeout(tapT); tapT = null;
         vid.paused ? vid.play().catch(() => {}) : vid.pause();
         haptic('light');
@@ -1189,11 +1191,11 @@ function openViewer(ids, index, opts = {}) {
         <button class="rv-b like ${it.liked ? 'on' : ''}" data-act="like">${VI.heart(it.liked)}<span>${fmtN(it.likes)}</span></button>
         <button class="rv-b" data-act="seen">${VI.eye}<span class="vw">${fmtN(it.views)}</span></button>
         ${it.priv && !it.member ? '' : `<button class="rv-b" data-act="cm">${VI.cm}<span class="cmn">${fmtN(it.cm)}</span></button>`}
-        ${inTelegram ? `<button class="rv-b" data-act="tags"><b style="font-size:20px">👥</b><span class="tgn">${(it.tags || []).length || ''}</span></button>` : ''}
-        ${it.priv && it.member && albOf(it)?.mine ? `<button class="rv-b pubb ${it.pub ? 'on' : ''}" data-act="pub"><b>🌐</b><span>${it.pub ? t('Umumiyda') : t('Umumiy')}</span></button>` : ''}
         ${it.kind === 'video' && it.type !== 'animation' ? `<button class="rv-b" data-act="mute">${VI.mute(false)}</button>` : ''}
         ${it.kind === 'video' && it.src ? `<button class="rv-b spd" data-act="spd"><b>1×</b></button>` : ''}
         ${inTelegram && (!it.priv || it.member) ? `<button class="rv-b" data-act="send">${VI.send}<span class="sn">${fmtN(it.sends)}</span></button>` : ''}
+        <div class="rv-below">${inTelegram ? `<button class="rv-b" data-act="tags"><b style="font-size:20px">👥</b><span class="tgn">${(it.tags || []).length || ''}</span></button>` : ''}
+          ${it.priv && it.member && albOf(it)?.mine ? `<button class="rv-b pubb ${it.pub ? 'on' : ''}" data-act="pub"><b>🌐</b><span>${it.pub ? t('Umumiyda') : t('Umumiy')}</span></button>` : ''}</div>
       </div>
       ${land ? `<button class="rv-full rv-ui" data-act="full">${VI.full}</button>` : ''}
       <div class="rv-info rv-ui">
@@ -3351,3 +3353,34 @@ function boot() {
 }
 
 boot();
+
+// Sana maydonlari yonida 📅 — kalendardan tanlash (qo'lda yil yoki to'liq sana yozish ham ishlaydi)
+const DATE_SEL = 'input[name=birth],input[name=death],input[data-k=birth],input[data-k=death]';
+function addDatePicker(inp) {
+  if (inp.dataset.dp || inp.type === 'date' || inp.type === 'hidden') return;
+  inp.dataset.dp = '1';
+  const wrap = document.createElement('span');
+  wrap.className = 'dp-wrap';
+  inp.replaceWith(wrap);
+  const cal = document.createElement('input');
+  cal.type = 'date';
+  cal.className = 'dp-cal';
+  cal.max = new Date().toISOString().slice(0, 10);
+  cal.min = '1700-01-01';
+  cal.tabIndex = -1;
+  cal.setAttribute('aria-label', t('Kalendardan tanlash'));
+  const btn = document.createElement('span');
+  btn.className = 'dp-btn';
+  btn.textContent = '📅';
+  wrap.append(inp, btn, cal);
+  const sync = () => { const v = parseDateInput(inp.value); cal.value = v && v.length === 10 ? v : ''; };
+  cal.addEventListener('focus', sync);
+  cal.addEventListener('pointerdown', sync);
+  cal.addEventListener('change', () => {
+    if (!cal.value) return;
+    inp.value = dateToInput(cal.value);
+    inp.dispatchEvent(new Event('input', { bubbles: true }));
+    inp.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+}
+new MutationObserver(() => document.querySelectorAll(DATE_SEL).forEach(addDatePicker)).observe(document.body, { childList: true, subtree: true });
