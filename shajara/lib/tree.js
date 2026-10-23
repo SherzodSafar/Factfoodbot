@@ -68,9 +68,10 @@ function nextId(tree) {
 export const actor = new AsyncLocalStorage();
 export const actorUid = () => actor.getStore()?.uid || undefined;
 
-export function addLog(tree, who, action, name) {
+// ref: bosilganda ochiladigan narsa — shaxs id, 'a:<faylId>', 'u:<tgId>', 'props'
+export function addLog(tree, who, action, name, ref) {
   tree.log = tree.log || [];
-  tree.log.unshift({ at: new Date().toISOString(), who: who || 'Tahrirchi', action, name, uid: actorUid() });
+  tree.log.unshift({ at: new Date().toISOString(), who: who || 'Tahrirchi', action, name, uid: actorUid(), ...(ref ? { ref } : {}) });
   if (tree.log.length > MAX_LOG) tree.log.length = MAX_LOG;
   tree.updatedAt = new Date().toISOString();
 }
@@ -266,7 +267,7 @@ export function addPerson(tree, body, who) {
   }
   tree.persons.push(p);
   if (!tree.meta.root_id) tree.meta.root_id = pid;
-  addLog(tree, who, 'add', p.name);
+  addLog(tree, who, 'add', p.name, p.id);
   return p;
 }
 
@@ -275,7 +276,7 @@ export function updatePerson(tree, id, body, who) {
   const f = personFields(body);
   if ('deceased' in f && !f.deceased) f.death = null;
   Object.assign(p, f);
-  addLog(tree, who, 'edit', p.name);
+  addLog(tree, who, 'edit', p.name, p.id);
   return p;
 }
 
@@ -793,6 +794,6 @@ export function applyProposal(tree, headId, ops, who) {
     }
   }
   const n = created.length ? finishImport(tree, created, who) : 0;
-  addLog(tree, who, 'branch', `+${n} ✏️${updated}`);
+  addLog(tree, who, 'branch', `+${n} ✏️${updated}`, 'props');
   return { created: n, updated };
 }

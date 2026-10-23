@@ -58,6 +58,7 @@ export async function createBranch(treeId, head, by, extra = {}) {
 export async function claimBranch(treeId, bid, user) {
   const tree = await loadTree(treeId).catch(() => null);
   const b = tree?.branches?.[bid];
+  if (b?.done) throw new HttpError(410, '✅ Bu oila ma’lumotlari qabul qilingan — havola yopildi. Rahmat!');
   if (!tree || !b || b.revoked || !tree.persons.some((p) => p.id === b.head)) throw new HttpError(404, 'Havola eskirgan yoki bekor qilingan');
   const uid = String(user.id);
   if (b.exp && Date.parse(b.exp) < Date.now() && b.claimed !== uid) throw new HttpError(410, 'Havola muddati tugagan. Shajara egasidan yangisini so‘rang');
@@ -178,7 +179,8 @@ export async function remindBranch(tree, bid) {
   const l = tree.members?.[b.claimed]?.lang || b.lang || 'uz';
   const head = tree.persons.find((p) => p.id === b.head)?.name || '';
   const r = await tg('sendMessage', { chat_id: b.claimed, parse_mode: 'HTML',
-    text: t(l, '🌳 <b>{name}</b> oilasi — {pct}%: {nb} kishining tug‘ilgan sanasi yo‘q, {ns} kishining turmush o‘rtog‘i noma’lum. Bir necha daqiqa ajratib to‘ldirib bersangiz — avlodlar uchun katta xizmat bo‘ladi 🙏', { name: esc(head), pct: st.pct, nb: st.noBirth, ns: st.noSpouse }),
+    text: st.pct >= 100 ? t(l, '🌳 <b>{name}</b> oilasi ma’lumotlarini hali yubormadingiz. Bir necha daqiqa ajratib tekshirib, yuborib qo‘ysangiz — avlodlar uchun katta xizmat bo‘ladi 🙏', { name: esc(head) })
+      : t(l, '🌳 <b>{name}</b> oilasi — {pct}%: {nb} kishining tug‘ilgan sanasi yo‘q, {ns} kishining turmush o‘rtog‘i noma’lum. Bir necha daqiqa ajratib to‘ldirib bersangiz — avlodlar uchun katta xizmat bo‘ladi 🙏', { name: esc(head), pct: st.pct, nb: st.noBirth, ns: st.noSpouse }),
     reply_markup: { inline_keyboard: [[{ text: t(l, '💬 Shu yerda to‘ldirish'), callback_data: `bc:go:${tree.id}_${bid}` }], [{ text: t(l, '✍️ Ilovada to‘ldirish'), web_app: { url: `${URL_()}/?br=${tree.id}_${bid}` } }]] } });
   if (!r.ok) throw new HttpError(502, 'Xabar yuborilmadi (mas’ul botni bloklagan bo‘lishi mumkin)');
   return true;
@@ -646,6 +648,7 @@ async function finish(from, s) {
   try {
     const tree = await loadTree(s.tree);
     const b = tree.branches?.[s.bid];
+    if (b?.done) throw new HttpError(410, '✅ Bu oila ma’lumotlari qabul qilingan — havola yopildi. Rahmat!');
     if (!b || b.revoked || b.claimed !== String(from.id)) throw new HttpError(403, 'Havola eskirgan yoki bekor qilingan');
     const item = await submitProposal(tree, s.bid, b, from, ops);
     return send(from.id, item.status === 'applied' ? `🎉 ${t(L, 'Rahmat! Ma’lumotlar shajaraga qo‘shildi.')}`

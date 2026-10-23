@@ -168,8 +168,18 @@ export async function addToAlbum(tree, { albumId, albumName, caption, media, by,
   album = r.result;
   if (priv) return { album, count: stored.length }; // yopiq albom — umumiy jurnal va bildirishnomalarsiz
   await mutateTree(tree.id, (tr) => {
-    addLog(tr, by?.name, 'album', `${album.name} · ${stored.length}`);
+    // bitta odam 1 soat ichida shu albomga ketma-ket yuklasa — bitta yozuv, soni oshadi
+    const top = tr.log?.[0];
+    if (top?.action === 'album' && top.aid === album.id && top.who === (by?.name || 'Tahrirchi') && Date.now() - Date.parse(top.at) < 3600e3) {
+      top.n = (top.n || 1) + stored.length;
+      top.name = `${album.name} · ${top.n}`;
+      top.at = new Date().toISOString();
+    } else {
+      addLog(tr, by?.name, 'album', `${album.name} · ${stored.length}`, 'a:' + stored[0].id);
+      Object.assign(tr.log[0], { aid: album.id, n: stored.length });
+    }
   });
-  if (!silent) await notify(tree, 'album', (lang) => t(lang, '📸 <b>{who}</b> «{album}» albomiga {n} ta fayl qo‘shdi', { who: escapeHtml(by?.name || ''), album: escapeHtml(album.name), n: stored.length }), { except: by?.id, open: `_a${stored[0].id}` }).catch(() => {});
+  if (!silent) await notify(tree, 'album', (lang, n) => t(lang, '📸 <b>{who}</b> «{album}» albomiga {n} ta fayl qo‘shdi', { who: escapeHtml(by?.name || ''), album: escapeHtml(album.name), n }),
+    { except: by?.id, open: `_a${stored[0].id}`, agg: { key: `album:${by?.id || by?.name}:${album.id}`, n: stored.length } }).catch(() => {});
   return { album, count: stored.length };
 }

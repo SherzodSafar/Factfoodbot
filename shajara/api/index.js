@@ -10,7 +10,7 @@ import { readJson, writeJson, getFile, putFile, deleteKey, listKeys, updateJson 
 import {
   HttpError, findTreeByCode, loadTree, createTree, mutateTree, publicTree, addPerson, updatePerson, deletePerson,
   savePhoto, changeSettings, upsertMember, importRows, replacePersons, importGraph, planGraph,
-  undoImport, findDuplicates, mergePersons, branchScope, applyProposal, actor, actorUid,
+  undoImport, findDuplicates, mergePersons, branchScope, applyProposal, actor, actorUid, addLog,
 } from '../lib/tree.js';
 import { tg, tgUpload, sendDocument, sendStored, mediaOf, downloadFile, fetchFilePart } from '../lib/telegram.js';
 const MIME = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', heic: 'image/heic', mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', mkv: 'video/x-matroska', m4v: 'video/mp4', mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac', ogg: 'audio/ogg', oga: 'audio/ogg', opus: 'audio/ogg', wav: 'audio/wav', flac: 'audio/flac', pdf: 'application/pdf' };
@@ -130,8 +130,22 @@ async function remember(tree, user, role) {
   const tmp = { members: { [uid]: probe }, owner: tree.owner };
   if (!probe) delete tmp.members[uid];
   if (upsertMember(tmp, user, role, lang) || (!tree.owner && tmp.owner)) {
-    const r = await mutateTree(tree.id, (tr) => { upsertMember(tr, user, role, lang); });
+    const fresh = !probe && tree.owner && String(tree.owner) !== uid;
+    const r = await mutateTree(tree.id, (tr) => {
+      const isNew = !tr.members?.[uid];
+      upsertMember(tr, user, role, lang);
+      if (fresh && isNew) addLog(tr, tr.members[uid].name, 'join', tr.members[uid].name, 'u:' + uid);
+    });
     tree = r.data;
+    if (fresh && tree.log?.[0]?.ref === 'u:' + uid) {
+      // ismlar 'id|ism' ko'rinishida — qabul qiluvchining o'zi ro'yxatda ko'rinmaydi
+      const text = (l, n, names, to) => {
+        const xs = names.filter((x) => !to || !x.startsWith(to + '|')).map((x) => x.slice(x.indexOf('|') + 1));
+        return xs.length > 1 ? t(l, '👋 Shajaraga {n} ta yangi a’zo qo‘shildi: {names}', { n: xs.length, names: xs.map((x) => `<b>${escapeHtml(x)}</b>`).join(', ') })
+          : t(l, '👋 <b>{name}</b> shajaraga qo‘shildi', { name: escapeHtml(xs[0] || '') });
+      };
+      await notify(tree, 'tree', text, { except: uid, open: '_u' + uid, agg: { key: 'join', n: 1, add: `${uid}|${tree.members[uid].name}` } }).catch(() => {});
+    }
   }
   if (ud?.active !== tree.id || ud?.trees?.[tree.id] !== role) {
     await updateUser(user.id, user, (d) => { d.active = tree.id; d.trees = { ...(d.trees || {}), [tree.id]: role }; });
@@ -254,10 +268,13 @@ async function route(req, res) {
     let r;
     let note = null;
     let open = null; // bildirishnoma tugmasi nimani ochadi
+    let agg = null; // ketma-ket amallar bitta xabarga yig'iladi
     if (parts.length === 1 && m === 'POST') {
       const body = await readBody(req);
       r = await mutateTree(t0.id, (t) => (checkVer(t, tok), addPerson(t, body, actor)));
-      note = (lang) => t(lang, '🌱 <b>{who}</b> shajaraga yangi a’zo qo‘shdi: {name}', { who: escapeHtml(actor || ''), name: escapeHtml(r.result.name) });
+      note = (lang, n, names) => n > 1 ? t(lang, '🌱 <b>{who}</b> shajaraga {n} kishi qo‘shdi: {names}', { who: escapeHtml(actor || ''), n, names: escapeHtml(names.join(', ')) })
+        : t(lang, '🌱 <b>{who}</b> shajaraga yangi a’zo qo‘shdi: {name}', { who: escapeHtml(actor || ''), name: escapeHtml(r.result.name) });
+      agg = { key: 'add:' + uid, n: 1, add: r.result.name };
     } else if (parts.length === 2 && m === 'PATCH') {
       const body = await readBody(req);
       r = await mutateTree(t0.id, (t) => (checkVer(t, tok), updatePerson(t, pid, body, actor)));
@@ -279,12 +296,17 @@ async function route(req, res) {
         p.photoItem = null; // yangi asl nusxa alohida (bo'laklab) yuklanadi va shu yerga bog'lanadi
         t.updatedAt = new Date().toISOString();
         t.log = t.log || [];
-        t.log.unshift({ at: t.updatedAt, who: actor || 'Tahrirchi', action: file ? 'photo' : 'photo-del', name: p.name, uid: actorUid() });
+        t.log.unshift({ at: t.updatedAt, who: actor || 'Tahrirchi', action: file ? 'photo' : 'photo-del', name: p.name, uid: actorUid(), ref: p.id });
       });
       if (old && old !== file) await deleteKey(`photos/${t0.id}/${old}`);
-      if (file) { note = (lang) => t(lang, '🖼 <b>{who}</b> {name} suratini yangiladi', { who: escapeHtml(actor || ''), name: escapeHtml(name) }); open = '_' + pid; }
+      if (file) {
+        note = (lang, n, names) => n > 1 ? t(lang, '🖼 <b>{who}</b> {n} kishining suratini yangiladi: {names}', { who: escapeHtml(actor || ''), n, names: escapeHtml(names.join(', ')) })
+          : t(lang, '🖼 <b>{who}</b> {name} suratini yangiladi', { who: escapeHtml(actor || ''), name: escapeHtml(name) });
+        open = '_' + pid;
+        agg = { key: 'photo:' + uid, n: 1, add: name };
+      }
     } else throw new HttpError(404, 'Topilmadi');
-    if (note) await notify(r.data, 'tree', note, { except: uid, open }).catch(() => {});
+    if (note) await notify(r.data, 'tree', note, { except: uid, open, agg }).catch(() => {});
     return send(res, 200, { person: r.result?.id ? r.result : undefined, tree: out(r.data, 'edit', uid) });
   }
 
@@ -302,6 +324,15 @@ async function route(req, res) {
   }
 
   // ---- A'zolar (kim kirgan, tahrirchilar, bloklash)
+  if (parts[0] === 'member' && /^\d{1,15}$/.test(parts[1] || '') && m === 'GET') {
+    // bildirishnomadagi a'zo: Telegram profili va shajaradagi o'rni
+    const { tree } = await authTree(req);
+    const x = tree.members?.[parts[1]];
+    if (!x) throw new HttpError(404, 'A’zo topilmadi');
+    const { avatarUrl } = await import('../lib/inbox.js');
+    const p = x.pid && tree.persons.find((y) => y.id === x.pid);
+    return send(res, 200, { id: parts[1], name: x.name, username: x.username || null, ph: avatarUrl(parts[1]), at: x.at, pid: p ? p.id : null });
+  }
   if (parts[0] === 'members') {
     if (m === 'GET') {
       const { tree, uid } = await authTree(req, 'edit');
@@ -940,6 +971,7 @@ async function route(req, res) {
       return send(res, 200, {
         branches: Object.entries(tree.branches || {}).filter(([, b]) => !b.revoked && !(b.auto && !b.claimed)).map(([bid, b]) => ({ bid, head: b.head, headName: byId.get(b.head)?.name || '?', claimedName: b.claimedName || null, at: b.at,
           parentName: b.parent ? byId.get(tree.branches[b.parent]?.head)?.name || null : null, ...B.branchStats(tree, b.head), exp: b.exp || null, trust: !!b.trust, expired: !b.claimed && !!b.exp && Date.parse(b.exp) < Date.now(),
+          sent: props.some((x) => x.bid === bid && x.status === 'pending'),
           link: `https://t.me/${botName}?start=br_${tree.id}_${bid}` })),
         proposals: props.filter((x) => x.status === 'pending').map((x) => ({ ...x, headName: byId.get(x.head)?.name || '?' })),
         applied: props.filter((x) => x.status === 'applied' && x.undo).slice(0, 15).map((x) => ({ id: x.id, at: x.doneAt || x.at, by: x.by, headName: byId.get(x.head)?.name || '?', n: x.ops.length })),
@@ -996,6 +1028,8 @@ async function route(req, res) {
         result = r.result;
         data = r.tree;
         undo = r.undo;
+        // qabul qilindi — shu oila havolasi yopiladi (eski xabarlardagi tugmalar ham ishlamaydi); ishonchli mas'ulniki ochiq qoladi
+        if (pr.bid && !tree.branches?.[pr.bid]?.trust) data = (await mutateTree(tok.treeId, (t) => { const b = t.branches?.[pr.bid]; if (b) Object.assign(b, { revoked: true, done: new Date().toISOString() }); })).data;
       }
       await updateJson(key, (d) => { const x = d.items.find((y) => y.id === parts[2]); if (x) { x.status = body.action === 'apply' ? 'applied' : 'rejected'; x.doneAt = new Date().toISOString(); if (undo) x.undo = undo; if (body.action === 'apply') x.ops = pr.ops; } });
       if (pr.by?.id) (await import('../lib/telegram.js')).tg('sendMessage', { chat_id: pr.by.id, text: body.action === 'apply' ? '✅ Shajaraga kiritgan ma’lumotlaringiz tasdiqlandi. Rahmat!' : 'ℹ️ Taklifingiz ko‘rib chiqildi va qabul qilinmadi.' }).catch(() => {});

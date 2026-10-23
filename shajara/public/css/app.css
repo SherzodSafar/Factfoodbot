@@ -776,3 +776,4 @@ img { pointer-events: none; }
 .up-pct:empty { display: none; }
 .pr-edit { padding: 6px 0; border-bottom: 1px dashed var(--line); }
 .pr-edit .input { margin-bottom: 6px; }
+.log-item.tap { cursor: pointer; }
