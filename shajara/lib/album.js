@@ -80,6 +80,9 @@ export function albumAccess(tree, a, uid) {
   if (!a?.priv) return true;
   return !!uid && (a.members || []).includes(String(uid));
 }
+// albomni yaratgan kishi (eski/«Umumiy» albomlar — shajara egasi): nomini o'zgartirish, o'chirish, fayllarini boshqarish
+export const albumCreator = (tree, a) => String(a?.owner || a?.uid || (a?.priv ? a?.members?.[0] : '') || tree?.owner || '');
+export const canManageItem = (tree, a, it, uid) => !!uid && (albumCreator(tree, a) === String(uid) || String(it?.by?.id || '') === String(uid));
 export const albumOwner = (a, uid) => !!uid && String(a?.owner || a?.members?.[0] || '') === String(uid);
 // maxfiy fayl R2'da: imzolangan, kunlik havola
 const privUrl = (treeId, iid) => { const { e, s } = signMedia('pm:' + iid); return `/api/pm/${treeId}/${iid}?e=${e}&s=${s}`; };
@@ -92,8 +95,8 @@ export function publicAlbum(doc, tree, uid) {
   return {
     // maxfiy albom a'zo bo'lmaganlarga umuman ko'rinmaydi
     albums: doc.albums.filter((a) => vis.get(a.id)).map((a) => {
-      if (!a.priv) return a;
-      const base = { id: a.id, name: a.name, createdAt: a.createdAt, by: a.by, priv: { head: a.priv.head, headName: headName(a.priv.head) }, members: (a.members || []).length, ch: a.ch ? { id: a.ch.id, title: a.ch.title } : null };
+      if (!a.priv) return { ...a, mine: !!uid && albumCreator(tree, a) === String(uid) };
+      const base = { id: a.id, name: a.name, createdAt: a.createdAt, by: a.by, mine: !!uid && albumCreator(tree, a) === String(uid), priv: { head: a.priv.head, headName: headName(a.priv.head) }, members: (a.members || []).length, ch: a.ch ? { id: a.ch.id, title: a.ch.title } : null };
       if (!albumOwner(a, uid)) return base;
       const nameOf = (id) => users[id]?.name || 'Telegram';
       return { ...base, owner: true, memberList: (a.members || []).map((id) => ({ id, name: nameOf(id) })) };

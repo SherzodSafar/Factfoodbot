@@ -604,8 +604,11 @@ async function route(req, res) {
       return send(res, 200, { ok: true, album: r.album });
     }
     if (parts[1] === 'a' && parts[2]) {
-      if (role !== 'edit') throw new HttpError(403, 'Faqat tahrirchilar uchun');
       const aid = parts[2];
+      const { albumCreator } = await import('../lib/album.js');
+      const a0 = (await loadAlbum(tree.id)).albums.find((x) => x.id === aid);
+      if (!a0) throw new HttpError(404, 'Albom topilmadi');
+      if (!uid || albumCreator(tree, a0) !== uid) throw new HttpError(403, 'Albomni faqat uni yaratgan kishi o‘zgartira oladi');
       if (m === 'PATCH') {
         const body = await readBody(req);
         const name = cleanName(body.name);
@@ -634,9 +637,9 @@ async function route(req, res) {
       const ids = new Set((Array.isArray(body.ids) ? body.ids : []).map(String).slice(0, 2000));
       const doc0 = await loadAlbum(tree.id);
       const albumOf = (id) => doc0.albums.find((a) => a.id === id);
-      const isPriv = (it) => !!albumOf(it.album)?.priv && !it.pub;
       // boshqarish: tahrirchi, faylni yuklagan yoki albomni ochgan kishi
-      const canManage = (it) => role === 'edit' || (!!uid && [String(it.by?.id || ''), albumOf(it.album)?.uid, albumOf(it.album)?.owner].includes(uid));
+      const { canManageItem } = await import('../lib/album.js');
+      const canManage = (it) => canManageItem(tree, albumOf(it.album), it, uid);
       const items = doc0.items.filter((it) => ids.has(it.id) && (albumAccess(tree, albumOf(it.album), uid) || it.pub));
       if (!items.length) throw new HttpError(400, 'Fayl tanlanmagan');
       if (body.op === 'delete') {
@@ -676,7 +679,7 @@ async function route(req, res) {
       if (body.op === 'send') {
         // fayllar bot chatiga (file_id bo'yicha — hajm cheklovisiz); u yerdan istalgan chatga Forward
         if (!uid) throw new HttpError(400, 'Bu funksiya faqat Telegram ichida ishlaydi');
-        const list = items.filter((it) => it.fileId && !isPriv(it)).slice(0, 50);
+        const list = items.filter((it) => it.fileId).slice(0, 50);
         const job = (async () => {
           for (const it of list) {
             await sendStored(uid, it, `📁 <b>${escapeHtml(albumOf(it.album)?.name || '')}</b>${it.caption ? '\n' + escapeHtml(it.caption) : ''}`);
@@ -722,7 +725,8 @@ async function route(req, res) {
       if (!member && !it.pub) throw new HttpError(404, 'Fayl topilmadi');
       // maxfiy albom fayli: umumiy albomda ham ko'rsatish (a'zo yoqadi/o'chiradi; ilovada oldin tasdiqlanadi)
       if (parts[3] === 'pub' && m === 'POST') {
-        if (!ia?.priv || !member) throw new HttpError(403, 'Ruxsat yo‘q');
+        const { albumCreator } = await import('../lib/album.js');
+        if (!ia?.priv || !member || albumCreator(tree, ia) !== uid) throw new HttpError(403, 'Umumiy albomda ko‘rsatishni faqat albomni yaratgan kishi yoqa oladi');
         const body = await readBody(req);
         await mutateAlbum(tree.id, (d) => { const x = d.items.find((y) => y.id === iid); if (!x) return; x.pub = !!body.on; if (x.pub && !x.alsoIn) x.alsoIn = ensureAlbum(d, 'Umumiy', by).id; });
         return send(res, 200, { ok: true, pub: !!body.on });
@@ -736,7 +740,7 @@ async function route(req, res) {
         await mutateAlbum(tree.id, (d) => { const x = d.items.find((y) => y.id === iid); if (x) x.tags = tags; });
         return send(res, 200, { ok: true, tags });
       }
-      if (ia?.priv && !it.pub && ['c', 'send', 'share', 'link'].includes(parts[3]) && m === 'POST') throw new HttpError(400, 'Yopiq albom faylini chatga yuborib yoki izoh yozib bo‘lmaydi');
+      if (ia?.priv && !it.pub && parts[3] === 'c' && m === 'POST') throw new HttpError(400, 'Yopiq albom fayliga izoh yozib bo‘lmaydi');
       if (parts[3] === 'link' && m === 'POST') {
         // istalgan odamga (Telegram'ning havola ulashish oynasi): havolani ochgan kishiga bot faylni yuboradi
         if (!it.fileId) throw new HttpError(400, 'Bu faylni ulashib bo‘lmaydi');
@@ -788,7 +792,8 @@ async function route(req, res) {
         }
         return send(res, 200, r.result || {});
       }
-      if (role !== 'edit') throw new HttpError(403, 'Albomni faqat tahrir rejimidagilar o‘zgartira oladi');
+      const { canManageItem } = await import('../lib/album.js');
+      if (!canManageItem(tree, ia, it, uid)) throw new HttpError(403, 'Faylni faqat uni yuklagan yoki albomni yaratgan kishi o‘zgartira oladi');
       if (m === 'PATCH') {
         const body = await readBody(req);
         await mutateAlbum(tree.id, (d) => {
@@ -972,6 +977,8 @@ async function route(req, res) {
         branches: Object.entries(tree.branches || {}).filter(([, b]) => !b.revoked && !(b.auto && !b.claimed)).map(([bid, b]) => ({ bid, head: b.head, headName: byId.get(b.head)?.name || '?', claimedName: b.claimedName || null, at: b.at,
           parentName: b.parent ? byId.get(tree.branches[b.parent]?.head)?.name || null : null, ...B.branchStats(tree, b.head), exp: b.exp || null, trust: !!b.trust, expired: !b.claimed && !!b.exp && Date.parse(b.exp) < Date.now(),
           sent: props.some((x) => x.bid === bid && x.status === 'pending'),
+          // havola hali ochilmagan: shu oilada o'zini belgilagan a'zolar — ularga bot orqali eslatma yuborsa bo'ladi
+          cands: b.claimed ? [] : B.branchMembers(tree, b.head).map(([id, x]) => ({ id, name: x.name })),
           link: `https://t.me/${botName}?start=br_${tree.id}_${bid}` })),
         proposals: props.filter((x) => x.status === 'pending').map((x) => ({ ...x, headName: byId.get(x.head)?.name || '?' })),
         applied: props.filter((x) => x.status === 'applied' && x.undo).slice(0, 15).map((x) => ({ id: x.id, at: x.doneAt || x.at, by: x.by, headName: byId.get(x.head)?.name || '?', n: x.ops.length })),
@@ -990,7 +997,7 @@ async function route(req, res) {
     }
     if (m === 'POST' && parts[2] === 'remind') {
       if (!await rateLimit('remind:' + parts[1], 3, 864e5)) throw new HttpError(429, 'Bugun bu mas’ulga yetarlicha eslatildi');
-      await B.remindBranch(tree, parts[1]);
+      await B.remindBranch(tree, parts[1], (await readBody(req).catch(() => ({})))?.to);
       return send(res, 200, { ok: true });
     }
     if (m === 'DELETE' && parts[1]) {

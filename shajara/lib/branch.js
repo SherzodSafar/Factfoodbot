@@ -172,8 +172,14 @@ export function branchStats(tree, head) {
 }
 
 /** Mas'ulga eslatma (panel tugmasi va kunlik eslatmalar). */
-export async function remindBranch(tree, bid) {
-  const b = tree.branches?.[bid];
+export const branchMembers = (tree, head) => {
+  const scope = branchScope(tree, head);
+  return Object.entries(tree.members || {}).filter(([id, m]) => m.pid && scope.has(m.pid) && id !== String(tree.owner) && !(tree.banned || []).includes(id));
+};
+export async function remindBranch(tree, bid, to) {
+  const b0 = tree.branches?.[bid];
+  // ochilmagan havola: shu oiladagi a'zoga (Telegram) — tugmani bosganda havola unga biriktiriladi
+  const b = b0 && !b0.claimed && to && branchMembers(tree, b0.head).some(([id]) => id === String(to)) ? { ...b0, claimed: String(to) } : b0;
   if (!b?.claimed) throw new HttpError(400, 'Havola hali hech kim tomonidan ochilmagan');
   const st = branchStats(tree, b.head);
   const l = tree.members?.[b.claimed]?.lang || b.lang || 'uz';

@@ -64,3 +64,5 @@ O'zbekcha, qisqa javob, tokenlarni tejash, tez bajarish. Ruxsat umumiy berilgan 
 - Yangiliklar (tree.log) albom yuklashlari ham 1 soat ichida bitta yozuvga yig'iladi. Yozuvlarda `ref` (shaxs id, `a:<fayl>`, `u:<tgId>`, `props`) — ilovada bosib ochiladi. O'z amallari ko'rinmaydi (uid yoki ism).
 - Yangi a'zo: `join` log + bot xabari (yig'iladi) + kechki guruh xabari; `/api/member/<uid>` — profil va shajaradagi o'rni; deep link `_u<uid>`.
 - Oila havolasi: egasi taklifni tasdiqlasa havola yopiladi (`revoked`, `done`), eski tugmalar «qabul qilingan» deydi; ishonchli mas'ulniki ochiq qoladi. Panelda: yubormaganlarga 🔔 (hammasiga ham), ochilmaganlarga 📤 qayta yuborish.
+- Albom huquqlari (`albumCreator`/`canManageItem` lib/album.js): nomini o'zgartirish, o'chirish, «umumiyda ko'rsatish» — faqat albomni yaratgan (eski/«Umumiy» — shajara egasi). Faylni tahrirlash/o'chirish/ko'chirish — yaratuvchi yoki faylni yuklagan. Yopiq albom fayllarini ham yuborish mumkin (izoh yo'q).
+- Ochilmagan oila havolasi: shu oilada o'zini belgilagan a'zolarga 🔔 (`cands`, remind `{to}`).

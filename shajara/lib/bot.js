@@ -310,7 +310,7 @@ async function sendSharedFile(from, lang, [, treeId, iid, sig]) {
   const doc = verifyShare(`${treeId}_${iid}`, sig) ? await loadAlbum(treeId).catch(() => null) : null;
   const it = doc?.items.find((x) => x.id === iid);
   const a = it && doc.albums.find((x) => x.id === it.album);
-  if (!it?.fileId || (a?.priv && !it.pub)) return send(from.id, t(lang, 'Havola eskirgan yoki bekor qilingan.'));
+  if (!it?.fileId) return send(from.id, t(lang, 'Havola eskirgan yoki bekor qilingan.'));
   const r = await sendStored(from.id, it, `📁 <b>${escapeHtml(a?.name || '')}</b>${it.caption ? '\n' + escapeHtml(it.caption) : ''}`);
   if (!r.ok) return send(from.id, t(lang, 'Havola eskirgan yoki bekor qilingan.'));
 }

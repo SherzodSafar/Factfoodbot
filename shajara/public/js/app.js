@@ -785,7 +785,7 @@ async function renderAlbumTab(el) {
   const section = (a, items) => `<div class="alb-head"><div class="grow"><div class="h2 ellipsis">${a.priv ? '🔒' : '📁'} ${esc(nm(a.name))}</div><div class="small muted">${t('{n} ta fayl', { n: items.length })}${a.priv ? ` · ${t('{name} oilasi uchun yopiq', { name: esc(nm(a.priv.headName)) })} · 👥 ${a.members}` : ''}</div></div>
       ${a.owner && a.ch ? `<button class="btn btn-soft btn-sm" data-alb-ch="${a.id}">📡</button>` : ''}
       ${a.owner ? `<button class="btn btn-soft btn-sm" data-alb-inv="${a.id}">👥 ${t('A’zolar')}</button>` : ''}
-      ${isEdit() ? `<button class="icon-btn" data-alb-menu="${a.id}">${I.more}</button>` : ''}</div>
+      ${a.mine ? `<button class="icon-btn" data-alb-menu="${a.id}">${I.more}</button>` : ''}</div>
     ${a.priv && !a.ch ? `<${a.owner ? `button data-alb-ch="${a.id}"` : 'div'} class="card banner" style="margin:4px 0 10px"><div style="font-size:22px">📡</div><div class="grow"><b>${t('Yopiq kanal ulanmagan')}</b><div class="small muted">${a.owner ? t('Fayl yuklash uchun bu albomga alohida yopiq Telegram kanal ulang') : t('Albom egasi yopiq kanal ulagach, fayl yuklash mumkin bo‘ladi')}</div></div>${a.owner ? I.chev + '</button>' : '</div>'}` : ''}
     ${a.priv && !items.length ? `<div class="small muted" style="padding:4px 2px 10px">${t('Bu albomni faqat siz qabul qilgan oila a’zolari ko‘radi. «Qo‘shish» orqali surat va videolarni yuklang.')}</div>` : ''}
     <div class="grid">${items.map(tile).join('')}</div>`;
@@ -1110,7 +1110,7 @@ function openViewer(ids, index, opts = {}) {
   box.className = 'rv';
   box.innerHTML = `<div class="rv-feed">${items.map((it, i) => `<section class="rv-slide" data-i="${i}"></section>`).join('')}</div>
     <div class="rv-top rv-ui"><button class="rv-x" id="rv-x">${I.close}</button><div class="rv-count"></div>
-      ${isEdit() ? `<button class="rv-x" id="rv-ed">${I.edit}</button><button class="rv-x" id="rv-dl">${I.trash}</button>` : ''}</div>`;
+      <button class="rv-x hidden" id="rv-ed">${I.edit}</button><button class="rv-x hidden" id="rv-dl">${I.trash}</button></div>`;
   document.body.append(box);
   const feed = box.querySelector('.rv-feed');
   const slides = [...feed.children];
@@ -1184,10 +1184,10 @@ function openViewer(ids, index, opts = {}) {
         <button class="rv-b" data-act="seen">${VI.eye}<span class="vw">${fmtN(it.views)}</span></button>
         ${it.priv && !it.pub ? '' : `<button class="rv-b" data-act="cm">${VI.cm}<span class="cmn">${fmtN(it.cm)}</span></button>`}
         ${inTelegram ? `<button class="rv-b" data-act="tags"><b style="font-size:20px">👥</b><span class="tgn">${(it.tags || []).length || ''}</span></button>` : ''}
-        ${it.priv && it.member ? `<button class="rv-b pubb ${it.pub ? 'on' : ''}" data-act="pub"><b>🌐</b><span>${it.pub ? t('Umumiyda') : t('Umumiy')}</span></button>` : ''}
+        ${it.priv && it.member && albOf(it)?.mine ? `<button class="rv-b pubb ${it.pub ? 'on' : ''}" data-act="pub"><b>🌐</b><span>${it.pub ? t('Umumiyda') : t('Umumiy')}</span></button>` : ''}
         ${it.kind === 'video' && it.type !== 'animation' ? `<button class="rv-b" data-act="mute">${VI.mute(false)}</button>` : ''}
         ${it.kind === 'video' && it.src ? `<button class="rv-b spd" data-act="spd"><b>1×</b></button>` : ''}
-        ${inTelegram && !it.priv ? `<button class="rv-b" data-act="send">${VI.send}<span class="sn">${fmtN(it.sends)}</span></button>` : ''}
+        ${inTelegram && (!it.priv || it.member) ? `<button class="rv-b" data-act="send">${VI.send}<span class="sn">${fmtN(it.sends)}</span></button>` : ''}
       </div>
       ${land ? `<button class="rv-full rv-ui" data-act="full">${VI.full}</button>` : ''}
       <div class="rv-info rv-ui">
@@ -1374,6 +1374,10 @@ function openViewer(ids, index, opts = {}) {
     cur = i;
     box.querySelector('.rv-pop')?.remove();
     box.querySelector('.rv-count').textContent = `${i + 1} / ${items.length}`;
+    // tahrirlash/o'chirish — faqat faylni yuklagan yoki albomni yaratgan kishiga
+    const own = canManageItem(items[i]);
+    box.querySelector('#rv-ed')?.classList.toggle('hidden', !own);
+    box.querySelector('#rv-dl')?.classList.toggle('hidden', !own);
     for (const j of [i - 1, i, i + 1, i + 2]) hydrate(j);
     slides.forEach((sl, j) => {
       const m = sl.querySelector('video, audio');
@@ -1410,6 +1414,9 @@ function onHold(el, fn) {
 }
 // Telegram profil rasmi (bo'lmasa — bosh harf). Ism uzun bo'lsa qisqartiriladi.
 const shortName = (n, max = 24) => { const x = String(n || '?').trim(); return x.length > max ? x.slice(0, max - 1) + '…' : x; };
+const myId = () => String(tg?.initDataUnsafe?.user?.id || '');
+const albOf = (it) => S.album?.albums.find((a) => a.id === it?.album);
+const canManageItem = (it) => !!it && !!myId() && (!!albOf(it)?.mine || String(it.by?.id || '') === myId());
 function uAvatar(u, cls = 'cm-av') {
   return `<span class="${cls}">${esc((u?.name || '?').slice(0, 1))}${u?.ph ? `<img class="av-img" src="${u.ph}" alt="" loading="lazy">` : ''}</span>`;
 }
@@ -1948,13 +1955,17 @@ function myLog(l) {
 // Yangiliklar yozuvi bosilganda: shaxs, albom fayli, yangi a'zo yoki takliflar paneli
 function logTarget(l) {
   const r = l.ref;
-  if (!r) return false;
-  if (r === 'props') return canEdit();
-  if (r.startsWith('a:') || r.startsWith('u:')) return true;
-  return S.fam?.get(r) ? true : false;
+  if (r && (r.startsWith('a:') || r.startsWith('u:') || S.fam?.get(r))) return r;
+  if (l.action === 'branch' || r === 'props') return canEdit() ? 'props' : 'tree';
+  if (l.action === 'album') { const a = S.album?.albums.find((x) => x.name === String(l.name || '').split(' · ')[0]); return a ? 'al:' + a.id : 'album'; }
+  if (l.action === 'join') { const m = Object.entries(S.tree.members || {}).find(([, x]) => x.name === l.name); if (m) return 'u:' + m[0]; }
+  const p = S.tree.persons.find((x) => x.name === l.name);
+  return p ? p.id : 'tree';
 }
 function openLogTarget(r) {
   if (r === 'props') return branchesSheet();
+  if (r === 'tree' || r === 'album') return switchTab(r);
+  if (r.startsWith('al:')) { S.albumFilter = r.slice(3); return switchTab('album'); }
   if (r.startsWith('a:')) return openMediaComments(r.slice(2), false);
   if (r.startsWith('u:')) return openMember(r.slice(2));
   return personSheet(r);
@@ -2007,7 +2018,7 @@ function notificationsSheet(tab) {
       body.innerHTML = `<div class="card" style="padding:6px 0">${log.length ? log.slice(0, 60).map((l) => {
         const [ic, tx] = ACT[l.action] || ['•', l.action];
         const go = logTarget(l);
-        return `<div class="log-item ${seen && l.at > seen ? 'new' : ''} ${go ? 'tap' : ''}" ${go ? `data-lg="${esc(l.ref)}"` : ''}><div class="dot">${ic}</div><div class="grow">${t(tx, { name: `<b>${esc(nm(l.name || ''))}</b>` })}<div class="small muted">${l.action === 'join' ? '' : esc(l.who || '') + ' · '}${relTime(l.at)}</div></div>${go ? '<span class="muted">›</span>' : ''}</div>`;
+        return `<div class="log-item tap ${seen && l.at > seen ? 'new' : ''}" data-lg="${esc(go)}"><div class="dot">${ic}</div><div class="grow">${t(tx, { name: `<b>${esc(nm(l.name || ''))}</b>` })}<div class="small muted">${l.action === 'join' ? '' : esc(l.who || '') + ' · '}${relTime(l.at)}</div></div><span class="muted">›</span></div>`;
       }).join('') : `<div class="log-item muted">${t('Hozircha yangiliklar yo‘q')}</div>`}</div>`;
       body.querySelectorAll('[data-lg]').forEach((b) => (b.onclick = () => { closeTopSheet(); setTimeout(() => openLogTarget(b.dataset.lg), 150); }));
       store.set('sh_seen_' + tr.id, new Date().toISOString());
@@ -3154,13 +3165,15 @@ async function branchesSheet() {
     const clean = dirty.length ? `<div class="card" style="margin-bottom:12px;padding:12px 14px"><b>✂️ ${t('{n} kishining ismida familiya yoki otasining ismi ham yozilgan', { n: dirty.length })}</b>
       <div class="small muted" style="margin:4px 0 8px">${dirty.slice(0, 6).map((p) => `${esc(p.name)} → <b>${esc(stripSur(p.name))}</b>`).join('<br>')}${dirty.length > 6 ? '<br>…' : ''}</div>
       <button class="btn btn-primary btn-sm" id="clean-names">${t('Faqat ismni qoldirish')}</button></div>` : '';
+    // eslatma kimga: havolani ochgan mas'ul yoki (ochilmagan bo'lsa) shu oilada o'zini belgilagan a'zolar
+    const remTargets = r.branches.filter((b) => !b.sent).flatMap((b) => b.claimedName ? [{ bid: b.bid }] : (b.cands || []).map((c) => ({ bid: b.bid, to: c.id })));
     body.innerHTML = `${clean}${panel}${r.proposals.length ? r.proposals.map((pr, i) => `<div class="card pr-card"><div><b>${t('{name} oilasi', { name: esc(nm(pr.headName)) })}</b> · 👤 ${esc(pr.by?.name || '')} · <span class="muted">${esc(pr.at.slice(0, 10))}</span></div>
         <div class="pr-ops">${pr.ops.map((o) => line(o, pr)).join('')}</div>
         ${(pr.warn || []).length ? `<div class="pr-warn">${pr.warn.map((w) => `⚠️ ${esc(w)}`).join('<br>')}</div>` : ''}
         <div class="row" style="gap:8px;margin-top:8px"><button class="btn btn-primary btn-sm grow" data-ok="${i}">✅ ${t('Tasdiqlash')}</button><button class="btn btn-ghost btn-sm" data-ed="${i}">✏️</button><button class="btn btn-soft btn-sm" data-no="${i}">${t('Rad etish')}</button></div></div>`).join('')
       : `<div class="empty" style="padding:20px"><b>${t('Yangi takliflar yo‘q')}</b></div>`}
       <div class="row" style="justify-content:space-between;margin:18px 0 8px"><div class="h3" style="margin:0">🔗 ${t('Faol havolalar')}</div>
-        ${r.branches.filter((b) => b.claimedName && !b.sent).length > 1 ? `<button class="btn btn-soft btn-sm" id="rem-all">🔔 ${t('Hammasiga eslatma')} · ${r.branches.filter((b) => b.claimedName && !b.sent).length}</button>` : ''}</div>
+        ${remTargets.length > 1 ? `<button class="btn btn-soft btn-sm" id="rem-all">🔔 ${t('Hammasiga eslatma')} · ${remTargets.length}</button>` : ''}</div>
       ${r.branches.length ? r.branches.map((b) => `<div class="card br-card"><div class="row" style="justify-content:space-between"><b>${t('{name} oilasi', { name: esc(nm(b.headName)) })}</b><b style="color:var(--primary)">${b.pct}%</b></div>
         <div class="bw-prog"><i style="width:${b.pct}%"></i></div>
         <div class="small muted">${[b.noBirth && t('{n} kishining tug‘ilgan sanasi yo‘q', { n: b.noBirth }), b.noSpouse && t('{n} kishining turmush o‘rtog‘i noma’lum', { n: b.noSpouse }), b.noDeath && t('{n} kishining vafot sanasi yo‘q', { n: b.noDeath })].filter(Boolean).join(', ') || t('Barcha ma’lumotlar to‘liq ✓')}</div>
@@ -3168,7 +3181,7 @@ async function branchesSheet() {
         ${b.claimedName ? `<label class="row small" style="gap:8px;margin-top:8px"><span class="switch"><input type="checkbox" data-trust="${b.bid}" ${b.trust ? 'checked' : ''}><span></span></span>${t('Ishonchli mas’ul — tasdiqsiz qo‘shilsin')}</label>` : ''}
         <div class="row" style="gap:6px;margin-top:8px">${b.claimedName && !b.sent ? `<button class="btn btn-primary btn-sm grow" data-rem="${b.bid}">🔔 ${t('Mas’ulga eslatma yuborish')}</button>`
           : b.sent ? `<span class="grow small muted">📨 ${t('Yubordi — tasdiqlashingizni kutmoqda')}</span>`
-          : `<button class="btn btn-primary btn-sm grow" data-shr="${esc(b.link)}" data-nm="${esc(nm(b.headName))}">📤 ${t('Qayta yuborish')}</button>`}
+          : `<span class="grow row" style="gap:6px;flex-wrap:wrap">${(b.cands || []).map((c) => `<button class="btn btn-primary btn-sm" data-rem="${b.bid}" data-to="${c.id}">🔔 ${esc(shortName(c.name, 14))}</button>`).join('')}<button class="btn ${b.cands?.length ? 'btn-soft' : 'btn-primary'} btn-sm" data-shr="${esc(b.link)}" data-nm="${esc(nm(b.headName))}">📤 ${t('Qayta yuborish')}</button></span>`}
           <button class="btn btn-soft btn-sm" data-copy="${esc(b.link)}">📋</button><button class="btn btn-ghost btn-sm" data-rev="${b.bid}">${t('Bekor qilish')}</button></div></div>`).join('')
       : `<div class="small muted">${t('Havola yaratish: daraxtda oila boshini oching → «Oila havolasi».')}</div>`}
       ${r.applied?.length ? `<div class="h3" style="margin:18px 0 8px">↩️ ${t('Qo‘shilganlar tarixi')}</div>${r.applied.map((a, i) => `<div class="dp-row"><div class="grow"><b>${esc(nm(a.headName))}</b><div class="small muted">👤 ${esc(a.by?.name || '')} · ${relTime(a.at)} · ${a.n} ${t('o‘zgarish')}</div></div>
@@ -3220,12 +3233,12 @@ async function branchesSheet() {
     body.querySelector('#rem-all')?.addEventListener('click', async (e) => {
       e.currentTarget.disabled = true;
       let ok = 0;
-      for (const b of r.branches.filter((x) => x.claimedName && !x.sent)) ok += await api(`branch/${b.bid}/remind`, { method: 'POST' }).then(() => 1, () => 0);
+      for (const x of remTargets) ok += await api(`branch/${x.bid}/remind`, { method: 'POST', body: x.to ? { to: x.to } : {} }).then(() => 1, () => 0);
       toast(t('Eslatma yuborildi: {n} kishi ✓', { n: ok }));
     });
     body.querySelectorAll('[data-rem]').forEach((b) => (b.onclick = async () => {
       b.disabled = true;
-      try { await api(`branch/${b.dataset.rem}/remind`, { method: 'POST' }); toast(t('Eslatma yuborildi ✓')); } catch (err) { toast(err.message, true); b.disabled = false; }
+      try { await api(`branch/${b.dataset.rem}/remind`, { method: 'POST', body: b.dataset.to ? { to: b.dataset.to } : {} }); toast(t('Eslatma yuborildi ✓')); } catch (err) { toast(err.message, true); b.disabled = false; }
     }));
     body.querySelectorAll('[data-trust]').forEach((c) => (c.onchange = async () => {
       try { await api('branch/' + c.dataset.trust, { method: 'PATCH', body: { trust: c.checked } }); toast(t('Saqlandi ✓')); } catch (err) { c.checked = !c.checked; toast(err.message, true); }
