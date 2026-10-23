@@ -31,7 +31,21 @@ const thinkOk = new Map();
 export const CHAT_MODELS = () => [...new Set([process.env.GEMINI_CHAT_MODEL, 'gemini-flash-lite-latest', 'gemini-flash-latest'].filter(Boolean))];
 const FILE_MODELS = () => [...new Set([process.env.GEMINI_MODEL, 'gemini-flash-lite-latest', 'gemini-flash-latest'].filter(Boolean))];
 
-export async function askGemini({ system, messages, max_tokens, json, mode = 'fast', models, timeout }) {
+// Ikki kalit: avval bepul (GEMINI_API_KEY), limiti tugasa — pulli (GEMINI_API_KEY_PAID).
+// Bepul kalit 429 (limit) bersa, 10 daqiqa to'g'ridan-to'g'ri pullisiga o'tiladi.
+let freeBlockedUntil = 0;
+export async function askGemini(params) {
+  const free = process.env.GEMINI_API_KEY;
+  const paid = process.env.GEMINI_API_KEY_PAID;
+  if (free && (!paid || Date.now() > freeBlockedUntil)) {
+    try { return await askGeminiKey(free, params); } catch (e) {
+      if (!paid) throw e;
+      if (/ 429| 403/.test(e.message)) freeBlockedUntil = Date.now() + 10 * 60e3;
+    }
+  }
+  return askGeminiKey(paid || free, params);
+}
+async function askGeminiKey(key, { system, messages, max_tokens, json, mode = 'fast', models, timeout }) {
   let last;
   for (const model of models || (mode === 'fast' ? CHAT_MODELS() : FILE_MODELS())) {
     const variants = THINK[mode];
@@ -39,7 +53,7 @@ export async function askGemini({ system, messages, max_tokens, json, mode = 'fa
       const tc = variants[i];
       let r, j;
       try {
-        r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`, {
+        r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`, {
           method: 'POST',
           signal: AbortSignal.timeout(timeout || (mode === 'fast' ? 20e3 : 120e3)),
           headers: { 'content-type': 'application/json' },
@@ -69,7 +83,7 @@ export async function askGemini({ system, messages, max_tokens, json, mode = 'fa
 }
 
 async function ask({ json, mode, ...params }) {
-  if (process.env.GEMINI_API_KEY) return askGemini({ json, mode, ...params });
+  if (process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY_PAID) return askGemini({ json, mode, ...params });
   const c = await client();
   // uzun javoblar uchun oqim (stream) — HTTP vaqt chegarasiga tushmaslik uchun
   const run = (model) => c.messages.stream({ model, ...params }).finalMessage();
@@ -310,5 +324,5 @@ export function rowsToCsv(rows) {
 export async function aiHealth() {
   const t = Date.now();
   const r = await ask({ max_tokens: 300, mode: 'fast', output_config: { effort: 'low' }, messages: [{ role: 'user', content: 'Say OK' }] });
-  return { ok: true, ms: Date.now() - t, model: r.model, provider: process.env.GEMINI_API_KEY ? 'gemini' : DIRECT() ? 'anthropic' : 'gateway' };
+  return { ok: true, ms: Date.now() - t, model: r.model, provider: process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY_PAID ? 'gemini' : DIRECT() ? 'anthropic' : 'gateway' };
 }
