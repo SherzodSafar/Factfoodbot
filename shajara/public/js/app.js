@@ -420,7 +420,7 @@ function renderMain() {
   if (go) setTimeout(() => { S.treeView?.focus(go, { k: 1 }); personSheet(go); }, 250);
   fetchUnread();
   // shajarada o'rnini hali belgilamagan bo'lsa — bir marta so'raymiz ("yo'qman" desa 30 kun so'ramaymiz)
-  if (inTelegram && S.tree.me && !S.tree.me.pid && S.tree.persons.length > 1 && !S.goInbox && !S.goItem && !S.goMedia && !S.goUser && Date.now() - (store.get('sh_noself_' + S.tree.id, 0) || 0) > 30 * 864e5) setTimeout(() => whoAmISheet(true), 900);
+  if (inTelegram && S.tree.me && !S.tree.me.pid && S.tree.persons.length > 1 && !S.goInbox && !S.goItem && !S.goMedia && !S.goUser && !S.goMemo && Date.now() - (store.get('sh_noself_' + S.tree.id, 0) || 0) > 30 * 864e5) setTimeout(() => whoAmISheet(true), 900);
   if (S.goInbox) { const k = { f: 'fam', l: 'log' }[S.goInbox] || 'me'; S.goInbox = null; setTimeout(() => notificationsSheet(k), 300); }
   if (S.goAlbumJoin) {
     const [, aid, code] = S.goAlbumJoin;
@@ -429,6 +429,7 @@ function renderMain() {
   }
   if (S.goItem) { const id = S.goItem; S.goItem = null; setTimeout(() => openMediaComments(id, false), 300); }
   if (S.goUser) { const id = S.goUser; S.goUser = null; setTimeout(() => openMember(id), 300); }
+  if (S.goMemo) { const id = S.goMemo; S.goMemo = null; setTimeout(async () => { if (!S.album) await loadAlbum().catch(() => {}); memorialSheet(id); }, 300); }
   if (S.goMedia) { const mid = S.goMedia; S.goMedia = null; setTimeout(() => openMediaComments(mid), 300); }
   if (S.openProps && canEdit()) { S.openProps = false; setTimeout(branchesSheet, 300); }
 }
@@ -989,8 +990,13 @@ function tagSheet(it, onDone) {
   const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">👥 ${t('Rasmdagilar kim?')}</div><button class="icon-btn" data-close>${I.close}</button></div>
     <div class="sheet-body"><div id="tg-on" class="tag-list"></div>
     <input class="input" id="tg-q" placeholder="${t('Ismini yozing…')}" autocomplete="off" style="margin-top:10px"><div id="tg-res"></div>
-    <button class="btn btn-primary btn-block" id="tg-save" style="margin-top:12px">${t('Saqlash')}</button></div>`);
+    <button class="btn btn-primary btn-block" id="tg-save" style="margin-top:12px">${t('Saqlash')}</button>
+    ${inTelegram ? `<button class="btn btn-soft btn-block" id="tg-ask" style="margin-top:8px">❓ ${t('Bilmayman — oiladan so‘rash')}</button>` : ''}</div>`);
   sh.classList.add('over-rv');
+  sh.querySelector('#tg-ask')?.addEventListener('click', async (e) => {
+    e.currentTarget.disabled = true;
+    try { const r = await api(`album/i/${it.id}/ask`, { method: 'POST' }); toast(t('So‘rov yuborildi: {n} kishi ✓', { n: r.n })); } catch (err) { toast(err.message, true); }
+  });
   const on = sh.querySelector('#tg-on');
   const drawOn = () => {
     on.innerHTML = tags.map((id) => `<button class="chip on" data-rm="${id}">${esc(nm(S.fam.get(id)?.name || '?'))} ✕</button>`).join('') || `<div class="small muted">${t('Hali hech kim belgilanmagan')}</div>`;
@@ -1182,7 +1188,7 @@ function openViewer(ids, index, opts = {}) {
       <div class="rv-side rv-ui">
         <button class="rv-b like ${it.liked ? 'on' : ''}" data-act="like">${VI.heart(it.liked)}<span>${fmtN(it.likes)}</span></button>
         <button class="rv-b" data-act="seen">${VI.eye}<span class="vw">${fmtN(it.views)}</span></button>
-        ${it.priv && !it.pub ? '' : `<button class="rv-b" data-act="cm">${VI.cm}<span class="cmn">${fmtN(it.cm)}</span></button>`}
+        ${it.priv && !it.member ? '' : `<button class="rv-b" data-act="cm">${VI.cm}<span class="cmn">${fmtN(it.cm)}</span></button>`}
         ${inTelegram ? `<button class="rv-b" data-act="tags"><b style="font-size:20px">👥</b><span class="tgn">${(it.tags || []).length || ''}</span></button>` : ''}
         ${it.priv && it.member && albOf(it)?.mine ? `<button class="rv-b pubb ${it.pub ? 'on' : ''}" data-act="pub"><b>🌐</b><span>${it.pub ? t('Umumiyda') : t('Umumiy')}</span></button>` : ''}
         ${it.kind === 'video' && it.type !== 'animation' ? `<button class="rv-b" data-act="mute">${VI.mute(false)}</button>` : ''}
@@ -1874,6 +1880,7 @@ function renderMoreTab(el) {
       ${item('m-ai', '✨', t('AI yordamchi'), t('Ilova va bot haqida istalgan savol'))}
       ${item('m-invite', '📨', t('Qarindoshlarni taklif qilish'), t('Shaxsiy taklif havolasi — kodni aytish shart emas'))}
       ${item('m-notif', '🔔', t('Bildirishnomalar'), t('Yangiliklar va sozlamalar'))}
+      ${inTelegram ? item('m-book', '📖', t('Shajara kitobi'), t('Chop etishga tayyor kitob — PDF qilib saqlash mumkin')) : ''}
       ${item('m-lang', '🌐', t('Til'), LANG_NAMES[LANG])}
       ${item('m-group', '👨‍👩‍👧', t('Oilaviy guruh'), tr.groups.length ? tr.groups.map((g) => esc(g.title)).join(', ') : t('Botni oilaviy guruhingizga qo‘shing'))}
       ${item('m-premium', '⭐', 'Premium', prem.active ? t('Faol: {d} gacha', { d: fmtDate(prem.until.slice(0, 10)) }) : prem.paywall ? t('Cheksiz albom va barcha imkoniyatlar') : t('Hozircha barcha imkoniyatlar bepul'))}
@@ -1919,6 +1926,12 @@ function renderMoreTab(el) {
     forgetTree(tr.id);
     renderGate();
   });
+  on('m-book', async (e) => {
+    const b = e.currentTarget;
+    b.disabled = true;
+    try { await api('book', { method: 'POST', timeout: 60000 }); toast(t('Kitob bot chatiga yuborildi 📖')); } catch (err) { toast(err.message, true); }
+    b.disabled = false;
+  });
   on('m-export', async (e) => {
     const b = e.currentTarget;
     b.disabled = true;
@@ -1956,14 +1969,15 @@ function myLog(l) {
 function logTarget(l) {
   const r = l.ref;
   if (r && (r.startsWith('a:') || r.startsWith('u:') || S.fam?.get(r))) return r;
-  if (l.action === 'branch' || r === 'props') return canEdit() ? 'props' : 'tree';
+  // takliflar paneli — faqat tahrir rejimi yoqilgan tahrirchiga (bildirishnoma orqali ruxsatsiz bo'limga kirilmasin)
+  if (l.action === 'branch' || r === 'props') return isEdit() ? 'props' : 'tree';
   if (l.action === 'album') { const a = S.album?.albums.find((x) => x.name === String(l.name || '').split(' · ')[0]); return a ? 'al:' + a.id : 'album'; }
   if (l.action === 'join') { const m = Object.entries(S.tree.members || {}).find(([, x]) => x.name === l.name); if (m) return 'u:' + m[0]; }
   const p = S.tree.persons.find((x) => x.name === l.name);
   return p ? p.id : 'tree';
 }
 function openLogTarget(r) {
-  if (r === 'props') return branchesSheet();
+  if (r === 'props') return isEdit() ? branchesSheet() : switchTab('tree');
   if (r === 'tree' || r === 'album') return switchTab(r);
   if (r.startsWith('al:')) { S.albumFilter = r.slice(3); return switchTab('album'); }
   if (r.startsWith('a:')) return openMediaComments(r.slice(2), false);
@@ -1979,9 +1993,18 @@ function notificationsSheet(tab) {
   tab ||= U.me ? 'me' : U.fam ? 'fam' : U.log ? 'log' : 'me';
   const tr = S.tree;
   const seen = store.get('sh_seen_' + tr.id, '');
-  const log = (tr.log || []).filter((l) => !myLog(l));
+  // bitta odamning 1 soat ichidagi ketma-ket albom yozuvlari — bitta qator (eski yozuvlar uchun ham)
+  const log = (tr.log || []).filter((l) => !myLog(l)).reduce((acc, l) => {
+    const prev = acc[acc.length - 1];
+    const [an, n] = String(l.name || '').split(' · ');
+    if (prev && l.action === 'album' && prev.action === 'album' && prev.who === l.who && prev.an === an && Date.parse(prev.last) - Date.parse(l.at) < 3600e3) {
+      prev.cnt += Number(n) || 1; prev.name = `${an} · ${prev.cnt}`; prev.last = l.at; return acc;
+    }
+    acc.push(l.action === 'album' ? { ...l, an, cnt: Number(n) || 1, last: l.at } : l);
+    return acc;
+  }, []);
   const n = tr.me?.notify || {};
-  const sw = (k, label) => `<label class="row card" style="padding:12px 14px;margin-bottom:8px"><div class="grow" style="font-weight:700">${label}</div><span class="switch"><input type="checkbox" data-n="${k}" ${(n[k] ?? true) ? 'checked' : ''}><span></span></span></label>`;
+  const sw = (k, label, def = true, sub = '') => `<label class="row card" style="padding:12px 14px;margin-bottom:8px"><div class="grow"><div style="font-weight:700">${label}</div>${sub ? `<div class="small muted">${sub}</div>` : ''}</div><span class="switch"><input type="checkbox" data-n="${k}" ${(n[k] ?? def) ? 'checked' : ''}><span></span></span></label>`;
   const tabs = [['me', '🔔 ' + t('Menga')], ['fam', '💬 ' + t('Oila izohlari')], ['log', '🌳 ' + t('Yangiliklar')], ['set', '⚙️']];
   const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">🔔 ${t('Bildirishnomalar')}</div><button class="icon-btn" data-close>${I.close}</button></div>
     <div class="chips ib-tabs">${tabs.map(([k, l]) => `<button class="chip" data-ib="${k}">${l}${U[k] ? `<span class="ib-n">${U[k]}</span>` : ''}</button>`).join('')}</div>
@@ -2027,7 +2050,8 @@ function notificationsSheet(tab) {
     }
     if (k === 'set') {
       body.innerHTML = inTelegram && tr.me ? `<div class="h3" style="margin:4px 2px 10px">${t('Menga Telegram orqali yuborilsin')}</div>
-        ${sw('social', '❤️ ' + t('Like va izohlar (menga tegishli)'))}${sw('album', '📸 ' + t('Albomga yangi fayllar'))}${sw('tree', '🌱 ' + t('Shajaradagi yangiliklar'))}${sw('bday', '🎂 ' + t('Tug‘ilgan kun va xotira kunlari'))}`
+        ${sw('social', '❤️ ' + t('Like va izohlar (menga tegishli)'))}${sw('album', '📸 ' + t('Albomga yangi fayllar'))}${sw('tree', '🌱 ' + t('Shajaradagi yangiliklar'))}${sw('bday', '🎂 ' + t('Tug‘ilgan kun va xotira kunlari'))}
+        ${sw('daily', '🌙 ' + t('Kunlik xulosa'), false, t('Albom va shajara yangiliklari darhol emas, kechqurun bitta xabarda keladi'))}`
         : `<div class="empty small muted">${t('Bu funksiya faqat Telegram ichida ishlaydi')}</div>`;
       body.querySelectorAll('[data-n]').forEach((c) => (c.onchange = async () => {
         const b = { notify: { [c.dataset.n]: c.checked } };
@@ -2586,6 +2610,7 @@ function personSheet(id) {
     <dl class="card info-list">${info.map(([k, v]) => `<div><dt>${k}</dt><dd>${String(v).startsWith('<a') ? v : esc(v)}</dd></div>`).join('')}</dl>
     ${p.bio ? `<div class="card note"><div class="h3" style="margin-bottom:6px">${t('Hayot yo‘li')}</div>${esc(p.bio)}</div>` : ''}
     ${p.note ? `<div class="card note">📝 ${esc(p.note)}</div>` : ''}
+    ${p.deceased ? `<button class="btn btn-soft full" id="memo" style="margin-bottom:10px">🕯 ${t('Xotira sahifasi')}</button>` : ''}
     <div id="p-photos"></div>
     ${rels(t('Ota-ona'), [fatherP, motherP].filter(Boolean), (x) => t(x.gender === 'm' ? 'otasi' : 'onasi'))}
     ${rels(t('Turmush o‘rtog‘i'), fam.spouses(p), yearsLabel)}
@@ -2612,6 +2637,7 @@ function personSheet(id) {
     box.innerHTML = `<div class="rel-group"><div class="h3">📸 ${t('Suratlari')} · ${xs.length}</div><div class="grid">${xs.slice(0, 12).map(tile).join('')}</div></div>`;
     box.querySelectorAll('[data-item]').forEach((b) => (b.onclick = () => { viewerOpen?.(); openViewer(ids, ids.indexOf(b.dataset.item), { over: true }); }));
   });
+  sh.querySelector('#memo')?.addEventListener('click', () => memorialSheet(p.id));
   sh.querySelector('#in-tree').onclick = () => {
     closeAllSheets();
     if (S.tab !== 'tree') switchTab('tree');
@@ -2654,6 +2680,40 @@ function patronymic(p) {
   return yr < 2000 ? first + (/[aeiou]/.test(l) ? 'yev' : l === 'y' ? 'ev' : 'ov') + (fem ? 'na' : 'ich') : `${first} ${fem ? 'qizi' : 'o‘g‘li'}`;
 }
 // viewer ustida shaxs oynasi
+// Xotira sahifasi: marhumning surati, sanalari, suratlari va oila yozgan xotira/duolar
+async function memorialSheet(id) {
+  const p = S.fam.get(id);
+  if (!p) return;
+  const yrs = p.death ? new Date().getFullYear() - Number(String(p.death).slice(0, 4)) : null;
+  const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">🕯 ${t('Xotira sahifasi')}</div><button class="icon-btn" data-close>${I.close}</button></div>
+    <div class="sheet-body"><div class="prof">${avatar(p, 96)}<div class="h2" style="margin-top:10px">${esc(nm(p.name))}</div>
+      <div class="small muted">${esc(p.birth ? fmtDate(p.birth) : '')} — ${esc(p.death ? fmtDate(p.death) : '')}${yrs ? ` · ${t('vafotiga {n} yil', { n: yrs })}` : ''}</div></div>
+      <div id="mm-ph"></div>
+      <div class="h3" style="margin:16px 2px 8px">🤲 ${t('Xotira va duolar')}</div><div id="mm-list"><div class="empty"><span class="spin" style="color:var(--primary)"></span></div></div>
+      ${inTelegram && S.tree.me ? `<textarea class="input" id="mm-t" rows="3" maxlength="1000" placeholder="${t('Xotira yoki duo yozing…')}" style="margin-top:10px"></textarea>
+      <button class="btn btn-primary btn-block" id="mm-s" style="margin-top:8px">${t('Yuborish')}</button>` : ''}</div>`);
+  const xs = (S.album?.items || []).filter((it) => (it.tags || []).includes(id));
+  if (xs.length) {
+    const ids = xs.map((x) => x.id);
+    sh.querySelector('#mm-ph').innerHTML = `<div class="h3" style="margin:16px 2px 8px">📸 ${t('Suratlari')} · ${xs.length}</div><div class="grid">${xs.slice(0, 30).map(tile).join('')}</div>`;
+    sh.querySelectorAll('[data-item]').forEach((b) => (b.onclick = () => { viewerOpen?.(); openViewer(ids, ids.indexOf(b.dataset.item), { over: true }); }));
+  }
+  const list = sh.querySelector('#mm-list');
+  const draw = (items) => {
+    list.innerHTML = items.length ? items.map((x) => `<div class="card" style="padding:10px 12px;margin-bottom:8px"><div class="small"><b>${esc(x.name)}</b> <span class="muted">· ${relTime(x.at)}</span>${x.mine ? ` <button class="btn btn-ghost btn-sm" data-mdel="${x.id}" style="float:right">✕</button>` : ''}</div><div style="margin-top:4px;white-space:pre-wrap">${esc(x.text)}</div></div>`).join('')
+      : `<div class="small muted">${t('Hali hech kim yozmagan. Birinchi bo‘lib yod eting.')}</div>`;
+    list.querySelectorAll('[data-mdel]').forEach((b) => (b.onclick = async () => { await api(`memory/${id}/${b.dataset.mdel}`, { method: 'DELETE' }).catch((e) => toast(e.message, true)); load(); }));
+  };
+  const load = async () => { try { draw((await api('memory/' + id)).items); } catch (err) { list.innerHTML = `<div class="small muted">${esc(err.message)}</div>`; } };
+  load();
+  sh.querySelector('#mm-s')?.addEventListener('click', async (e) => {
+    const ta = sh.querySelector('#mm-t');
+    if (!ta.value.trim()) return;
+    e.currentTarget.disabled = true;
+    try { await api('memory/' + id, { method: 'POST', body: { text: ta.value } }); ta.value = ''; load(); } catch (err) { toast(err.message, true); }
+    e.currentTarget.disabled = false;
+  });
+}
 function personSheetOver(id) { personSheet(id); const last = [...$sheets.children].pop()?.querySelector('.sheet'); last?.classList.add('over-rv'); }
 async function openPortrait(p) {
   // darhol avatar ko'rinadi, albomdagi asl nusxa tayyor bo'lgach o'sha ochiladi
@@ -3272,6 +3332,7 @@ function boot() {
   S.goInbox = /_([nfl])$/.exec(inv.slice(30))?.[1] || null;
   S.goItem = /_a([a-z0-9]{10})$/.exec(inv.slice(30))?.[1] || null;
   S.goUser = /_u(\d{1,15})$/.exec(inv.slice(30))?.[1] || null;
+  S.goMemo = /_x(p\d{1,8})$/.exec(inv.slice(30))?.[1] || null;
   S.goAlbumJoin = /_k([A-Za-z0-9]{8})([A-Za-z0-9_-]{10})$/.exec(inv.slice(30)) || null;
   const startCode = params.get('code') || (!inv ? sp : '');
   const br = /^([a-z0-9]{6,20})_([A-Za-z0-9]{4,16})$/.exec(params.get('br') || '');

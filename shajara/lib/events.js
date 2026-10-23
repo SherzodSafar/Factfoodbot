@@ -22,7 +22,8 @@ export function todayText(tree, lang) {
     text += `\n\n${t(lang, 'Tabriklashni unutmang — bir qo‘ng‘iroq ham qondoshlikni mustahkamlaydi. 💚')}`;
   }
   if (memorials.length) {
-    text += `\n\n${t(lang, '🤲 <b>Xotira kuni:</b>')}\n` + memorials.map((x) => '• ' + t(lang, '{name} — vafotiga {years} yil', { name: '\u0001', years: x.years }).replace('\u0001', nm(x))).join('\n');
+    const nmx = (x) => `<a href="https://t.me/${bot}?startapp=${inv}_x${x.id}">${escapeHtml(x.name)}</a>`; // xotira sahifasi
+    text += `\n\n${t(lang, '🤲 <b>Xotira kuni:</b>')}\n` + memorials.map((x) => '• ' + t(lang, '{name} — vafotiga {years} yil', { name: '\u0001', years: x.years }).replace('\u0001', nmx(x))).join('\n');
     text += `\n\n${t(lang, 'Duo bilan yod eting.')}`;
   }
   return text;

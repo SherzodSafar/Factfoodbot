@@ -422,7 +422,7 @@ async function route(req, res) {
       if (lang) mem.lang = lang;
       if (body.notify && typeof body.notify === 'object') {
         mem.notify = { ...(mem.notify || {}) };
-        for (const k of ['tree', 'album', 'bday', 'social']) if (k in body.notify) mem.notify[k] = !!body.notify[k];
+        for (const k of ['tree', 'album', 'bday', 'social', 'daily']) if (k in body.notify) mem.notify[k] = !!body.notify[k];
       }
     });
     return send(res, 200, { ok: true });
@@ -731,6 +731,14 @@ async function route(req, res) {
         await mutateAlbum(tree.id, (d) => { const x = d.items.find((y) => y.id === iid); if (!x) return; x.pub = !!body.on; if (x.pub && !x.alsoIn) x.alsoIn = ensureAlbum(d, 'Umumiy', by).id; });
         return send(res, 200, { ok: true, pub: !!body.on });
       }
+      // «Bu kim?» — suratdagilarni tanish uchun oiladan so'rash (yopiq albomda — faqat a'zolardan)
+      if (parts[3] === 'ask' && m === 'POST') {
+        if (!uid || !tree.members?.[uid]) throw new HttpError(403, 'Ruxsat yo‘q');
+        if (!await rateLimit('ask:' + iid, 1, 864e5)) throw new HttpError(429, 'Bu fayl bo‘yicha bugun so‘raldi');
+        const n = await notify(tree, 'album', (l) => t(l, '❓ <b>{who}</b> suratdagilarni tanishga yordam so‘rayapti. Kim ekanini bilsangiz — «👥» tugmasi orqali shajaradan belgilang.', { who: escapeHtml(by.name) }),
+          { except: uid, open: '_a' + iid, only: ia?.priv && !it.pub ? new Set(ia.members || []) : null });
+        return send(res, 200, { ok: true, n });
+      }
       // «Rasmdagilar kim?» — shajaradagi odamlarni belgilash
       if (parts[3] === 'tags' && m === 'POST') {
         if (!uid || !tree.members?.[uid]) throw new HttpError(403, 'Ruxsat yo‘q');
@@ -740,7 +748,6 @@ async function route(req, res) {
         await mutateAlbum(tree.id, (d) => { const x = d.items.find((y) => y.id === iid); if (x) x.tags = tags; });
         return send(res, 200, { ok: true, tags });
       }
-      if (ia?.priv && !it.pub && parts[3] === 'c' && m === 'POST') throw new HttpError(400, 'Yopiq albom fayliga izoh yozib bo‘lmaydi');
       if (parts[3] === 'link' && m === 'POST') {
         // istalgan odamga (Telegram'ning havola ulashish oynasi): havolani ochgan kishiga bot faylni yuboradi
         if (!it.fileId) throw new HttpError(400, 'Bu faylni ulashib bo‘lmaydi');
@@ -926,6 +933,31 @@ async function route(req, res) {
   }
 
   // ---- Zaxira nusxa
+  // Xotira sahifasi (marhumlar): oila a'zolari xotira va duolar yozadi
+  if (parts[0] === 'memory' && parts[1]) {
+    const { tree, uid, user, role } = await authTree(req);
+    const X = await import('../lib/extras.js');
+    if (m === 'GET') return send(res, 200, { items: (await X.memories(tree.id, parts[1])).map((x) => ({ ...x, uid: undefined, mine: x.uid === uid })) });
+    if (!uid || !tree.members?.[uid]) throw new HttpError(400, 'Bu funksiya faqat Telegram ichida ishlaydi');
+    if (m === 'POST') {
+      if (!await rateLimit('mem:' + uid, 10, 3600e3)) throw new HttpError(429, 'Birozdan so‘ng yozing');
+      const item = await X.addMemory(tree, parts[1], user, nameOf(user) || 'Telegram', (await readBody(req)).text);
+      return send(res, 200, { item: { ...item, uid: undefined, mine: true } });
+    }
+    if (m === 'DELETE' && parts[2]) { await X.delMemory(tree, parts[1], parts[2], uid, role === 'edit'); return send(res, 200, { ok: true }); }
+  }
+  // Shajara kitobi: chop etishga tayyor HTML (brauzerda PDF qilib saqlanadi) — bot chatiga
+  if (path === 'book' && m === 'POST') {
+    const { tree, uid, user } = await authTree(req);
+    if (!uid) throw new HttpError(400, 'Bu funksiya faqat Telegram ichida ishlaydi');
+    if (!await rateLimit('book:' + uid, 3, 864e5)) throw new HttpError(429, 'Bugun yetarlicha yuborildi. Ertaga urinib ko‘ring');
+    const lang = tree.members?.[uid]?.lang || 'uz';
+    const html = await (await import('../lib/extras.js')).bookHtml(tree, lang);
+    const j = await sendDocument(uid, `${String(tree.title).replace(/[^\p{L}\p{N} _-]/gu, '').trim() || 'shajara'}.html`, Buffer.from(html),
+      `📖 <b>${escapeHtml(tree.title)}</b>\n${t(lang, 'PDF qilish: faylni brauzerda oching → «Chop etish» (Print) → «PDF sifatida saqlash».')}`);
+    if (!j.ok) throw new HttpError(500, 'Yuborib bo‘lmadi. Avval botga /start yozing');
+    return send(res, 200, { ok: true, user: !!user });
+  }
   if (path === 'export' && m === 'POST') {
     const { tree, uid } = await authTree(req, 'edit');
     if (!uid) throw new HttpError(400, 'Bu funksiya faqat Telegram ichida ishlaydi');
@@ -1211,6 +1243,7 @@ async function route(req, res) {
       for (const key of await listKeys('trees/')) {
         const tr = (await readJson(key).catch(() => null))?.data;
         if (tr?.groups?.length) sent += await commentDigest(tr, await loadAlbum(tr.id)).catch((e) => (console.error('digest', e), 0));
+        if (tr) sent += await (await import('../lib/notify.js')).memberDigest(tr).catch((e) => (console.error('mdigest', e), 0));
       }
       return send(res, 200, { ok: true, sent });
     }
@@ -1231,6 +1264,14 @@ async function route(req, res) {
     for (const key of await listKeys('trees/')) {
       const tr = (await readJson(key).catch(() => null))?.data;
       if (tr?.persons?.length) sent += await personalBirthdays(tr).catch((e) => (console.error('greet', e), 0));
+    }
+    // oyning 1-kuni: o'tgan oy eng faollariga rahmat
+    if (new Date(Date.now() + 5 * 3600e3).getUTCDate() === 1) {
+      const { monthlyThanks } = await import('../lib/extras.js');
+      for (const key of await listKeys('trees/')) {
+        const tr = (await readJson(key).catch(() => null))?.data;
+        if (tr?.log?.length) sent += await monthlyThanks(tr).catch((e) => (console.error('thanks', e), 0));
+      }
     }
     const { dailyReminders } = await import('../lib/branch.js');
     for (const key of await listKeys('trees/')) {

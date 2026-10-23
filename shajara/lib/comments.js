@@ -5,7 +5,7 @@ import { tg } from './telegram.js';
 import { mtprotoOn, readChannelTexts } from './mtproto.js';
 import { HttpError } from './tree.js';
 import { rateLimit } from './auth.js';
-import { loadAlbum, mutateAlbum } from './album.js';
+import { loadAlbum, mutateAlbum, albumAccess } from './album.js';
 import { escapeHtml } from './notify.js';
 import { pushEvent, avatarUrl, getInbox, mutateInbox } from './inbox.js';
 
@@ -28,6 +28,13 @@ async function texts(chat, list) {
   return list.map((c) => cache.get(ck(chat, c.mid)) ?? null);
 }
 
+// izohlar qayerda saqlanadi: yopiq albom — o'zining yopiq kanalida (umumiy kanalga chiqmaydi)
+function chatOf(tree, doc, it) {
+  const a = doc.albums.find((x) => x.id === it.album);
+  return a?.priv ? a.ch?.id || it.ch?.chat || null : tree.channel?.id || it.ch?.chat || null;
+}
+// yopiq albom fayli (va izohlari) faqat albom a'zolariga
+const visible = (tree, doc, it, uid) => !!it.pub || albumAccess(tree, doc.albums.find((x) => x.id === it.album), uid);
 function person(tree, uid) {
   const m = tree.members?.[uid];
   return { id: uid, name: m?.name || 'Telegram', username: m?.username || null, ph: avatarUrl(uid) };
@@ -46,7 +53,8 @@ export async function commentRoute({ tree, uid, role, user, nameOf, m, parts, re
     return { people: [...((c ? c.likes : it[k]) || [])].reverse().slice(0, 300).map((id) => person(tree, String(id))) };
   }
   if (parts[3] !== 'c') return null;
-  const chat = tree.channel?.id || it.ch?.chat;
+  if (!visible(tree, doc, it, uid)) throw new HttpError(404, 'Fayl topilmadi');
+  const chat = chatOf(tree, doc, it);
   const cm = it.cm || [];
   const mid = Number(parts[4]) || null;
 
@@ -126,28 +134,32 @@ const fileOf = (doc, it) => ({ iid: it.id, album: doc.albums.find((a) => a.id ==
 /** GET /api/inbox: k=me — shaxsiy hodisalar; k=fam — oiladagi barcha izohlar (yangisi tepada). */
 export async function inboxRoute({ tree, uid, k, onlyCount, famSince }) {
   const doc = await loadAlbum(tree.id);
-  const chat = tree.channel?.id;
-  const byIid = new Map(doc.items.map((x) => [x.id, x]));
+  const byIid = new Map(doc.items.filter((x) => visible(tree, doc, x, uid)).map((x) => [x.id, x]));
   if (onlyCount) {
     if (!uid) return { unread: 0 };
     const ib = await getInbox(uid);
     const seen = ib.read?.[tree.id] || '';
     const fs = famSince || '9';
-    const fam = doc.items.reduce((n, it) => n + (it.cm || []).filter((c) => c.at > fs && c.uid !== uid).length, 0);
+    const fam = [...byIid.values()].reduce((n, it) => n + (it.cm || []).filter((c) => c.at > fs && c.uid !== uid).length, 0);
     return { unread: ib.items.filter((x) => x.tree === tree.id && x.at > seen).length, fam };
   }
   // izoh ma'lumoti (matn kanaldan)
   const view = async (pairs) => {
-    const list = pairs.map(([it, c]) => c).filter(Boolean);
-    const ch = chat || pairs.find(([it]) => it?.ch?.chat)?.[0].ch.chat;
-    const tx = ch ? await texts(ch, list).catch(() => list.map(() => null)) : list.map(() => null);
-    const T = new Map(list.map((c, i) => [c.mid, tx[i]]));
-    return (c) => c && { mid: c.mid, re: c.re || null, at: c.at, name: c.name, by: person(tree, c.uid), text: T.get(c.mid) ?? null,
+    // har kanal alohida o'qiladi (yopiq albom izohlari o'z kanalida)
+    const groups = new Map();
+    for (const [it, c] of pairs) { if (!it || !c) continue; const ch = chatOf(tree, doc, it); if (ch) groups.set(ch, [...(groups.get(ch) || []), c]); }
+    const T = new Map();
+    for (const [ch, list] of groups) {
+      const tx = await texts(ch, list).catch(() => list.map(() => null));
+      list.forEach((c, i) => T.set(ch + ':' + c.mid, tx[i]));
+    }
+    const key = new Map(pairs.filter(([it, c]) => it && c).map(([it, c]) => [c, chatOf(tree, doc, it) + ':' + c.mid]));
+    return (c) => c && { mid: c.mid, re: c.re || null, at: c.at, name: c.name, by: person(tree, c.uid), text: T.get(key.get(c)) ?? null,
       likes: (c.likes || []).length, liked: !!uid && (c.likes || []).includes(uid), mine: c.uid === uid };
   };
   if (k === 'fam') {
     const all = [];
-    for (const it of doc.items) for (const c of it.cm || []) all.push([it, c]);
+    for (const it of byIid.values()) for (const c of it.cm || []) all.push([it, c]);
     all.sort((a, b) => (a[1].at < b[1].at ? 1 : -1));
     const top = all.slice(0, 80);
     const V = await view(top);

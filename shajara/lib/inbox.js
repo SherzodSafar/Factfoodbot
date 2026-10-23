@@ -76,6 +76,7 @@ export async function commentDigest(tree, doc) {
   const albums = new Map();
   let n = 0;
   for (const it of doc.items) {
+    if (doc.albums.find((x) => x.id === it.album)?.priv && !it.pub) continue; // yopiq albom guruhga chiqmaydi
     const c = (it.cm || []).filter((x) => Date.parse(x.at) >= from).length;
     if (!c) continue;
     n += c;

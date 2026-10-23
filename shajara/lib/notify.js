@@ -11,7 +11,7 @@ import { readJson, writeJson, updateJson } from './store.js';
  * yangi xabar emas, avvalgi xabarni tahrirlab yig'iladi: text(lang, jami, ismlar). Chat to'lib ketmaydi.
  */
 const AGG_MS = 3600e3;
-export async function notify(tree, kind, text0, { except, button = true, open = null, agg = null } = {}) {
+export async function notify(tree, kind, text0, { except, button = true, open = null, agg = null, only = null } = {}) {
   const akey = `nagg/${tree.id}.json`;
   const ast = agg ? (await readJson(akey).catch(() => null))?.data || {} : null;
   const prev = agg && ast[agg.key] && Date.now() - ast[agg.key].at < AGG_MS ? ast[agg.key] : null;
@@ -19,6 +19,7 @@ export async function notify(tree, kind, text0, { except, button = true, open = 
   const names = agg ? [...new Set([...(prev?.names || []), ...(agg.add ? [agg.add] : [])])].slice(-15) : [];
   const text = (lang, uid) => text0(lang, total, names, uid);
   const msgs = {};
+  const daily = [];
   const url = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
   // open: '_p0007' (shaxs) yoki '_a<itemId>' (albom fayli) — tugma aynan shuni ochadi
   const inv = open ? signInvite(tree.id, tree.ver || 1) + open : null;
@@ -26,9 +27,11 @@ export async function notify(tree, kind, text0, { except, button = true, open = 
     button && url ? { inline_keyboard: [[inv ? { text: t(lang, '👀 Ko‘rish'), web_app: { url: `${url}/?inv=${inv}` } } : { text: t(lang, '🌳 Shajarani ochish'), web_app: { url: url + '/' } }]] } : undefined;
   const jobs = [];
   for (const [uid, m] of Object.entries(tree.members || {})) {
-    if (uid === String(except) || m.blocked || (tree.banned || []).includes(uid)) continue;
+    if (uid === String(except) || m.blocked || (tree.banned || []).includes(uid) || (only && !only.has(uid))) continue;
     if (m.notify && m.notify[kind] === false) continue;
     const lang = m.lang || 'uz';
+    // «kunlik xulosa» tanlaganlar: albom va shajara yangiliklari kechqurun bitta xabarda
+    if (m.notify?.daily && (kind === 'album' || kind === 'tree')) { daily.push([uid, text(lang, uid)]); continue; }
     const old = prev?.msgs?.[uid];
     jobs.push(async () => {
       if (old) {
@@ -41,7 +44,7 @@ export async function notify(tree, kind, text0, { except, button = true, open = 
     });
   }
   // Oila guruhlari: tug'ilgan kunlar darhol; qolganlari kechki (19:00) umumiy xabarga yig'iladi — chat to'lib ketmasin
-  const groups = (tree.groups || []).filter((g) => !(kind === 'tree' && g.quiet));
+  const groups = only ? [] : (tree.groups || []).filter((g) => !(kind === 'tree' && g.quiet));
   if (kind === 'bday') {
     const glink = inv && groups.length ? await appLink(inv) : null;
     for (const g of groups) jobs.push(() => tg('sendMessage', { chat_id: g.id, parse_mode: 'HTML', text: text(g.lang || 'uz'), disable_web_page_preview: true,
@@ -49,6 +52,12 @@ export async function notify(tree, kind, text0, { except, button = true, open = 
   } else if (groups.length) {
     const langs = [...new Set(groups.map((g) => g.lang || 'uz'))];
     await queueDigest(tree.id, { at: new Date().toISOString(), kind, ...(agg ? { key: `${agg.key}:${prev?.since || Date.now()}` } : {}), text: Object.fromEntries(langs.map((l) => [l, text(l)])) }).catch((e) => console.error('digestq', e?.message));
+  }
+  if (daily.length) {
+    const dk = agg ? `${agg.key}:${prev?.since || Date.now()}` : null;
+    await updateOrCreate(`mdigest/${tree.id}.json`, (d) => {
+      for (const [uid, tx] of daily) d[uid] = [...(d[uid] || []).filter((x) => !dk || x.key !== dk), { key: dk, text: tx }].slice(-40);
+    }).catch((e) => console.error('mdigest', e?.message));
   }
   // Telegram cheklovi: sekundiga ~30 xabar. 10 tadan parallel yuboramiz.
   let sent = 0;
@@ -75,6 +84,32 @@ export async function notifyEditors(tree, html) {
     await tg('sendMessage', { chat_id: id, parse_mode: 'HTML', text: html, disable_web_page_preview: true,
       reply_markup: url ? { inline_keyboard: [[{ text: '📨 Ko‘rib chiqish', web_app: { url: url + '/?props=1' } }]] } : undefined }).catch(() => {});
   }
+}
+
+async function updateOrCreate(key, fn) {
+  if (!await readJson(key)) { const d = {}; fn(d); try { await writeJson(key, d, null); return; } catch { /* parallel */ } }
+  await updateJson(key, fn);
+}
+
+/** 19:00 — «kunlik xulosa» tanlagan a'zolarga kun yangiliklari bitta xabarda. */
+export async function memberDigest(tree) {
+  const key = `mdigest/${tree.id}.json`;
+  const d = (await readJson(key))?.data || {};
+  if (!Object.keys(d).length) return 0;
+  await writeJson(key, {});
+  const url = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
+  const inv = signInvite(tree.id, tree.ver || 1) + '_l';
+  let sent = 0;
+  for (const [uid, list] of Object.entries(d)) {
+    const m = tree.members?.[uid];
+    if (!m || !list?.length) continue;
+    const lang = m.lang || 'uz';
+    const r = await tg('sendMessage', { chat_id: uid, parse_mode: 'HTML', disable_web_page_preview: true,
+      text: [`🌙 <b>${escapeHtml(tree.title)}</b> — ${t(lang, 'bugungi yangiliklar')}`, ...list.slice(-25).map((x) => '• ' + x.text)].join('\n').slice(0, 4000),
+      reply_markup: url ? { inline_keyboard: [[{ text: t(lang, '👀 Ko‘rish'), web_app: { url: `${url}/?inv=${inv}` } }]] } : undefined });
+    if (r.ok) sent++;
+  }
+  return sent;
 }
 
 /** Kechki guruh xabari uchun navbat: gdigest/<treeId>.json */
