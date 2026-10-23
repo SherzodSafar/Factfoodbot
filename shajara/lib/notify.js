@@ -11,7 +11,7 @@ import { readJson, writeJson, updateJson } from './store.js';
  * yangi xabar emas, avvalgi xabarni tahrirlab yig'iladi: text(lang, jami, ismlar). Chat to'lib ketmaydi.
  */
 const AGG_MS = 3600e3;
-export async function notify(tree, kind, text0, { except, button = true, open = null, agg = null, only = null } = {}) {
+export async function notify(tree, kind, text0, { except, button = true, open = null, agg = null, only = null, extra = null } = {}) {
   const akey = `nagg/${tree.id}.json`;
   const ast = agg ? (await readJson(akey).catch(() => null))?.data || {} : null;
   const prev = agg && ast[agg.key] && Date.now() - ast[agg.key].at < AGG_MS ? ast[agg.key] : null;
@@ -23,8 +23,9 @@ export async function notify(tree, kind, text0, { except, button = true, open = 
   const url = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
   // open: '_p0007' (shaxs) yoki '_a<itemId>' (albom fayli) — tugma aynan shuni ochadi
   const inv = open ? signInvite(tree.id, tree.ver || 1) + open : null;
+  // extra(lang) — qo'shimcha tugma (masalan, tayyor taklifnoma)
   const markup = (lang) =>
-    button && url ? { inline_keyboard: [[inv ? { text: t(lang, '👀 Ko‘rish'), web_app: { url: `${url}/?inv=${inv}` } } : { text: t(lang, '🌳 Shajarani ochish'), web_app: { url: url + '/' } }]] } : undefined;
+    button && url ? { inline_keyboard: [[inv ? { text: t(lang, '👀 Ko‘rish'), web_app: { url: `${url}/?inv=${inv}` } } : { text: t(lang, '🌳 Shajarani ochish'), web_app: { url: url + '/' } }], ...(extra ? [[extra(lang)]] : [])] } : undefined;
   const jobs = [];
   for (const [uid, m] of Object.entries(tree.members || {})) {
     if (uid === String(except) || m.blocked || (tree.banned || []).includes(uid) || (only && !only.has(uid))) continue;
@@ -48,7 +49,7 @@ export async function notify(tree, kind, text0, { except, button = true, open = 
   if (kind === 'bday') {
     const glink = inv && groups.length ? await appLink(inv) : null;
     for (const g of groups) jobs.push(() => tg('sendMessage', { chat_id: g.id, parse_mode: 'HTML', text: text(g.lang || 'uz'), disable_web_page_preview: true,
-      reply_markup: glink ? { inline_keyboard: [[{ text: t(g.lang || 'uz', '👀 Ko‘rish'), url: glink }]] } : undefined }));
+      reply_markup: glink || extra ? { inline_keyboard: [...(glink ? [[{ text: t(g.lang || 'uz', '👀 Ko‘rish'), url: glink }]] : []), ...(extra ? [[extra(g.lang || 'uz')]] : [])] } : undefined }));
   } else if (groups.length) {
     const langs = [...new Set(groups.map((g) => g.lang || 'uz'))];
     await queueDigest(tree.id, { at: new Date().toISOString(), kind, ...(agg ? { key: `${agg.key}:${prev?.since || Date.now()}` } : {}), text: Object.fromEntries(langs.map((l) => [l, text(l)])) }).catch((e) => console.error('digestq', e?.message));

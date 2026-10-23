@@ -1256,7 +1256,8 @@ async function route(req, res) {
       const tr = (await readJson(key))?.data;
       if (!tr) continue;
       if (!todayText(tr, 'uz')) continue;
-      sent += await notify(tr, 'bday', (lang) => todayText(tr, lang));
+      const E = await import('../lib/events.js');
+      sent += await notify(tr, 'bday', (lang) => todayText(tr, lang), { extra: E.birthdayOutsiders(tr) ? (l) => E.inviteButton(tr, l) : null });
     }
     // to'liq bo'lmagan ma'lumotlar haqida egasiga va shox mas'ullariga eslatma
     // yaqinlarning ertangi tug'ilgan kuni — har kimga shaxsan (shajaradagi o'rni bo'yicha)
@@ -1264,6 +1265,20 @@ async function route(req, res) {
     for (const key of await listKeys('trees/')) {
       const tr = (await readJson(key).catch(() => null))?.data;
       if (tr?.persons?.length) sent += await personalBirthdays(tr).catch((e) => (console.error('greet', e), 0));
+    }
+    // har yakshanba: ilovaga hali kirmagan qarindoshlarni taklif qilishga turtki — oila guruhiga, guruh bo'lmasa a'zolarga shaxsan
+    if (new Date(Date.now() + 5 * 3600e3).getUTCDay() === 0) {
+      const E = await import('../lib/events.js');
+      for (const key of await listKeys('trees/')) {
+        const tr = (await readJson(key).catch(() => null))?.data;
+        if (!tr?.persons?.length || !E.nudgeText(tr, 'uz')) continue;
+        const targets = tr.groups?.length ? tr.groups.map((g) => [g.id, g.lang || 'uz'])
+          : Object.entries(tr.members || {}).filter(([id, m]) => !m.blocked && m.notify?.tree !== false && !(tr.banned || []).includes(id)).map(([id, m]) => [id, m.lang || 'uz']);
+        for (const [chat, l] of targets) {
+          const r = await tg('sendMessage', { chat_id: chat, parse_mode: 'HTML', disable_web_page_preview: true, text: E.nudgeText(tr, l), reply_markup: { inline_keyboard: [[E.inviteButton(tr, l)]] } }).catch(() => null);
+          if (r?.ok) sent++;
+        }
+      }
     }
     // oyning 1-kuni: o'tgan oy eng faollariga rahmat
     if (new Date(Date.now() + 5 * 3600e3).getUTCDate() === 1) {
