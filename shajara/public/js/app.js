@@ -1942,7 +1942,7 @@ function myLog(l) {
   const u = tg?.initDataUnsafe?.user;
   if (!u) return false;
   if (l.uid) return l.uid === String(u.id);
-  return [[u.first_name, u.last_name].filter(Boolean).join(' '), u.first_name, S.tree?.me?.name, u.username && '@' + u.username].filter(Boolean).includes(l.who);
+  return [[u.first_name, u.last_name].filter(Boolean).join(' '), u.username && '@' + u.username].filter(Boolean).includes(l.who);
 }
 
 // Yangiliklar yozuvi bosilganda: shaxs, albom fayli, yangi a'zo yoki takliflar paneli
