@@ -1071,6 +1071,14 @@ function enhanceSheet(it) {
   }));
 }
 
+// alohida oyna (yuklashdan keyin): yopilganda keyingi rasmga o'tiladi
+function repairSheet(it) {
+  return new Promise((done) => {
+    const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">🩹 ${t('Shikastlarni tuzatish')}</div><button class="icon-btn" data-close>${I.close}</button></div><div class="sheet-body" id="en-b"></div>`);
+    new MutationObserver((_, o) => { if (!sh.isConnected) { o.disconnect(); done(); } }).observe(document.body, { childList: true, subtree: true });
+    repairEditor(it, sh, sh.querySelector('#en-b'));
+  });
+}
 // 🩹 Shikastlarni tuzatish: barmoq bilan belgilash (+ avto-taklif) → to'ldirish → darajalar → ESRGAN 2× → keskinlik
 async function repairEditor(it, sh, box) {
   box.innerHTML = `<div class="empty"><span class="spin" style="color:var(--primary)"></span></div>`;
@@ -1908,7 +1916,7 @@ function uploadForm(sh) {
       <div class="thumbs" id="pv"></div>
       <div class="card note hidden" id="bigw"></div>
       <div class="field"><label>${t('Albom')}</label>${albumSelect(S.albumFilter !== 'all' ? S.albumFilter : S.album.albums[0]?.id)}</div>
-      <label class="row card" style="padding:10px 12px;margin-bottom:10px;gap:10px"><input type="checkbox" name="fix"><div class="grow"><b>🪄 ${t('Eski rasmni tuzatish')}</b><div class="small muted">${S.album?.rst ? t('AI tirnalgan, yirtilgan, dog‘ joylarni tuzatib, tiniqlashtiradi. Asl rasm ham, tiklangan nusxa ham albomga qo‘shiladi.') : t('Chop etilgan rasmni telefonda suratga olgan bo‘lsangiz: rang, kontrast va tiniqlik avtomatik tuzatiladi. Yuzlar o‘zgarmaydi.')}</div></div></label>
+      <label class="row card" style="padding:10px 12px;margin-bottom:10px;gap:10px"><input type="checkbox" name="fix"><div class="grow"><b>🪄 ${t('Eski rasmni tuzatish')}</b><div class="small muted">${S.album?.rst ? t('AI tirnalgan, yirtilgan, dog‘ joylarni tuzatib, tiniqlashtiradi. Asl rasm ham, tiklangan nusxa ham albomga qo‘shiladi.') : t('Yuklangach tuzatish oynasi ochiladi: tirnalgan, ko‘chgan, dog‘ joylarni barmoq bilan bo‘yaysiz — ular tuzatiladi, rasm tiniqlashadi. Asl rasm ham, tuzatilgani ham albomda qoladi.')}</div></div></label>
       <div class="field" id="capf"><label>${t('Izoh — kim, qachon, qayerda?')}</label><textarea class="input" name="caption" maxlength="900" placeholder="${t('Masalan: Bobomning 80 yillik yubileyi, 2019')}"></textarea></div>
       <button class="btn btn-primary btn-block" id="ub" disabled>${t('Yuklash')}</button>
       <div class="hint" style="margin-top:12px">📦 ${t('50 MB dan katta fayllarni bot orqali yuboring: «Albomga qo‘shish» → «Bot orqali yuborish».')}</div>
@@ -1951,6 +1959,7 @@ function uploadForm(sh) {
     const btn = sh.querySelector('#ub');
     btn.disabled = true;
     let ok = 0;
+    const toFix = [];
     const caps = [...sh.querySelectorAll('[data-cap]')].map((x) => x.value.trim());
     for (const [i, file] of files.entries()) {
       btn.innerHTML = `<span class="spin"></span> ${ok + 1}/${files.length}`;
@@ -1959,7 +1968,8 @@ function uploadForm(sh) {
       try {
         const fix = f.get('fix') && /^image\/(jpeg|png|webp)/.test(file.type);
         const ai = fix && S.album?.rst;
-        const src = fix && !ai ? await autoFix(file).catch(() => file) : file;
+        // asl rasm o'zgarmasdan yuklanadi; tuzatish oynasi yuklashdan keyin ochiladi (natija — alohida nusxa)
+        const src = file;
         const r = await uploadOriginal(src, body, (k) => {
           btn.innerHTML = `<span class="spin"></span> ${ok + 1}/${files.length} · ${Math.round(k * 100)}%`;
           if (pct) pct.textContent = `${Math.round(k * 100)}%`;
@@ -1971,6 +1981,7 @@ function uploadForm(sh) {
             await api(`album/i/${r.item.id}/enhance`, { method: 'POST', body: { mode: 'restore', rid: e1.rid }, timeout: 90000 });
           } catch (err) { toast(err.message, true); }
         }
+        if (fix && !ai) toFix.push({ src: URL.createObjectURL(file), album: r.album.id, caption: body.caption || '' });
         if (pct) pct.textContent = '✅';
         if (body.albumName) { body.album = r.album.id; delete body.albumName; }
         ok++;
@@ -1983,6 +1994,7 @@ function uploadForm(sh) {
     closeAllSheets();
     if (ok) toast(t('{n} ta fayl qo‘shildi 📸', { n: ok }));
     await refreshAlbum();
+    for (const x of toFix) await repairSheet(x);
   };
 }
 
