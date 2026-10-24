@@ -16,11 +16,11 @@ pip install --upgrade pip wheel
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
 pip install fastapi 'uvicorn[standard]'
-python basicsr/setup.py develop
+python basicsr/setup.py develop || true
 # yangi torchvision bilan mos kelmaydigan importni tuzatish
 grep -rl "torchvision.transforms.functional_tensor" basicsr ~/enh-venv/lib/python3*/site-packages 2>/dev/null | xargs -r sed -i 's/torchvision.transforms.functional_tensor/torchvision.transforms.functional/'
-python scripts/download_pretrained_models.py facelib
-python scripts/download_pretrained_models.py CodeFormer
+PYTHONPATH=. python scripts/download_pretrained_models.py facelib
+PYTHONPATH=. python scripts/download_pretrained_models.py CodeFormer
 mkdir -p weights/realesrgan
 [ -f weights/realesrgan/RealESRGAN_x2plus.pth ] || wget -q -O weights/realesrgan/RealESRGAN_x2plus.pth https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/RealESRGAN_x2plus.pth
 curl -fsSL -o ~/enh_server.py https://raw.githubusercontent.com/SherzodSafar/Factfoodbot/shajara-main/shajara/enhance-server/server.py
