@@ -57,4 +57,10 @@ for tid, title in TESTS:
         zoom = np.vstack(sum([[r, np.full((6, wmax, 3), 255, np.uint8)] for r in rows], [])[:-1])
         open(f'{OUT}/pyz_{tid}.b64', 'w').write(base64.b64encode(jpg(zoom, 82)).decode())
     log('SHEET', tid, 'faces', len(hp.det_faces))
+    if info['gray']:  # oq-qora — rangli qilib ham sinaymiz
+        t = time.time()
+        oc, ic = E.enhance(img, 0.7, True)
+        log('COLOR', tid, round(time.time() - t, 1), 's', ic)
+        b = cv2.resize(oc, (a.shape[1], H))
+        open(f'{OUT}/pyc_{tid}.b64', 'w').write(base64.b64encode(jpg(np.hstack([a, np.full((H, 8, 3), 255, np.uint8), b]), 78)).decode())
 log('DONE', round(time.time() - t0, 1), 's')
