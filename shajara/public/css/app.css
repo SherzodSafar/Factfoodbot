@@ -788,6 +788,10 @@ img { pointer-events: none; }
 .dp-cal { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 28px; height: 36px; opacity: 0; border: 0; padding: 0; cursor: pointer; }
 .dp-cal::-webkit-calendar-picker-indicator { position: absolute; inset: 0; width: 100%; height: 100%; cursor: pointer; }
 /* oldin/keyin solishtirish */
+.rp-wrap { max-height: 58vh; overflow: auto; border-radius: 12px; background: #000; }
+.rp-in { position: relative; width: 100%; }
+.rp-in canvas { display: block; width: 100%; height: auto; }
+.rp-m { position: absolute; inset: 0; opacity: .55; }
 .cmp { position: relative; border-radius: 12px; overflow: hidden; background: #000; --x: 50%; }
 .cmp > img { display: block; width: 100%; height: auto; }
 .cmp-a { position: absolute; inset: 0; width: var(--x); overflow: hidden; border-right: 2px solid #fff; }

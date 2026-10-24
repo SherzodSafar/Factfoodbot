@@ -11,7 +11,8 @@ const MODELS = {
 const versions = new Map();
 // O'z serverimiz (Oracle Cloud, enhance-server/) bo'lsa — avval o'sha; bo'lmasa Replicate
 export const enhanceOn = () => !!(process.env.ENHANCE_URL || process.env.REPLICATE_API_TOKEN);
-export const restoreOn = () => !!(process.env.GEMINI_API_KEY_PAID || process.env.GEMINI_API_KEY);
+// pulli (~$0.04/rasm) — faqat GEMINI_RESTORE=1 bo'lsa yoqiladi
+export const restoreOn = () => process.env.GEMINI_RESTORE === '1' && !!(process.env.GEMINI_API_KEY_PAID || process.env.GEMINI_API_KEY);
 
 // 🪄 restore — Gemini rasm modeli: tirnalgan/yirtilgan/dog' joylarni tuzatadi, tiniqlashtiradi (qiyofa saqlanadi)
 const PROMPT = `Restore this old damaged photograph. Remove all scratches, cracks, creases, tears, dust, stains and missing (peeled) emulsion spots, and reconstruct the damaged areas naturally. Remove the yellowing, fix faded contrast, reduce noise and make it sharp and detailed, like a high quality professional scan of the original print. Keep it black-and-white (or its original colors). VERY IMPORTANT: preserve each person's identity, facial features, expression, age, hairstyle, clothing, insignia, pose and composition exactly — do not beautify, retouch faces, add or remove anything, or change the framing. If the photo is shown on a table or with a border, crop to the photograph itself. Return only the restored photo.`;

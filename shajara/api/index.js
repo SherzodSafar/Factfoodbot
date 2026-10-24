@@ -470,7 +470,7 @@ async function route(req, res) {
     const by = { id: uid, name: nameOf(user) || 'Tahrirchi' };
     if (parts.length === 1 && m === 'GET') {
       const doc = await loadAlbum(tree.id);
-      return send(res, 200, { ...publicAlbum(doc, tree, uid), hasChannel: !!tree.channel, canUpload: canUpload(tree, uid, role), canEdit: role === 'edit', me: uid, inline: await botInline().catch(() => false), enh: !!(process.env.ENHANCE_URL || process.env.REPLICATE_API_TOKEN), rst: !!(process.env.GEMINI_API_KEY_PAID || process.env.GEMINI_API_KEY) });
+      return send(res, 200, { ...publicAlbum(doc, tree, uid), hasChannel: !!tree.channel, canUpload: canUpload(tree, uid, role), canEdit: role === 'edit', me: uid, inline: await botInline().catch(() => false), enh: !!(process.env.ENHANCE_URL || process.env.REPLICATE_API_TOKEN), rst: process.env.GEMINI_RESTORE === '1' && !!(process.env.GEMINI_API_KEY_PAID || process.env.GEMINI_API_KEY) });
     }
     // shox oilasi albomini kim ocha oladi: tahrirchi — istalgan shox uchun, qolganlar — o'zi egallagan shox(lar) uchun
     const myHeads = () => {

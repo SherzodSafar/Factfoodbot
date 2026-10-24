@@ -1005,15 +1005,18 @@ function getUpscaler() {
 }
 async function localUpscale(src, onP, noShrink) {
   const up = await getUpscaler();
-  const img = new Image();
-  img.crossOrigin = 'anonymous';
-  img.src = src;
-  await img.decode();
+  let img = src;
+  if (!(src instanceof HTMLCanvasElement)) {
+    img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.src = src;
+    await img.decode();
+  } else { img.naturalWidth = src.width; img.naturalHeight = src.height; }
   // telefon kuchi uchun: kirish 1000 px gacha (natija 2000 px); WebGL yo'q bo'lsa (sekin) — 500 px
   await window.tf.ready();
   const lim = window.tf.getBackend() === 'webgl' ? 1000 : 500;
   const k = Math.min(1, lim / Math.max(img.naturalWidth, img.naturalHeight));
-  if (noShrink && k < 1) return src; // kichraytirib kattalashtirish — sifatni pasaytiradi
+  if (noShrink && k < 1) return src instanceof HTMLCanvasElement ? src.toDataURL('image/jpeg', 0.92) : src; // kichraytirib kattalashtirish — sifatni pasaytiradi
   const c = document.createElement('canvas');
   c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
   c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
@@ -1030,6 +1033,7 @@ const dataBlob = (u) => { const [h, b] = u.split(','); const s = atob(b); const 
 function enhanceSheet(it) {
   const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">✨ ${t('Sifatni oshirish')}</div><button class="icon-btn" data-close>${I.close}</button></div>
     <div class="sheet-body" id="en-b"><div style="display:grid;gap:10px">
+      <button class="card banner" data-m="fix" style="text-align:left"><div style="font-size:24px">🩹</div><div class="grow"><b>${t('Shikastlarni tuzatish')}</b><div class="small muted">${t('Tirnalgan, ko‘chgan, dog‘ tushgan joylarni barmoq bilan bo‘yang — atrofdagi rasm bilan to‘ldiriladi, so‘ng tiniqlashtiriladi. Bepul.')}</div></div></button>
       ${S.album?.rst ? `<button class="card banner" data-m="restore" style="text-align:left"><div style="font-size:24px">🪄</div><div class="grow"><b>${t('Eski rasmni tiklash (AI)')}</b><div class="small muted">${t('Tirnalgan, yirtilgan, dog‘ tushgan joylarni tuzatadi, sarg‘ayishni ketkazadi va tiniqlashtiradi. Eski rasmlar uchun eng yaxshisi.')}</div></div></button>` : ''}
       <button class="card banner" data-m="up" style="text-align:left"><div style="font-size:24px">🔍</div><div class="grow"><b>${t('Tiniqlashtirish')}</b><div class="small muted">${t('Hamma rasmlar uchun. Rasmni kattalashtirib, tiniq qiladi — odamlar qiyofasi o‘zgarmaydi.')}</div></div></button>
       ${S.album?.enh ? `<button class="card banner" data-m="face" style="text-align:left"><div style="font-size:24px">🙂</div><div class="grow"><b>${t('Yuzlarni tiklash')}</b><div class="small muted">${t('Faqat yuzlari juda xira yoki shikastlangan eski rasmlar uchun. AI yuzlarni qayta chizadi — natijani asli bilan albatta solishtiring.')}</div></div></button>` : ''}
@@ -1038,6 +1042,7 @@ function enhanceSheet(it) {
   const box = sh.querySelector('#en-b');
   sh.querySelectorAll('[data-m]').forEach((b) => (b.onclick = async () => {
     const mode = b.dataset.m;
+    if (mode === 'fix') return repairEditor(it, sh, box);
     box.innerHTML = `<div class="empty"><span class="spin" style="color:var(--primary)"></span><div class="small muted" style="margin-top:10px" id="en-p">${t('AI ishlamoqda… 10–60 soniya')}</div></div>`;
     try {
       // tiniqlashtirish — telefonning o'zida (bepul, cheklovsiz); yuzlarni tiklash — serverda
@@ -1064,6 +1069,97 @@ function enhanceSheet(it) {
       };
     } catch (err) { box.innerHTML = `<div class="empty small muted">${esc(err.message)}</div>`; }
   }));
+}
+
+// 🩹 Shikastlarni tuzatish: barmoq bilan belgilash (+ avto-taklif) → to'ldirish → darajalar → ESRGAN 2× → keskinlik
+async function repairEditor(it, sh, box) {
+  box.innerHTML = `<div class="empty"><span class="spin" style="color:var(--primary)"></span></div>`;
+  let R, img;
+  try {
+    R = await import('./restore.js?v=1');
+    img = new Image(); img.crossOrigin = 'anonymous'; img.src = it.src; await img.decode();
+  } catch (err) { box.innerHTML = `<div class="empty small muted">${esc(err.message)}</div>`; return; }
+  const k = Math.min(1, 1000 / Math.max(img.naturalWidth, img.naturalHeight));
+  const W = Math.round(img.naturalWidth * k), H = Math.round(img.naturalHeight * k);
+  box.innerHTML = `<div class="rp-wrap" id="rpw"><div class="rp-in" id="rpi"><canvas id="rpb"></canvas><canvas id="rpm" class="rp-m"></canvas></div></div>
+    <div class="seg" id="rpt" style="margin-top:8px"><button type="button" class="on" data-t="paint">🖌 ${t('Bo‘yash')}</button><button type="button" data-t="erase">🧽 ${t('O‘chirish')}</button><button type="button" data-t="pan">✋ ${t('Surish')}</button></div>
+    <div class="row" style="gap:8px;margin-top:8px;align-items:center"><span class="small muted">${t('Cho‘tka')}</span><input type="range" id="rps" min="3" max="60" value="14" class="grow">
+      <button type="button" class="btn btn-ghost btn-sm" id="rpz">🔍 1×</button><button type="button" class="btn btn-ghost btn-sm" id="rpu">↩️</button></div>
+    <div class="small muted" style="margin:8px 2px">${t('Shikastlangan joylarni (oq dog‘, ko‘chgan, tirnalgan) qizil bilan bo‘yang. Mayda joylar uchun 🔍 bilan kattalashtiring. Ko‘z, nishon kabi joylarga tegmang.')}</div>
+    <div class="row" style="gap:8px"><button type="button" class="btn btn-ghost grow" id="rpa">🤖 ${t('Avto-topish')}</button><button type="button" class="btn btn-primary grow" id="rpg">✨ ${t('Tuzatish')}</button></div>`;
+  const cb = box.querySelector('#rpb'), cm = box.querySelector('#rpm'), wrap = box.querySelector('#rpw'), inner = box.querySelector('#rpi');
+  cb.width = cm.width = W; cb.height = cm.height = H;
+  const bx = cb.getContext('2d', { willReadFrequently: true }), mx = cm.getContext('2d', { willReadFrequently: true });
+  bx.drawImage(img, 0, 0, W, H);
+  let tool = 'paint', zoom = 1, last = null;
+  const hist = [];
+  const snap = () => { hist.push(mx.getImageData(0, 0, W, H)); if (hist.length > 8) hist.shift(); };
+  box.querySelectorAll('#rpt button').forEach((b) => (b.onclick = () => {
+    tool = b.dataset.t;
+    box.querySelectorAll('#rpt button').forEach((x) => x.classList.toggle('on', x === b));
+    cm.style.touchAction = tool === 'pan' ? 'auto' : 'none';
+  }));
+  box.querySelector('#rpz').onclick = (e) => {
+    zoom = zoom >= 3 ? 1 : zoom + 1;
+    inner.style.width = zoom * 100 + '%';
+    e.currentTarget.textContent = `🔍 ${zoom}×`;
+  };
+  box.querySelector('#rpu').onclick = () => { const d = hist.pop(); if (d) mx.putImageData(d, 0, 0); else mx.clearRect(0, 0, W, H); };
+  const pt = (e) => { const r = cm.getBoundingClientRect(); return [((e.clientX - r.left) * W) / r.width, ((e.clientY - r.top) * H) / r.height]; };
+  const stroke = (a, b) => {
+    const sz = +box.querySelector('#rps').value * Math.max(1, W / 1000) / Math.sqrt(zoom);
+    mx.globalCompositeOperation = tool === 'erase' ? 'destination-out' : 'source-over';
+    mx.strokeStyle = mx.fillStyle = '#ff2d2d'; mx.lineWidth = sz; mx.lineCap = mx.lineJoin = 'round';
+    mx.beginPath(); mx.moveTo(...a); mx.lineTo(...b); mx.stroke();
+  };
+  cm.style.touchAction = 'none';
+  cm.addEventListener('pointerdown', (e) => { if (tool === 'pan') return; snap(); cm.setPointerCapture(e.pointerId); last = pt(e); stroke(last, last); });
+  cm.addEventListener('pointermove', (e) => { if (!last) return; const p = pt(e); stroke(last, p); last = p; });
+  const end = () => (last = null);
+  cm.addEventListener('pointerup', end); cm.addEventListener('pointercancel', end);
+  box.querySelector('#rpa').onclick = () => {
+    snap();
+    const m = R.detectDefects(bx.getImageData(0, 0, W, H).data, W, H);
+    const o = mx.getImageData(0, 0, W, H);
+    for (let i = 0; i < m.length; i++) if (m[i]) { o.data[i * 4] = 255; o.data[i * 4 + 1] = 45; o.data[i * 4 + 2] = 45; o.data[i * 4 + 3] = 255; }
+    mx.putImageData(o, 0, 0);
+    toast(t('Topilgan joylarni tekshiring: keraksizini 🧽 bilan o‘chiring'));
+  };
+  box.querySelector('#rpg').onclick = async () => {
+    const md = mx.getImageData(0, 0, W, H).data, mask = new Uint8Array(W * H);
+    for (let i = 0; i < mask.length; i++) mask[i] = md[i * 4 + 3] > 20 ? 1 : 0;
+    box.innerHTML = `<div class="empty"><span class="spin" style="color:var(--primary)"></span><div class="small muted" style="margin-top:10px" id="en-p">${t('Tuzatilmoqda…')}</div></div>`;
+    try {
+      await new Promise((r) => setTimeout(r, 30));
+      const d = bx.getImageData(0, 0, W, H);
+      R.inpaint(d.data, W, H, R.dilate(mask, W, H, 1));
+      R.levels(d.data);
+      bx.putImageData(d, 0, 0);
+      const prog = (p) => { const el = box.querySelector('#en-p'); if (el) el.textContent = `${t('AI tiniqlashtirmoqda…')} ${Math.round(p * 100)}%`; };
+      let url = await localUpscale(cb, prog, true).catch(() => null);
+      if (!url) { R.sharpen(cb, 0.5); url = cb.toDataURL('image/jpeg', 0.92); }
+      else {
+        const im2 = new Image(); im2.src = url; await im2.decode();
+        const c2 = document.createElement('canvas'); c2.width = im2.width; c2.height = im2.height;
+        c2.getContext('2d').drawImage(im2, 0, 0); R.sharpen(c2, 0.35); url = c2.toDataURL('image/jpeg', 0.92);
+      }
+      box.innerHTML = `<div class="cmp" id="cmp"><img src="${url}" alt=""><div class="cmp-a"><img src="${it.src || it.thumb}" alt=""></div><input type="range" min="0" max="100" value="50" id="cmp-r"><span class="cmp-l">${t('Asl')}</span><span class="cmp-r">${t('Yangi')}</span></div>
+        <div class="small muted" style="margin:8px 2px">${t('Chiziqni suring va solishtiring.')}</div>
+        <div class="row" style="gap:8px"><button class="btn btn-ghost grow" id="en-again">🩹 ${t('Yana tuzatish')}</button><button class="btn btn-primary grow" id="en-s">💾 ${t('Saqlash')}</button></div>`;
+      const cmp = box.querySelector('#cmp');
+      cmp.style.setProperty('--x', '50%');
+      box.querySelector('#cmp-r').oninput = (e) => cmp.style.setProperty('--x', e.target.value + '%');
+      // natija ustida yana davom ettirish (qolgan dog'lar uchun)
+      box.querySelector('#en-again').onclick = () => repairEditor({ ...it, src: url }, sh, box);
+      box.querySelector('#en-s').onclick = async (e) => {
+        e.currentTarget.disabled = true;
+        try {
+          await uploadOriginal(new File([dataBlob(url)], 'restored.jpg', { type: 'image/jpeg' }), { album: it.album, caption: `🩹 ${it.caption || ''}`.trim() });
+          toast(t('Saqlandi ✓')); closeTopSheet(); loadAlbum(true).catch(() => {});
+        } catch (err) { toast(err.message, true); e.currentTarget.disabled = false; }
+      };
+    } catch (err) { box.innerHTML = `<div class="empty small muted">${esc(err.message)}</div>`; }
+  };
 }
 
 // «Rasmdagilar kim?» — shajaradan belgilash
