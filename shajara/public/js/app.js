@@ -1025,6 +1025,7 @@ async function localUpscale(src, onP, noShrink) {
   oc.getContext('2d').putImageData(new ImageData(px, oc.width, oc.height), 0, 0);
   return oc.toDataURL('image/jpeg', 0.92);
 }
+const dataBlob = (u) => { const [h, b] = u.split(','); const s = atob(b); const a = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) a[i] = s.charCodeAt(i); return new Blob([a], { type: h.slice(5).split(';')[0] }); };
 // ✨ Rasm sifatini oshirish: tanlash → natija (oldin/keyin) → albomga alohida nusxa (asli qoladi)
 function enhanceSheet(it) {
   const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">✨ ${t('Sifatni oshirish')}</div><button class="icon-btn" data-close>${I.close}</button></div>
@@ -1056,7 +1057,7 @@ function enhanceSheet(it) {
         e.currentTarget.disabled = true;
         try {
           if (r.url.startsWith('data:')) {
-            const blob = await (await fetch(r.url)).blob();
+            const blob = dataBlob(r.url); // fetch(data:) CSP (connect-src) da bloklanadi
             await uploadOriginal(new File([blob], 'enhanced.jpg', { type: blob.type || 'image/jpeg' }), { album: it.album, caption: `✨ ${it.caption || ''}`.trim() });
           } else await api(`album/i/${it.id}/enhance`, { method: 'POST', body: { mode, save: r.rid ? undefined : r.url, rid: r.rid }, timeout: 90000 });
           toast(t('Saqlandi ✓')); closeTopSheet(); loadAlbum(true).catch(() => {}); } catch (err) { toast(err.message, true); e.currentTarget.disabled = false; }

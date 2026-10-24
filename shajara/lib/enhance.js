@@ -24,7 +24,7 @@ async function imageModels(key) {
     const j = await (await fetch(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000&key=${encodeURIComponent(key)}`, { signal: AbortSignal.timeout(10e3) })).json();
     const all = (j.models || []).filter((m) => /image/.test(m.name) && /^models\/gemini/.test(m.name) && m.supportedGenerationMethods?.includes('generateContent')).map((m) => m.name.slice(7));
     // barqaror (preview bo'lmagan) va yangi versiya oldinda; pro — eng oxirida (qimmat)
-    const rank = (n) => (/pro/.test(n) ? 2 : 0) + (/preview|exp/.test(n) ? 1 : 0);
+    const rank = (n) => (/pro/.test(n) ? 4 : 0) + (/lite/.test(n) ? 2 : 0) + (/preview|exp/.test(n) ? 1 : 0);
     if (all.length) return (imgModels = all.sort((a, b) => rank(a) - rank(b) || b.localeCompare(a, 'en', { numeric: true })));
   } catch { /* standart ro'yxat */ }
   return pref;
@@ -51,7 +51,7 @@ async function geminiRestore(buf, mime) {
       if (r.status === 429 || r.status === 403 || r.status === 400) break; // bu kalit bilan bo'lmaydi — keyingi kalit
     }
   }
-  throw new HttpError(502, /429|quota/i.test(last) ? 'AI limiti tugadi. Keyinroq urinib ko‘ring' : 'Rasmni tiklab bo‘lmadi. Keyinroq urinib ko‘ring');
+  throw new HttpError(502, /429|quota/i.test(last) ? 'AI limiti tugadi (Gemini kalitida rasm uchun to‘lov yoqilmagan bo‘lishi mumkin)' : `Rasmni tiklab bo‘lmadi: ${last.slice(0, 160)}`);
 }
 async function ownServer(buf, mode) {
   const r = await fetch(`${process.env.ENHANCE_URL.replace(/\/$/, '')}/enhance?mode=${mode}`, {
