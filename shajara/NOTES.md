@@ -68,3 +68,9 @@ O'zbekcha, qisqa javob, tokenlarni tejash, tez bajarish. Ruxsat umumiy berilgan 
 - Ochilmagan oila havolasi: shu oilada o'zini belgilagan a'zolarga 🔔 (`cands`, remind `{to}`).
 - Kunlik xulosa (`notify.daily`): albom/shajara xabarlari `mdigest/<tree>.json` ga, 19:00 cron (`k=digest`) `memberDigest`. «Bu kim?» — `/album/i/<iid>/ask` (yopiqda faqat a'zolarga, `notify({only})`). Xotira sahifasi — `/api/memory/<pid>` (`memories/<tree>.json`), deep link `_x<pid>` (xotira kuni xabari). Oyning 1-kuni `monthlyThanks` (lib/extras.js). Shajara kitobi — `/api/book` → bot chatiga HTML (brauzerda PDF).
 - Yopiq albom izohlari o'z yopiq kanalida (`chatOf`), oila izohlari lentasi va guruh dayjestida yopiq fayllar ko'rinmaydi. Invite suffikslari: `_u<tgId>`, `_x<pid>` (lib/auth.js parseInvite).
+
+## Rasm sifatini oshirish (2026-10-24 holati)
+- ✅ Ishlaydi: yuklashda «🪄 Eski rasmni tuzatish» (brauzerda, `autoFix`), ko'rish oynasida ✨ → «🔍 Tiniqlashtirish» telefonda (UpscalerJS + Real-ESRGAN slim, `public/vendor/`), natija alohida nusxa bo'lib saqlanadi.
+- ⏸ «🙂 Yuzlarni tiklash» (CodeFormer) — server yo'q. Kod tayyor: `lib/enhance.js` (ENHANCE_URL+ENHANCE_KEY yoki REPLICATE_API_TOKEN), `enhance-server/` (server.py sinovdan o'tgan: up 8s, face 39s 4 CPU; install.sh — Ubuntu; hf-space/ — Docker).
+- Oracle: hisob Free Tier, Mumbai, `free-only` kvota (11 qator), `grab.sh` Cloud Shell'da A1 serverni kutmoqda; Pay As You Go uchun ~81 CHF vaqtincha ushlanadi (karta rad etdi). Budjet `nol-budjet` (email), topic `cost-alert` → `/api/oci-alert/<OCI_ALERT_KEY>` → ADMIN_IDS Telegram.
+- Hugging Face: Docker Space endi PRO ($9/oy) talab qiladi — bepul variant ishlamadi.
