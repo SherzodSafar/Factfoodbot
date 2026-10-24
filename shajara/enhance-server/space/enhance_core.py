@@ -104,7 +104,7 @@ def colorize(img):
     global _ddcolor
     if _ddcolor is None:
         from ddcolor_run import load  # DDColor (kerak bo'lganda yuklanadi)
-        _ddcolor = load(DD)
+        _ddcolor = load(DD, CF)
     return _ddcolor(img)
 
 
