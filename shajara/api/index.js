@@ -35,6 +35,14 @@ async function readBody(req) {
   return raw ? JSON.parse(raw) : {};
 }
 
+// xom matn (JSON bo'lmasligi mumkin — Oracle ogohlantirishlari)
+async function readRaw(req) {
+  if (req.body != null) return typeof req.body === 'string' ? req.body : Buffer.isBuffer(req.body) ? req.body.toString('utf8') : JSON.stringify(req.body);
+  const chunks = [];
+  for await (const c of req) chunks.push(c);
+  return Buffer.concat(chunks).toString('utf8');
+}
+
 function send(res, status, data, headers = {}) {
   res.statusCode = status;
   for (const [k, v] of Object.entries(headers)) res.setHeader(k, v);
@@ -1009,6 +1017,24 @@ async function route(req, res) {
     const j = await sendDocument(uid, `shajara-${day}.json`, Buffer.from(JSON.stringify(data, null, 1)),
       `💾 <b>${escapeHtml(tree.title)}</b> — ${tree.persons.length} · ${album.items.length} 📸 · ${day}`);
     if (!j.ok) throw new HttpError(500, 'Yuborib bo‘lmadi. Avval botga /start yozing');
+    return send(res, 200, { ok: true });
+  }
+
+  // ---- Oracle Cloud ogohlantirishi (Budget → Notifications → HTTPS) → adminlarga Telegram'da
+  if (parts[0] === 'oci-alert' && m === 'POST') {
+    if (!process.env.OCI_ALERT_KEY || parts[1] !== process.env.OCI_ALERT_KEY) throw new HttpError(404, 'Topilmadi');
+    // obunani tasdiqlash: Oracle birinchi xabarda tasdiqlash havolasini yuboradi
+    const confirm = req.headers['x-oci-ns-confirmation-url'];
+    const raw = String(await readRaw(req).catch(() => '')).slice(0, 3000);
+    const curl = confirm || (/"ConfirmationURL"\s*:\s*"([^"]+)"/.exec(raw) || [])[1];
+    if (curl && /^https:\/\/[a-z0-9.-]+\.oraclecloud\.com\//.test(curl)) {
+      const ok = (await fetch(curl).catch(() => null))?.ok;
+      for (const id of String(process.env.ADMIN_IDS || '').split(',').map((x) => x.trim()).filter(Boolean)) await tg('sendMessage', { chat_id: id, text: `☁️ Oracle ogohlantirish obunasi ${ok ? 'tasdiqlandi ✅' : 'tasdiqlanmadi ⚠️'}` }).catch(() => {});
+      return send(res, 200, { ok: true });
+    }
+    for (const id of String(process.env.ADMIN_IDS || '').split(',').map((x) => x.trim()).filter(Boolean)) {
+      await tg('sendMessage', { chat_id: id, text: `🚨 Oracle Cloud: pul hisoblanishi haqida ogohlantirish!\n\n${raw.replace(/\s+/g, ' ').slice(0, 1500)}\n\nOracle konsolida Billing → Cost Analysis bo'limini tekshiring.` }).catch(() => {});
+    }
     return send(res, 200, { ok: true });
   }
 
