@@ -56,9 +56,9 @@ export async function restorePhoto(buf, { color = false, fidelity = 0.7 } = {}) 
   if (color) throw new HttpError(503, OWN() ? 'AI server hozir javob bermadi. 1–2 daqiqadan keyin qayta urinib ko‘ring' : 'Rang berish uchun AI server hali sozlanmagan');
   try { return { ...(await run(PUBLIC_CF, 'inference', buf, (f) => [f, true, true, true, 2, fidelity], 75e3)), via: 'public' }; }
   catch (e) { errs.push(`public: ${e.message}`); console.error('enhance public', e.message); }
-  throw new HttpError(503, /limit|quota|xato \(limit/i.test(errs.join(' ')) && !OWN()
-    ? 'Bepul AI limiti tugadi. Keyinroq urinib ko‘ring'
-    : 'AI server hozir javob bermadi. 1–2 daqiqadan keyin qayta urinib ko‘ring');
+  throw new HttpError(503, OWN()
+    ? 'AI server hozir javob bermadi. 1–2 daqiqadan keyin qayta urinib ko‘ring'
+    : 'AI serveri hali sozlanmagan (umumiy bepul serverning kunlik limiti tugagan). Keyinroq urinib ko‘ring');
 }
 
 /** Space uyqudan uyg'onishi uchun (bepul Space 48 soat so'rovsiz qolsa uxlaydi) — cron chaqiradi. */

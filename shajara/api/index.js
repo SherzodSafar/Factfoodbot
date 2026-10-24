@@ -972,14 +972,6 @@ async function route(req, res) {
 
   // ---- Zaxira nusxa
   // AI natijasini ko'rsatish (imzolangan, vaqtincha)
-  // VAQTINCHALIK (AI sinovi): Vercel sandbox'dagi natija fayllarini o'qish — faqat *.vercel.run, CF_TEST_KEY bilan
-  if (parts[0] === 'dbg' && process.env.CF_TEST_KEY && parts[1] === process.env.CF_TEST_KEY && m === 'GET') {
-    const u = new URL(String(url.searchParams.get('u') || ''));
-    if (u.protocol !== 'https:' || !/\.vercel\.run$/.test(u.hostname)) throw new HttpError(400, 'faqat sandbox');
-    const r = await fetch(u, { signal: AbortSignal.timeout(60e3) });
-    res.writeHead(r.status, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
-    return res.end(Buffer.from(await r.arrayBuffer()));
-  }
   if (parts[0] === 'enh' && /^[a-z0-9]{6,12}$/.test(parts[1] || '') && m === 'GET') {
     if (!verifyMedia('enh:' + parts[1], url.searchParams.get('e'), url.searchParams.get('s'))) throw new HttpError(403, 'Havola eskirgan');
     const f = await getFile(`enh/${parts[1]}.jpg`);
