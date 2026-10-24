@@ -982,13 +982,6 @@ async function route(req, res) {
 
   // ---- Zaxira nusxa
   // AI natijasini ko'rsatish (imzolangan, vaqtincha)
-  // VAQTINCHALIK: Cloudflare tiklash sinovi (CF_TEST_KEY env bo'lsagina)
-  if (parts[0] === 'cftest' && process.env.CF_TEST_KEY && parts[1] === process.env.CF_TEST_KEY && m === 'POST') {
-    const E = await import('../lib/enhance.js');
-    const b = await readBody(req);
-    const out = await E.cfRestore(Buffer.from(b.img, 'base64'), Number(b.w) || 752, Number(b.h) || 992, b.prompt || undefined, b.model || undefined);
-    res.writeHead(200, { 'content-type': out.mime }); return res.end(out.buf);
-  }
   if (parts[0] === 'enh' && /^[a-z0-9]{6,12}$/.test(parts[1] || '') && m === 'GET') {
     if (!verifyMedia('enh:' + parts[1], url.searchParams.get('e'), url.searchParams.get('s'))) throw new HttpError(403, 'Havola eskirgan');
     const f = await getFile(`enh/${parts[1]}.jpg`);

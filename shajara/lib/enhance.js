@@ -17,24 +17,40 @@ const cfAccount = () => process.env.CF_ACCOUNT_ID || process.env.R2_ACCOUNT_ID;
 export const cfOn = () => !!(process.env.CF_AI_TOKEN && cfAccount());
 const geminiOn = () => process.env.GEMINI_RESTORE === '1' && !!(process.env.GEMINI_API_KEY_PAID || process.env.GEMINI_API_KEY);
 export const restoreOn = () => cfOn() || geminiOn();
-const CF_PROMPT = 'Restore this damaged old photograph into a clean, sharp, high quality studio portrait photo. Remove all scratches, cracks, creases, stains, dust, glare and peeled or missing spots and reconstruct those areas naturally. Crop away the paper border, frame and table so only the photo remains. Keep it black and white. Keep exactly the same person: same face, facial features, eyes, expression, age, hairstyle, clothing, hat and badge, same pose and composition. Photorealistic, fine detail, natural skin texture.';
-/** small — telefonda 512 px dan kichraytirilgan JPEG; w,h — natija o'lchami (16 ga karrali). */
-export async function cfRestore(small, w, h, prompt = CF_PROMPT, model0) {
+// Sinovda (2026-10-24): uzun «same person/face/badge» buyruqlari xavfsizlik filtriga tushdi («output flagged»);
+// «vintage portrait clean up» uslubidagisi o'tdi. Cloudflare ba'zan 500 qaytaradi — boshqa buyruq bilan qayta urinamiz.
+const CF_PROMPTS = [
+  'Clean up this vintage portrait photograph: remove all white spots, scratches, stains and peeled areas, crop to the portrait without the paper border, sharpen details, high quality studio scan, black and white.',
+  'Clean up this vintage portrait photograph: remove the white spots and scratches, sharpen, high quality scan.',
+  'Clean up this vintage black and white photograph: remove dust, spots and scratches, sharp focus, high quality scan.',
+];
+async function cfRun(small, w, h, prompt, model) {
   const fd = new FormData();
   fd.append('prompt', prompt);
   fd.append('input_image_0', new Blob([small], { type: 'image/jpeg' }), 'photo.jpg');
   fd.append('width', String(w)); fd.append('height', String(h));
-  const model = model0 || process.env.CF_AI_MODEL || '@cf/black-forest-labs/flux-2-klein-9b';
   const r = await fetch(`https://api.cloudflare.com/client/v4/accounts/${cfAccount()}/ai/run/${model}`, {
-    method: 'POST', headers: { authorization: `Bearer ${process.env.CF_AI_TOKEN}` }, body: fd, signal: AbortSignal.timeout(120e3) });
+    method: 'POST', headers: { authorization: `Bearer ${process.env.CF_AI_TOKEN}` }, body: fd, signal: AbortSignal.timeout(90e3) });
   const ct = r.headers.get('content-type') || '';
   if (r.ok && ct.startsWith('image/')) return { buf: Buffer.from(await r.arrayBuffer()), mime: ct };
   const j = await r.json().catch(() => ({}));
   const img = j.result?.image || j.image;
   if (r.ok && img) return { buf: Buffer.from(img, 'base64'), mime: 'image/jpeg' };
-  const msg = `Cloudflare ${r.status}: ${(j.errors?.[0]?.message || JSON.stringify(j)).slice(0, 200)}`;
-  console.error('restore', msg);
-  throw new HttpError(502, /4006|neuron|limit|quota|429/i.test(msg) ? 'Bugungi bepul AI limiti tugadi. Ertaga urinib ko‘ring' : `Rasmni tiklab bo‘lmadi: ${msg}`);
+  return { err: `Cloudflare ${r.status}: ${(j.errors?.[0]?.message || JSON.stringify(j)).slice(0, 200)}` };
+}
+/** small — telefonda 512 px dan kichraytirilgan JPEG; w,h — natija o'lchami (16 ga karrali). */
+export async function cfRestore(small, w, h) {
+  const model = process.env.CF_AI_MODEL || '@cf/black-forest-labs/flux-2-klein-9b';
+  let last = '';
+  for (const [i, prompt] of CF_PROMPTS.entries()) {
+    if (i) await new Promise((ok) => setTimeout(ok, 800));
+    const out = await cfRun(small, w, h, prompt, model).catch((e) => ({ err: e.message }));
+    if (out.buf) return out;
+    last = out.err;
+    console.error('restore', i, last);
+    if (/4006|neuron|quota|429/i.test(last)) throw new HttpError(429, 'Bugungi bepul AI limiti tugadi. Ertaga urinib ko‘ring');
+  }
+  throw new HttpError(502, /flagged/i.test(last) ? 'AI bu rasmni qayta ishlashni rad etdi. Boshqa rasm bilan urinib ko‘ring' : 'AI xizmati hozir javob bermadi. Birozdan keyin qayta urinib ko‘ring');
 }
 
 // 🪄 restore — Gemini rasm modeli: tirnalgan/yirtilgan/dog' joylarni tuzatadi, tiniqlashtiradi (qiyofa saqlanadi)
