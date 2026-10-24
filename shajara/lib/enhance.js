@@ -19,12 +19,12 @@ const geminiOn = () => process.env.GEMINI_RESTORE === '1' && !!(process.env.GEMI
 export const restoreOn = () => cfOn() || geminiOn();
 const CF_PROMPT = 'Restore this damaged old photograph into a clean, sharp, high quality studio portrait photo. Remove all scratches, cracks, creases, stains, dust, glare and peeled or missing spots and reconstruct those areas naturally. Crop away the paper border, frame and table so only the photo remains. Keep it black and white. Keep exactly the same person: same face, facial features, eyes, expression, age, hairstyle, clothing, hat and badge, same pose and composition. Photorealistic, fine detail, natural skin texture.';
 /** small — telefonda 512 px dan kichraytirilgan JPEG; w,h — natija o'lchami (16 ga karrali). */
-async function cfRestore(small, w, h) {
+export async function cfRestore(small, w, h, prompt = CF_PROMPT, model0) {
   const fd = new FormData();
-  fd.append('prompt', CF_PROMPT);
+  fd.append('prompt', prompt);
   fd.append('input_image_0', new Blob([small], { type: 'image/jpeg' }), 'photo.jpg');
   fd.append('width', String(w)); fd.append('height', String(h));
-  const model = process.env.CF_AI_MODEL || '@cf/black-forest-labs/flux-2-klein-9b';
+  const model = model0 || process.env.CF_AI_MODEL || '@cf/black-forest-labs/flux-2-klein-9b';
   const r = await fetch(`https://api.cloudflare.com/client/v4/accounts/${cfAccount()}/ai/run/${model}`, {
     method: 'POST', headers: { authorization: `Bearer ${process.env.CF_AI_TOKEN}` }, body: fd, signal: AbortSignal.timeout(120e3) });
   const ct = r.headers.get('content-type') || '';
