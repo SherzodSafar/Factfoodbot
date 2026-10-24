@@ -19,6 +19,8 @@ import enhance_core as E
 log('load', round(time.time() - t0, 1), 's')
 from facelib.utils.face_restoration_helper import FaceRestoreHelper
 TESTS = [('kaz', 'File:Kazakhs 19th Century 9.jpg'), ('uzw', 'File:Uzbek Wedding ceremony.jpg')] + [(f'x{i}', t) for i, t in enumerate(sys.argv[1:])]
+if os.environ.get('ONLY'):
+    TESTS = [x for x in TESTS if x[0] in os.environ['ONLY'].split(',')]
 def jpg(img, q=60):
     return cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, q])[1].tobytes()
 for tid, title in TESTS:
