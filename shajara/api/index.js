@@ -470,7 +470,7 @@ async function route(req, res) {
     const by = { id: uid, name: nameOf(user) || 'Tahrirchi' };
     if (parts.length === 1 && m === 'GET') {
       const doc = await loadAlbum(tree.id);
-      return send(res, 200, { ...publicAlbum(doc, tree, uid), hasChannel: !!tree.channel, canUpload: canUpload(tree, uid, role), canEdit: role === 'edit', me: uid, inline: await botInline().catch(() => false), enh: !!(process.env.ENHANCE_URL || process.env.REPLICATE_API_TOKEN) });
+      return send(res, 200, { ...publicAlbum(doc, tree, uid), hasChannel: !!tree.channel, canUpload: canUpload(tree, uid, role), canEdit: role === 'edit', me: uid, inline: await botInline().catch(() => false), enh: !!(process.env.ENHANCE_URL || process.env.REPLICATE_API_TOKEN), rst: !!(process.env.GEMINI_API_KEY_PAID || process.env.GEMINI_API_KEY) });
     }
     // shox oilasi albomini kim ocha oladi: tahrirchi — istalgan shox uchun, qolganlar — o'zi egallagan shox(lar) uchun
     const myHeads = () => {
@@ -759,7 +759,7 @@ async function route(req, res) {
           if (!target) throw new HttpError(400, 'Avval albom kanalini ulang');
           const buf = body.rid ? (await getFile(`enh/${String(body.rid).replace(/[^a-z0-9]/g, '')}.jpg`))?.buffer : Buffer.from(await (await fetch(src)).arrayBuffer());
           if (!buf) throw new HttpError(410, 'Natija eskirgan. Qayta urinib ko‘ring');
-          const cap = `📁 <b>${escapeHtml(ia?.name || 'Umumiy')}</b>\n✨ ${body.mode === 'face' ? 'Yuzlari tiklangan nusxa' : 'Sifati oshirilgan nusxa'}${it.caption ? '\n' + escapeHtml(cleanName(it.caption, 800)) : ''}\n— ${escapeHtml(by.name)}`;
+          const cap = `📁 <b>${escapeHtml(ia?.name || 'Umumiy')}</b>\n✨ ${body.mode === 'face' ? 'Yuzlari tiklangan nusxa' : body.mode === 'restore' ? 'AI bilan tiklangan nusxa' : 'Sifati oshirilgan nusxa'}${it.caption ? '\n' + escapeHtml(cleanName(it.caption, 800)) : ''}\n— ${escapeHtml(by.name)}`;
           const asPhoto = buf.length < 9.5 * 1024 * 1024;
           const sent = await tgUpload(asPhoto ? 'sendPhoto' : 'sendDocument', { chat_id: target, caption: cap, parse_mode: 'HTML' }, asPhoto ? 'photo' : 'document', buf, body.rid ? 'enhanced.jpg' : 'enhanced.png', body.rid ? 'image/jpeg' : 'image/png');
           if (!sent.ok) throw new HttpError(502, 'Telegramga yuklab bo‘lmadi');
@@ -769,12 +769,13 @@ async function route(req, res) {
           if (it.tags?.length) await mutateAlbum(tree.id, (d) => { const x = d.items.find((y) => y.ch?.msg === sent.result.message_id && String(y.ch?.chat) === String(target)); if (x) x.tags = [...it.tags]; });
           return send(res, 200, { ok: true });
         }
-        if (!E.enhanceOn()) throw new HttpError(400, 'Sifatni oshirish hali sozlanmagan');
+        const mode = ['face', 'restore'].includes(body.mode) ? body.mode : 'up';
+        if (!(mode === 'restore' ? E.restoreOn() : E.enhanceOn())) throw new HttpError(400, 'Sifatni oshirish hali sozlanmagan');
         if (!it.fileId || !/image|photo/.test(`${it.type} ${it.mime || ''}`)) throw new HttpError(400, 'Faqat rasmlar uchun');
         if (!await rateLimit('enh:' + uid, 15, 864e5)) throw new HttpError(429, 'Bugungi limit tugadi (15 ta). Ertaga urinib ko‘ring');
         const buf = await downloadFile(it.fileId);
         if (!buf) throw new HttpError(400, 'Rasmni olib bo‘lmadi');
-        const out = await E.enhanceImage(buf, it.mime || 'image/jpeg', body.mode === 'face' ? 'face' : 'up');
+        const out = await E.enhanceImage(buf, it.mime || 'image/jpeg', mode);
         if (out.url) return send(res, 200, { url: out.url });
         // o'z serverimiz natijasi — vaqtincha omborda, imzolangan havola bilan ko'rsatiladi
         const rid = Math.random().toString(36).slice(2, 12);

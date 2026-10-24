@@ -81,9 +81,15 @@ function openBot() {
   if (inTelegram && tg?.openTelegramLink) { tg.openTelegramLink(`https://t.me/${BOT}`); setTimeout(() => tg.close?.(), 300); } else window.open(`https://t.me/${BOT}`, '_blank');
 }
 // fayl/ZIP ni istalgan chatga — Telegram «Share with» oynasi (savePreparedInlineMessage)
+// Ba'zi Android mijozlarida birinchi yuborishdan so'ng Telegram «yopildi» hodisasini qaytarmaydi va
+// SDK keyingi chaqiruvni «WebAppShareMessageOpened» xatosi bilan rad etadi — u holda hodisani to'g'ridan-to'g'ri yuboramiz.
 function shareVia(prepared) {
-  if (prepared && tg?.shareMessage) { tg.shareMessage(prepared, (ok) => ok && toast(t('Yuborildi 📩'))); return true; }
-  return false;
+  if (!prepared || !tg?.shareMessage) return false;
+  try { tg.shareMessage(prepared, (ok) => ok && toast(t('Yuborildi 📩'))); } catch (e) {
+    if (!/ShareMessageOpened/.test(e?.message || '') || !window.Telegram?.WebView?.postEvent) throw e;
+    window.Telegram.WebView.postEvent('web_app_send_prepared_message', false, { id: prepared });
+  }
+  return true;
 }
 function openLink(url) {
   if (url.startsWith('https://t.me/') && tg?.openTelegramLink && inTelegram) tg.openTelegramLink(url);
@@ -997,7 +1003,7 @@ function getUpscaler() {
     return new window.Upscaler({ model: { scale: 2, modelType: 'layers', path: '/vendor/esrgan-x2/model.json', inputRange: [0, 255], outputRange: [0, 255] } });
   })().catch((e) => { upscalerP = null; throw e; }));
 }
-async function localUpscale(src, onP) {
+async function localUpscale(src, onP, noShrink) {
   const up = await getUpscaler();
   const img = new Image();
   img.crossOrigin = 'anonymous';
@@ -1007,6 +1013,7 @@ async function localUpscale(src, onP) {
   await window.tf.ready();
   const lim = window.tf.getBackend() === 'webgl' ? 1000 : 500;
   const k = Math.min(1, lim / Math.max(img.naturalWidth, img.naturalHeight));
+  if (noShrink && k < 1) return src; // kichraytirib kattalashtirish — sifatni pasaytiradi
   const c = document.createElement('canvas');
   c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
   c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
@@ -1022,6 +1029,7 @@ async function localUpscale(src, onP) {
 function enhanceSheet(it) {
   const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">✨ ${t('Sifatni oshirish')}</div><button class="icon-btn" data-close>${I.close}</button></div>
     <div class="sheet-body" id="en-b"><div style="display:grid;gap:10px">
+      ${S.album?.rst ? `<button class="card banner" data-m="restore" style="text-align:left"><div style="font-size:24px">🪄</div><div class="grow"><b>${t('Eski rasmni tiklash (AI)')}</b><div class="small muted">${t('Tirnalgan, yirtilgan, dog‘ tushgan joylarni tuzatadi, sarg‘ayishni ketkazadi va tiniqlashtiradi. Eski rasmlar uchun eng yaxshisi.')}</div></div></button>` : ''}
       <button class="card banner" data-m="up" style="text-align:left"><div style="font-size:24px">🔍</div><div class="grow"><b>${t('Tiniqlashtirish')}</b><div class="small muted">${t('Hamma rasmlar uchun. Rasmni kattalashtirib, tiniq qiladi — odamlar qiyofasi o‘zgarmaydi.')}</div></div></button>
       ${S.album?.enh ? `<button class="card banner" data-m="face" style="text-align:left"><div style="font-size:24px">🙂</div><div class="grow"><b>${t('Yuzlarni tiklash')}</b><div class="small muted">${t('Faqat yuzlari juda xira yoki shikastlangan eski rasmlar uchun. AI yuzlarni qayta chizadi — natijani asli bilan albatta solishtiring.')}</div></div></button>` : ''}
       <div class="small muted">${t('Asl rasm o‘zgarmaydi. Natija yoqsa — albomga alohida nusxa bo‘lib qo‘shiladi.')}</div></div></div>`);
@@ -1032,8 +1040,11 @@ function enhanceSheet(it) {
     box.innerHTML = `<div class="empty"><span class="spin" style="color:var(--primary)"></span><div class="small muted" style="margin-top:10px" id="en-p">${t('AI ishlamoqda… 10–60 soniya')}</div></div>`;
     try {
       // tiniqlashtirish — telefonning o'zida (bepul, cheklovsiz); yuzlarni tiklash — serverda
-      const r = mode === 'up' ? { url: await localUpscale(it.src, (p) => { const el = box.querySelector('#en-p'); if (el) el.textContent = `${t('AI ishlamoqda…')} ${Math.round(p * 100)}%`; }) }
+      const prog = (p) => { const el = box.querySelector('#en-p'); if (el) el.textContent = `${t('AI ishlamoqda…')} ${Math.round(p * 100)}%`; };
+      const r = mode === 'up' ? { url: await localUpscale(it.src, prog) }
         : await api(`album/i/${it.id}/enhance`, { method: 'POST', body: { mode }, timeout: 250000 });
+      // tiklangan rasm ~1000 px bo'ladi — telefonda 2× kattalashtiramiz (bo'lmasa o'zi qoladi)
+      if (mode === 'restore') { prog(0); r.url = await localUpscale(r.url, prog, true).catch(() => r.url); }
       box.innerHTML = `<div class="cmp" id="cmp"><img src="${r.url}" alt=""><div class="cmp-a"><img src="${it.src || it.thumb}" alt=""></div><input type="range" min="0" max="100" value="50" id="cmp-r"><span class="cmp-l">${t('Asl')}</span><span class="cmp-r">${t('Yangi')}</span></div>
         <div class="small muted" style="margin:8px 2px">${t('Chiziqni suring va solishtiring. Yuzlar tanib bo‘lmas darajada o‘zgargan bo‘lsa — saqlamang.')}</div>
         <button class="btn btn-primary btn-block" id="en-s">💾 ${t('Albomga saqlash (asli ham qoladi)')}</button>`;
@@ -1800,7 +1811,7 @@ function uploadForm(sh) {
       <div class="thumbs" id="pv"></div>
       <div class="card note hidden" id="bigw"></div>
       <div class="field"><label>${t('Albom')}</label>${albumSelect(S.albumFilter !== 'all' ? S.albumFilter : S.album.albums[0]?.id)}</div>
-      <label class="row card" style="padding:10px 12px;margin-bottom:10px;gap:10px"><input type="checkbox" name="fix"><div class="grow"><b>🪄 ${t('Eski rasmni tuzatish')}</b><div class="small muted">${t('Chop etilgan rasmni telefonda suratga olgan bo‘lsangiz: rang, kontrast va tiniqlik avtomatik tuzatiladi. Yuzlar o‘zgarmaydi.')}</div></div></label>
+      <label class="row card" style="padding:10px 12px;margin-bottom:10px;gap:10px"><input type="checkbox" name="fix"><div class="grow"><b>🪄 ${t('Eski rasmni tuzatish')}</b><div class="small muted">${S.album?.rst ? t('AI tirnalgan, yirtilgan, dog‘ joylarni tuzatib, tiniqlashtiradi. Asl rasm ham, tiklangan nusxa ham albomga qo‘shiladi.') : t('Chop etilgan rasmni telefonda suratga olgan bo‘lsangiz: rang, kontrast va tiniqlik avtomatik tuzatiladi. Yuzlar o‘zgarmaydi.')}</div></div></label>
       <div class="field" id="capf"><label>${t('Izoh — kim, qachon, qayerda?')}</label><textarea class="input" name="caption" maxlength="900" placeholder="${t('Masalan: Bobomning 80 yillik yubileyi, 2019')}"></textarea></div>
       <button class="btn btn-primary btn-block" id="ub" disabled>${t('Yuklash')}</button>
       <div class="hint" style="margin-top:12px">📦 ${t('50 MB dan katta fayllarni bot orqali yuboring: «Albomga qo‘shish» → «Bot orqali yuborish».')}</div>
@@ -1849,11 +1860,20 @@ function uploadForm(sh) {
       if (files.length > 1) body.caption = caps[i] || '';
       const pct = sh.querySelector(`[data-pct="${i}"]`);
       try {
-        const src = f.get('fix') && /^image\/(jpeg|png|webp)/.test(file.type) ? await autoFix(file).catch(() => file) : file;
+        const fix = f.get('fix') && /^image\/(jpeg|png|webp)/.test(file.type);
+        const ai = fix && S.album?.rst;
+        const src = fix && !ai ? await autoFix(file).catch(() => file) : file;
         const r = await uploadOriginal(src, body, (k) => {
           btn.innerHTML = `<span class="spin"></span> ${ok + 1}/${files.length} · ${Math.round(k * 100)}%`;
           if (pct) pct.textContent = `${Math.round(k * 100)}%`;
         });
+        if (ai && r.item?.id) {
+          btn.innerHTML = `<span class="spin"></span> ${ok + 1}/${files.length} · 🪄 ${t('AI tiklamoqda…')}`;
+          try {
+            const e1 = await api(`album/i/${r.item.id}/enhance`, { method: 'POST', body: { mode: 'restore' }, timeout: 250000 });
+            await api(`album/i/${r.item.id}/enhance`, { method: 'POST', body: { mode: 'restore', rid: e1.rid }, timeout: 90000 });
+          } catch (err) { toast(err.message, true); }
+        }
         if (pct) pct.textContent = '✅';
         if (body.albumName) { body.album = r.album.id; delete body.albumName; }
         ok++;

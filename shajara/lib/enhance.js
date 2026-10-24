@@ -11,6 +11,48 @@ const MODELS = {
 const versions = new Map();
 // O'z serverimiz (Oracle Cloud, enhance-server/) bo'lsa — avval o'sha; bo'lmasa Replicate
 export const enhanceOn = () => !!(process.env.ENHANCE_URL || process.env.REPLICATE_API_TOKEN);
+export const restoreOn = () => !!(process.env.GEMINI_API_KEY_PAID || process.env.GEMINI_API_KEY);
+
+// 🪄 restore — Gemini rasm modeli: tirnalgan/yirtilgan/dog' joylarni tuzatadi, tiniqlashtiradi (qiyofa saqlanadi)
+const PROMPT = `Restore this old damaged photograph. Remove all scratches, cracks, creases, tears, dust, stains and missing (peeled) emulsion spots, and reconstruct the damaged areas naturally. Remove the yellowing, fix faded contrast, reduce noise and make it sharp and detailed, like a high quality professional scan of the original print. Keep it black-and-white (or its original colors). VERY IMPORTANT: preserve each person's identity, facial features, expression, age, hairstyle, clothing, insignia, pose and composition exactly — do not beautify, retouch faces, add or remove anything, or change the framing. If the photo is shown on a table or with a border, crop to the photograph itself. Return only the restored photo.`;
+let imgModels = null;
+async function imageModels(key) {
+  if (process.env.GEMINI_IMAGE_MODEL) return [process.env.GEMINI_IMAGE_MODEL];
+  if (imgModels) return imgModels;
+  const pref = ['gemini-2.5-flash-image', 'gemini-3-pro-image-preview'];
+  try {
+    const j = await (await fetch(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000&key=${encodeURIComponent(key)}`, { signal: AbortSignal.timeout(10e3) })).json();
+    const all = (j.models || []).filter((m) => /image/.test(m.name) && /^models\/gemini/.test(m.name) && m.supportedGenerationMethods?.includes('generateContent')).map((m) => m.name.slice(7));
+    // barqaror (preview bo'lmagan) va yangi versiya oldinda; pro — eng oxirida (qimmat)
+    const rank = (n) => (/pro/.test(n) ? 2 : 0) + (/preview|exp/.test(n) ? 1 : 0);
+    if (all.length) return (imgModels = all.sort((a, b) => rank(a) - rank(b) || b.localeCompare(a, 'en', { numeric: true })));
+  } catch { /* standart ro'yxat */ }
+  return pref;
+}
+async function geminiRestore(buf, mime) {
+  const keys = [process.env.GEMINI_API_KEY, process.env.GEMINI_API_KEY_PAID].filter(Boolean);
+  let last = 'AI xizmati javob bermadi';
+  for (const key of keys) {
+    for (const model of await imageModels(key)) {
+      let r, j;
+      try {
+        r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`, {
+          method: 'POST', headers: { 'content-type': 'application/json' }, signal: AbortSignal.timeout(150e3),
+          body: JSON.stringify({ contents: [{ role: 'user', parts: [{ inline_data: { mime_type: mime || 'image/jpeg', data: buf.toString('base64') } }, { text: PROMPT }] }],
+            generationConfig: { responseModalities: ['IMAGE'] } }) });
+        j = await r.json().catch(() => ({}));
+      } catch (e) { last = e.message; continue; }
+      const part = j.candidates?.[0]?.content?.parts?.find((p) => p.inlineData || p.inline_data);
+      const d = part?.inlineData || part?.inline_data;
+      if (r.ok && d?.data) return { buf: Buffer.from(d.data, 'base64'), mime: d.mimeType || d.mime_type || 'image/png' };
+      last = `Gemini ${model} ${r.status}: ${j.error?.message || j.candidates?.[0]?.finishReason || 'rasm qaytmadi'}`;
+      console.error('restore', last.slice(0, 300));
+      if (r.status === 404) continue;
+      if (r.status === 429 || r.status === 403 || r.status === 400) break; // bu kalit bilan bo'lmaydi — keyingi kalit
+    }
+  }
+  throw new HttpError(502, /429|quota/i.test(last) ? 'AI limiti tugadi. Keyinroq urinib ko‘ring' : 'Rasmni tiklab bo‘lmadi. Keyinroq urinib ko‘ring');
+}
 async function ownServer(buf, mode) {
   const r = await fetch(`${process.env.ENHANCE_URL.replace(/\/$/, '')}/enhance?mode=${mode}`, {
     method: 'POST', headers: { 'x-key': process.env.ENHANCE_KEY || '', 'content-type': 'application/octet-stream' }, body: buf, signal: AbortSignal.timeout(240e3) });
@@ -31,6 +73,7 @@ async function version(model) {
 
 /** buf — rasm baytlari. Natija: { buf, mime } (o'z serverimiz) yoki { url } (replicate.delivery). */
 export async function enhanceImage(buf, mime, mode) {
+  if (mode === 'restore') return geminiRestore(buf, mime);
   if (!enhanceOn()) throw new HttpError(400, 'Sifatni oshirish hali sozlanmagan');
   if (process.env.ENHANCE_URL) {
     try { return await ownServer(buf, mode); } catch (e) { if (!process.env.REPLICATE_API_TOKEN) throw e; console.error('enhance server', e.message); }
