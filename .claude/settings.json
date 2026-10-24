@@ -1,0 +1,47 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__Vercel",
+      "mcp__Render",
+      "mcp__github",
+      "mcp__claude-code-remote",
+      "WebFetch",
+      "WebSearch",
+      "Edit",
+      "Write",
+      "Bash(node *)",
+      "Bash(npm *)",
+      "Bash(npx *)",
+      "Bash(python3 *)",
+      "Bash(git status*)",
+      "Bash(git log*)",
+      "Bash(git diff*)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git fetch *)",
+      "Bash(curl *)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(grep *)",
+      "Bash(sed *)",
+      "Bash(mkdir *)",
+      "Bash(cp *)"
+    ],
+    "ask": [
+      "mcp__Vercel__buy_domain",
+      "mcp__Vercel__create_or_transfer_domain",
+      "mcp__Vercel__pause_project",
+      "mcp__Vercel__get_project_deletion_link",
+      "mcp__Vercel__replace_domain_dns_records",
+      "mcp__Render__create_web_service",
+      "mcp__Render__create_postgres",
+      "mcp__Render__create_key_value",
+      "mcp__Render__create_static_site",
+      "mcp__Render__create_cron_job",
+      "mcp__github__delete_file",
+      "mcp__github__merge_pull_request",
+      "mcp__claude-code-remote__archive_session",
+      "mcp__claude-code-remote__delete_trigger"
+    ]
+  }
+}
