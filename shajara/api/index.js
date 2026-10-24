@@ -470,7 +470,7 @@ async function route(req, res) {
     const by = { id: uid, name: nameOf(user) || 'Tahrirchi' };
     if (parts.length === 1 && m === 'GET') {
       const doc = await loadAlbum(tree.id);
-      return send(res, 200, { ...publicAlbum(doc, tree, uid), hasChannel: !!tree.channel, canUpload: canUpload(tree, uid, role), canEdit: role === 'edit', me: uid, inline: await botInline().catch(() => false), enh: !!(process.env.ENHANCE_URL || process.env.REPLICATE_API_TOKEN), rst: !!((process.env.CF_AI_TOKEN && (process.env.CF_ACCOUNT_ID || process.env.R2_ACCOUNT_ID)) || (process.env.GEMINI_RESTORE === '1' && (process.env.GEMINI_API_KEY_PAID || process.env.GEMINI_API_KEY))) });
+      return send(res, 200, { ...publicAlbum(doc, tree, uid), hasChannel: !!tree.channel, canUpload: canUpload(tree, uid, role), canEdit: role === 'edit', me: uid, inline: await botInline().catch(() => false), rst: true, rcol: !!process.env.HF_SPACE });
     }
     // shox oilasi albomini kim ocha oladi: tahrirchi — istalgan shox uchun, qolganlar — o'zi egallagan shox(lar) uchun
     const myHeads = () => {
@@ -747,21 +747,18 @@ async function route(req, res) {
           { except: uid, open: '_a' + iid, only: ia?.priv && !it.pub ? new Set(ia.members || []) : null });
         return send(res, 200, { ok: true, n });
       }
-      // ✨ Sifatni oshirish: natija ko'rsatiladi; «saqlash» bosilsa — albomga alohida nusxa (asli qoladi)
+      // ✨ AI bilan asl holicha sifatli qilish: natija ko'rsatiladi; «saqlash» bosilsa — albomga alohida nusxa (asli qoladi)
       if (parts[3] === 'enhance' && m === 'POST') {
         if (!uid || !tree.members?.[uid] || !member) throw new HttpError(403, 'Ruxsat yo‘q');
-        const E = await import('../lib/enhance.js');
         const body = await readBody(req);
-        if (body.save || body.rid) {
-          const src = String(body.save || '');
-          if (!body.rid && !/^https:\/\/([a-z0-9-]+\.)*replicate\.delivery\//.test(src)) throw new HttpError(400, 'Noto‘g‘ri havola');
+        if (body.rid) {
           const target = ia?.priv ? ia.ch?.id : tree.channel?.id;
           if (!target) throw new HttpError(400, 'Avval albom kanalini ulang');
-          const buf = body.rid ? (await getFile(`enh/${String(body.rid).replace(/[^a-z0-9]/g, '')}.jpg`))?.buffer : Buffer.from(await (await fetch(src)).arrayBuffer());
+          const buf = (await getFile(`enh/${String(body.rid).replace(/[^a-z0-9]/g, '')}.jpg`))?.buffer;
           if (!buf) throw new HttpError(410, 'Natija eskirgan. Qayta urinib ko‘ring');
-          const cap = `📁 <b>${escapeHtml(ia?.name || 'Umumiy')}</b>\n✨ ${body.mode === 'face' ? 'Yuzlari tiklangan nusxa' : body.mode === 'restore' ? 'AI bilan tiklangan nusxa' : 'Sifati oshirilgan nusxa'}${it.caption ? '\n' + escapeHtml(cleanName(it.caption, 800)) : ''}\n— ${escapeHtml(by.name)}`;
-          const asPhoto = buf.length < 9.5 * 1024 * 1024;
-          const sent = await tgUpload(asPhoto ? 'sendPhoto' : 'sendDocument', { chat_id: target, caption: cap, parse_mode: 'HTML' }, asPhoto ? 'photo' : 'document', buf, body.rid ? 'enhanced.jpg' : 'enhanced.png', body.rid ? 'image/jpeg' : 'image/png');
+          const cap = `📁 <b>${escapeHtml(ia?.name || 'Umumiy')}</b>\n✨ ${body.color ? 'Sifatli va rangli qilingan nusxa' : 'Sifatli qilingan nusxa'}${it.caption ? '\n' + escapeHtml(cleanName(it.caption, 800)) : ''}\n— ${escapeHtml(by.name)}`;
+          // hujjat sifatida — Telegram siqmaydi, sifat to'liq saqlanadi
+          const sent = await tgUpload('sendDocument', { chat_id: target, caption: cap, parse_mode: 'HTML' }, 'document', buf, 'sifatli.jpg', 'image/jpeg');
           if (!sent.ok) throw new HttpError(502, 'Telegramga yuklab bo‘lmadi');
           const media = mediaOf(sent.result);
           await addToAlbum(tree, { inChannel: true, albumId: it.album, caption: `✨ ${it.caption || ''}`.trim(), media: [{ ...media, ch: { chat: target, msg: sent.result.message_id } }], by, silent: true });
@@ -769,23 +766,16 @@ async function route(req, res) {
           if (it.tags?.length) await mutateAlbum(tree.id, (d) => { const x = d.items.find((y) => y.ch?.msg === sent.result.message_id && String(y.ch?.chat) === String(target)); if (x) x.tags = [...it.tags]; });
           return send(res, 200, { ok: true });
         }
-        const mode = ['face', 'restore'].includes(body.mode) ? body.mode : 'up';
-        if (!(mode === 'restore' ? E.restoreOn() : E.enhanceOn())) throw new HttpError(400, 'Sifatni oshirish hali sozlanmagan');
         if (!it.fileId || !/image|photo/.test(`${it.type} ${it.mime || ''}`)) throw new HttpError(400, 'Faqat rasmlar uchun');
-        if (!await rateLimit('enh:' + uid, 15, 864e5)) throw new HttpError(429, 'Bugungi limit tugadi (15 ta). Ertaga urinib ko‘ring');
-        // Cloudflare: telefon 512 px gacha kichraytirgan nusxani yuboradi (model talabi); kunlik umumiy chek — bepul limit ichida qolish uchun
-        const small = mode === 'restore' && typeof body.small === 'string' && body.small.length < 700e3 ? Buffer.from(body.small, 'base64') : null;
-        const r16 = (v) => Math.max(256, Math.min(1024, Math.round((Number(v) || 0) / 16) * 16));
-        if (small && E.cfOn() && !await rateLimit('enh:cf', Number(process.env.CF_AI_DAILY || 60), 864e5)) throw new HttpError(429, 'Bugungi bepul AI limiti tugadi. Ertaga urinib ko‘ring');
-        const buf = small && E.cfOn() ? small : await downloadFile(it.fileId);
-        if (!buf) throw new HttpError(400, 'Rasmni olib bo‘lmadi');
-        const out = await E.enhanceImage(buf, it.mime || 'image/jpeg', mode, { small, w: r16(body.w), h: r16(body.h) });
-        if (out.url) return send(res, 200, { url: out.url });
-        // o'z serverimiz natijasi — vaqtincha omborda, imzolangan havola bilan ko'rsatiladi
+        if (!await rateLimit('enh:' + uid, 20, 864e5)) throw new HttpError(429, 'Bugungi limit tugadi (20 ta). Ertaga urinib ko‘ring');
+        // telefon tayyorlagan nusxa (skrinshot chetlari kesilgan, ≤1600 px); bo'lmasa — asl fayl
+        const img = typeof body.img === 'string' && body.img.length < 4e6 ? Buffer.from(body.img, 'base64') : await downloadFile(it.fileId);
+        if (!img?.length) throw new HttpError(400, 'Rasmni olib bo‘lmadi');
+        const out = await (await import('../lib/enhance.js')).restorePhoto(img, { color: !!body.color });
         const rid = Math.random().toString(36).slice(2, 12);
-        await putFile(`enh/${rid}.jpg`, out.buf, out.mime);
+        await putFile(`enh/${rid}.jpg`, out.buf, 'image/jpeg');
         const { e, s } = signMedia('enh:' + rid);
-        return send(res, 200, { url: `/api/enh/${rid}?e=${e}&s=${s}`, rid });
+        return send(res, 200, { url: `/api/enh/${rid}?e=${e}&s=${s}`, rid, via: out.via });
       }
       // «Rasmdagilar kim?» — shajaradagi odamlarni belgilash
       if (parts[3] === 'tags' && m === 'POST') {
@@ -1328,6 +1318,8 @@ async function route(req, res) {
       }
       return send(res, 200, { ok: true, sent });
     }
+    // rasm sifati Space'i uxlab qolmasin (bepul Space 48 soat so'rovsiz qolsa uxlaydi)
+    await (await import('../lib/enhance.js')).wakeSpace().catch(() => {});
     // eski AI vazifalarini tozalash (1 kundan eski)
     for (const key of await listKeys('aijobs/')) {
       const d = (await readJson(key).catch(() => null))?.data;
