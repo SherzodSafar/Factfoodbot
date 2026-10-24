@@ -462,7 +462,7 @@ async function route(req, res) {
     const by = { id: uid, name: nameOf(user) || 'Tahrirchi' };
     if (parts.length === 1 && m === 'GET') {
       const doc = await loadAlbum(tree.id);
-      return send(res, 200, { ...publicAlbum(doc, tree, uid), hasChannel: !!tree.channel, canUpload: canUpload(tree, uid, role), canEdit: role === 'edit', me: uid, inline: await botInline().catch(() => false) });
+      return send(res, 200, { ...publicAlbum(doc, tree, uid), hasChannel: !!tree.channel, canUpload: canUpload(tree, uid, role), canEdit: role === 'edit', me: uid, inline: await botInline().catch(() => false), enh: !!process.env.REPLICATE_API_TOKEN });
     }
     // shox oilasi albomini kim ocha oladi: tahrirchi — istalgan shox uchun, qolganlar — o'zi egallagan shox(lar) uchun
     const myHeads = () => {
@@ -738,6 +738,34 @@ async function route(req, res) {
         const n = await notify(tree, 'album', (l) => t(l, '❓ <b>{who}</b> suratdagilarni tanishga yordam so‘rayapti. Kim ekanini bilsangiz — «👥» tugmasi orqali shajaradan belgilang.', { who: escapeHtml(by.name) }),
           { except: uid, open: '_a' + iid, only: ia?.priv && !it.pub ? new Set(ia.members || []) : null });
         return send(res, 200, { ok: true, n });
+      }
+      // ✨ Sifatni oshirish: natija ko'rsatiladi; «saqlash» bosilsa — albomga alohida nusxa (asli qoladi)
+      if (parts[3] === 'enhance' && m === 'POST') {
+        if (!uid || !tree.members?.[uid] || !member) throw new HttpError(403, 'Ruxsat yo‘q');
+        const E = await import('../lib/enhance.js');
+        const body = await readBody(req);
+        if (body.save) {
+          const src = String(body.save);
+          if (!/^https:\/\/([a-z0-9-]+\.)*replicate\.delivery\//.test(src)) throw new HttpError(400, 'Noto‘g‘ri havola');
+          const target = ia?.priv ? ia.ch?.id : tree.channel?.id;
+          if (!target) throw new HttpError(400, 'Avval albom kanalini ulang');
+          const buf = Buffer.from(await (await fetch(src)).arrayBuffer());
+          const cap = `📁 <b>${escapeHtml(ia?.name || 'Umumiy')}</b>\n✨ ${body.mode === 'face' ? 'Yuzlari tiklangan nusxa' : 'Sifati oshirilgan nusxa'}${it.caption ? '\n' + escapeHtml(cleanName(it.caption, 800)) : ''}\n— ${escapeHtml(by.name)}`;
+          const asPhoto = buf.length < 9.5 * 1024 * 1024;
+          const sent = await tgUpload(asPhoto ? 'sendPhoto' : 'sendDocument', { chat_id: target, caption: cap, parse_mode: 'HTML' }, asPhoto ? 'photo' : 'document', buf, 'enhanced.png', 'image/png');
+          if (!sent.ok) throw new HttpError(502, 'Telegramga yuklab bo‘lmadi');
+          const media = mediaOf(sent.result);
+          await addToAlbum(tree, { inChannel: true, albumId: it.album, caption: `✨ ${it.caption || ''}`.trim(), media: [{ ...media, ch: { chat: target, msg: sent.result.message_id } }], by, silent: true });
+          // belgilangan odamlar yangi nusxaga ham o'tadi
+          if (it.tags?.length) await mutateAlbum(tree.id, (d) => { const x = d.items.find((y) => y.ch?.msg === sent.result.message_id && String(y.ch?.chat) === String(target)); if (x) x.tags = [...it.tags]; });
+          return send(res, 200, { ok: true });
+        }
+        if (!E.enhanceOn()) throw new HttpError(400, 'Sifatni oshirish hali sozlanmagan');
+        if (!it.fileId || !/image|photo/.test(`${it.type} ${it.mime || ''}`)) throw new HttpError(400, 'Faqat rasmlar uchun');
+        if (!await rateLimit('enh:' + uid, 15, 864e5)) throw new HttpError(429, 'Bugungi limit tugadi (15 ta). Ertaga urinib ko‘ring');
+        const buf = await downloadFile(it.fileId);
+        if (!buf) throw new HttpError(400, 'Rasmni olib bo‘lmadi');
+        return send(res, 200, { url: await E.enhanceImage(buf, it.mime || 'image/jpeg', body.mode === 'face' ? 'face' : 'up') });
       }
       // «Rasmdagilar kim?» — shajaradagi odamlarni belgilash
       if (parts[3] === 'tags' && m === 'POST') {

@@ -986,6 +986,35 @@ function myBar(el) {
   bar.querySelector('#ob3')?.addEventListener('click', () => photoMenu(me));
   bar.querySelector('#ob3x')?.addEventListener('click', () => { store.set('sh_noph_' + tr.id, 1); myBar(el); });
 }
+// ✨ Rasm sifatini oshirish: tanlash → natija (oldin/keyin) → albomga alohida nusxa (asli qoladi)
+function enhanceSheet(it) {
+  const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">✨ ${t('Sifatni oshirish')}</div><button class="icon-btn" data-close>${I.close}</button></div>
+    <div class="sheet-body" id="en-b"><div style="display:grid;gap:10px">
+      <button class="card banner" data-m="up" style="text-align:left"><div style="font-size:24px">🔍</div><div class="grow"><b>${t('Tiniqlashtirish')}</b><div class="small muted">${t('Hamma rasmlar uchun. Rasmni kattalashtirib, tiniq qiladi — odamlar qiyofasi o‘zgarmaydi.')}</div></div></button>
+      <button class="card banner" data-m="face" style="text-align:left"><div style="font-size:24px">🙂</div><div class="grow"><b>${t('Yuzlarni tiklash')}</b><div class="small muted">${t('Faqat yuzlari juda xira yoki shikastlangan eski rasmlar uchun. AI yuzlarni qayta chizadi — natijani asli bilan albatta solishtiring.')}</div></div></button>
+      <div class="small muted">${t('Asl rasm o‘zgarmaydi. Natija yoqsa — albomga alohida nusxa bo‘lib qo‘shiladi.')}</div></div></div>`);
+  sh.classList.add('over-rv');
+  const box = sh.querySelector('#en-b');
+  sh.querySelectorAll('[data-m]').forEach((b) => (b.onclick = async () => {
+    const mode = b.dataset.m;
+    box.innerHTML = `<div class="empty"><span class="spin" style="color:var(--primary)"></span><div class="small muted" style="margin-top:10px">${t('AI ishlamoqda… 10–60 soniya')}</div></div>`;
+    try {
+      const r = await api(`album/i/${it.id}/enhance`, { method: 'POST', body: { mode }, timeout: 190000 });
+      box.innerHTML = `<div class="cmp" id="cmp"><img src="${r.url}" alt=""><div class="cmp-a"><img src="${it.src || it.thumb}" alt=""></div><input type="range" min="0" max="100" value="50" id="cmp-r"><span class="cmp-l">${t('Asl')}</span><span class="cmp-r">${t('Yangi')}</span></div>
+        <div class="small muted" style="margin:8px 2px">${t('Chiziqni suring va solishtiring. Yuzlar tanib bo‘lmas darajada o‘zgargan bo‘lsa — saqlamang.')}</div>
+        <button class="btn btn-primary btn-block" id="en-s">💾 ${t('Albomga saqlash (asli ham qoladi)')}</button>`;
+      const cmp = box.querySelector('#cmp');
+      const set = (v) => cmp.style.setProperty('--x', v + '%');
+      set(50);
+      box.querySelector('#cmp-r').oninput = (e) => set(e.target.value);
+      box.querySelector('#en-s').onclick = async (e) => {
+        e.currentTarget.disabled = true;
+        try { await api(`album/i/${it.id}/enhance`, { method: 'POST', body: { mode, save: r.url }, timeout: 90000 }); toast(t('Saqlandi ✓')); closeTopSheet(); loadAlbum(true).catch(() => {}); } catch (err) { toast(err.message, true); e.currentTarget.disabled = false; }
+      };
+    } catch (err) { box.innerHTML = `<div class="empty small muted">${esc(err.message)}</div>`; }
+  }));
+}
+
 // «Rasmdagilar kim?» — shajaradan belgilash
 function tagSheet(it, onDone) {
   let tags = [...(it.tags || [])];
@@ -1194,7 +1223,8 @@ function openViewer(ids, index, opts = {}) {
         ${it.kind === 'video' && it.type !== 'animation' ? `<button class="rv-b" data-act="mute">${VI.mute(false)}</button>` : ''}
         ${it.kind === 'video' && it.src ? `<button class="rv-b spd" data-act="spd"><b>1×</b></button>` : ''}
         ${inTelegram && (!it.priv || it.member) ? `<button class="rv-b" data-act="send">${VI.send}<span class="sn">${fmtN(it.sends)}</span></button>` : ''}
-        <div class="rv-below">${inTelegram ? `<button class="rv-b" data-act="tags"><b style="font-size:20px">👥</b><span class="tgn">${(it.tags || []).length || ''}</span></button>` : ''}
+        <div class="rv-below">${S.album?.enh && inTelegram && it.kind === 'image' && (!it.priv || it.member) ? `<button class="rv-b" data-act="enh"><b style="font-size:20px">✨</b></button>` : ''}
+          ${inTelegram ? `<button class="rv-b" data-act="tags"><b style="font-size:20px">👥</b><span class="tgn">${(it.tags || []).length || ''}</span></button>` : ''}
           ${it.priv && it.member && albOf(it)?.mine ? `<button class="rv-b pubb ${it.pub ? 'on' : ''}" data-act="pub"><b>🌐</b><span>${it.pub ? t('Umumiyda') : t('Umumiy')}</span></button>` : ''}</div>
       </div>
       ${land ? `<button class="rv-full rv-ui" data-act="full">${VI.full}</button>` : ''}
@@ -1217,6 +1247,7 @@ function openViewer(ids, index, opts = {}) {
 
   async function act(k, it, sl, b) {
     haptic('light');
+    if (k === 'enh') return enhanceSheet(it);
     if (k === 'tags') return tagSheet(it, () => { sl.querySelector('.tgn').textContent = (it.tags || []).length || ''; sl.querySelector('.rv-tags').innerHTML = (it.tags || []).map((id) => S.fam.get(id) ? `<button data-act="tagp" data-pid="${id}">👤 ${esc(nm(S.fam.get(id).name))}</button>` : '').join(''); sl.querySelectorAll('[data-act="tagp"]').forEach((x) => (x.onclick = (e) => { e.stopPropagation(); personSheetOver(x.dataset.pid); })); });
     if (k === 'tagp') return personSheetOver(b.dataset.pid);
     if (k === 'pub') {
@@ -1730,6 +1761,7 @@ function uploadForm(sh) {
       <div class="thumbs" id="pv"></div>
       <div class="card note hidden" id="bigw"></div>
       <div class="field"><label>${t('Albom')}</label>${albumSelect(S.albumFilter !== 'all' ? S.albumFilter : S.album.albums[0]?.id)}</div>
+      <label class="row card" style="padding:10px 12px;margin-bottom:10px;gap:10px"><input type="checkbox" name="fix"><div class="grow"><b>🪄 ${t('Eski rasmni tuzatish')}</b><div class="small muted">${t('Chop etilgan rasmni telefonda suratga olgan bo‘lsangiz: rang, kontrast va tiniqlik avtomatik tuzatiladi. Yuzlar o‘zgarmaydi.')}</div></div></label>
       <div class="field" id="capf"><label>${t('Izoh — kim, qachon, qayerda?')}</label><textarea class="input" name="caption" maxlength="900" placeholder="${t('Masalan: Bobomning 80 yillik yubileyi, 2019')}"></textarea></div>
       <button class="btn btn-primary btn-block" id="ub" disabled>${t('Yuklash')}</button>
       <div class="hint" style="margin-top:12px">📦 ${t('50 MB dan katta fayllarni bot orqali yuboring: «Albomga qo‘shish» → «Bot orqali yuborish».')}</div>
@@ -1778,7 +1810,8 @@ function uploadForm(sh) {
       if (files.length > 1) body.caption = caps[i] || '';
       const pct = sh.querySelector(`[data-pct="${i}"]`);
       try {
-        const r = await uploadOriginal(file, body, (k) => {
+        const src = f.get('fix') && /^image\/(jpeg|png|webp)/.test(file.type) ? await autoFix(file).catch(() => file) : file;
+        const r = await uploadOriginal(src, body, (k) => {
           btn.innerHTML = `<span class="spin"></span> ${ok + 1}/${files.length} · ${Math.round(k * 100)}%`;
           if (pct) pct.textContent = `${Math.round(k * 100)}%`;
         });
@@ -2318,6 +2351,48 @@ const fileB64 = (blob) => new Promise((ok, bad) => {
   r.onerror = () => bad(r.error);
   r.readAsDataURL(blob);
 });
+// 🪄 Eski (chop etilgan) rasmni avtomatik tuzatish — faqat oddiy ishlov, rasmga hech narsa «chizilmaydi»:
+// har kanal bo'yicha darajalarni cho'zish (sarg'ayish/xiralikni ketkazadi, oq balans), so'ng yengil keskinlik.
+async function autoFix(file) {
+  const img = await createImageBitmap(file);
+  const k = Math.min(1, 3000 / Math.max(img.width, img.height));
+  const c = document.createElement('canvas');
+  c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0, c.width, c.height);
+  const d = ctx.getImageData(0, 0, c.width, c.height);
+  const p = d.data;
+  const lo = [], hi = [];
+  for (let ch = 0; ch < 3; ch++) {
+    const h = new Uint32Array(256);
+    for (let i = ch; i < p.length; i += 16) h[p[i]]++; // har 4-piksel — tezlik uchun
+    const n = p.length / 16;
+    let s = 0, a = 0, b = 255;
+    for (let v = 0; v < 256; v++) { s += h[v]; if (s > n * 0.005) { a = v; break; } }
+    s = 0;
+    for (let v = 255; v >= 0; v--) { s += h[v]; if (s > n * 0.005) { b = v; break; } }
+    if (b - a < 100) { const m = (a + b) / 2; a = Math.max(0, m - 50); b = Math.min(255, m + 50); } // haddan oshirmaslik
+    lo[ch] = a; hi[ch] = b;
+  }
+  const lut = [0, 1, 2].map((ch) => Uint8ClampedArray.from({ length: 256 }, (_, v) => ((v - lo[ch]) * 255) / (hi[ch] - lo[ch])));
+  for (let i = 0; i < p.length; i += 4) { p[i] = lut[0][p[i]]; p[i + 1] = lut[1][p[i + 1]]; p[i + 2] = lut[2][p[i + 2]]; }
+  ctx.putImageData(d, 0, 0);
+  // yengil keskinlik (unsharp mask): asl + 0.5 × (asl − xiralashtirilgan)
+  if ('filter' in ctx) {
+    const b = document.createElement('canvas');
+    b.width = c.width; b.height = c.height;
+    const bx = b.getContext('2d', { willReadFrequently: true });
+    bx.filter = `blur(${Math.max(1, Math.round(c.width / 1500))}px)`;
+    bx.drawImage(c, 0, 0);
+    const bd = bx.getImageData(0, 0, c.width, c.height).data;
+    const o = ctx.getImageData(0, 0, c.width, c.height);
+    const q = o.data;
+    for (let i = 0; i < q.length; i += 4) for (let j = 0; j < 3; j++) q[i + j] = q[i + j] + 0.5 * (q[i + j] - bd[i + j]);
+    ctx.putImageData(o, 0, 0);
+  }
+  const blob = await new Promise((ok) => c.toBlob(ok, 'image/jpeg', 0.92));
+  return new File([blob], (file.name || 'photo').replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' });
+}
 // Katta rasmni (telefon kamerasi) 2000 px gacha kichraytirib JPEG qilamiz — yuklash tezlashadi
 async function shrinkImage(file) {
   const img = await createImageBitmap(file);

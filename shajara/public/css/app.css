@@ -787,3 +787,11 @@ img { pointer-events: none; }
 .dp-btn { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 28px; height: 36px; display: grid; place-items: center; font-size: 17px; pointer-events: none; }
 .dp-cal { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 28px; height: 36px; opacity: 0; border: 0; padding: 0; cursor: pointer; }
 .dp-cal::-webkit-calendar-picker-indicator { position: absolute; inset: 0; width: 100%; height: 100%; cursor: pointer; }
+/* oldin/keyin solishtirish */
+.cmp { position: relative; border-radius: 12px; overflow: hidden; background: #000; --x: 50%; }
+.cmp > img { display: block; width: 100%; height: auto; }
+.cmp-a { position: absolute; inset: 0; width: var(--x); overflow: hidden; border-right: 2px solid #fff; }
+.cmp-a img { width: auto; height: 100%; max-width: none; display: block; }
+.cmp input[type=range] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; margin: 0; }
+.cmp-l, .cmp-r { position: absolute; top: 8px; background: rgba(0,0,0,.55); color: #fff; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 8px; pointer-events: none; }
+.cmp-l { left: 8px; } .cmp-r { right: 8px; }
