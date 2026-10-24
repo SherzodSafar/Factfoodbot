@@ -1028,13 +1028,22 @@ async function localUpscale(src, onP, noShrink) {
   oc.getContext('2d').putImageData(new ImageData(px, oc.width, oc.height), 0, 0);
   return oc.toDataURL('image/jpeg', 0.92);
 }
+// AI tiklash uchun: model kirishi 512 px dan kichik; natija o'lchami — uzun tomoni 992 (ESRGAN 2× → ~2000 px)
+async function smallFor(src) {
+  const img = new Image(); img.crossOrigin = 'anonymous'; img.src = src; await img.decode();
+  const W0 = img.naturalWidth, H0 = img.naturalHeight, k = Math.min(1, 508 / Math.max(W0, H0));
+  const c = document.createElement('canvas'); c.width = Math.round(W0 * k); c.height = Math.round(H0 * k);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  const o = 992 / Math.max(W0, H0), r16 = (v) => Math.round((v * o) / 16) * 16;
+  return { small: c.toDataURL('image/jpeg', 0.92).split(',')[1], w: r16(W0), h: r16(H0) };
+}
 const dataBlob = (u) => { const [h, b] = u.split(','); const s = atob(b); const a = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) a[i] = s.charCodeAt(i); return new Blob([a], { type: h.slice(5).split(';')[0] }); };
 // ✨ Rasm sifatini oshirish: tanlash → natija (oldin/keyin) → albomga alohida nusxa (asli qoladi)
 function enhanceSheet(it) {
   const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">✨ ${t('Sifatni oshirish')}</div><button class="icon-btn" data-close>${I.close}</button></div>
     <div class="sheet-body" id="en-b"><div style="display:grid;gap:10px">
       <button class="card banner" data-m="fix" style="text-align:left"><div style="font-size:24px">🩹</div><div class="grow"><b>${t('Shikastlarni tuzatish')}</b><div class="small muted">${t('Tirnalgan, ko‘chgan, dog‘ tushgan joylarni barmoq bilan bo‘yang — atrofdagi rasm bilan to‘ldiriladi, so‘ng tiniqlashtiriladi. Bepul.')}</div></div></button>
-      ${S.album?.rst ? `<button class="card banner" data-m="restore" style="text-align:left"><div style="font-size:24px">🪄</div><div class="grow"><b>${t('Eski rasmni tiklash (AI)')}</b><div class="small muted">${t('Tirnalgan, yirtilgan, dog‘ tushgan joylarni tuzatadi, sarg‘ayishni ketkazadi va tiniqlashtiradi. Eski rasmlar uchun eng yaxshisi.')}</div></div></button>` : ''}
+      ${S.album?.rst ? `<button class="card banner" data-m="restore" style="text-align:left"><div style="font-size:24px">🪄</div><div class="grow"><b>${t('Eski rasmni tiklash (AI)')}</b><div class="small muted">${t('AI rasmni qayta chizadi: shikastlar yo‘qoladi, rasm tiniq va toza bo‘ladi. Eski rasmlar uchun eng yaxshisi. Yuz o‘xshashligini albatta solishtiring.')}</div></div></button>` : ''}
       <button class="card banner" data-m="up" style="text-align:left"><div style="font-size:24px">🔍</div><div class="grow"><b>${t('Tiniqlashtirish')}</b><div class="small muted">${t('Hamma rasmlar uchun. Rasmni kattalashtirib, tiniq qiladi — odamlar qiyofasi o‘zgarmaydi.')}</div></div></button>
       ${S.album?.enh ? `<button class="card banner" data-m="face" style="text-align:left"><div style="font-size:24px">🙂</div><div class="grow"><b>${t('Yuzlarni tiklash')}</b><div class="small muted">${t('Faqat yuzlari juda xira yoki shikastlangan eski rasmlar uchun. AI yuzlarni qayta chizadi — natijani asli bilan albatta solishtiring.')}</div></div></button>` : ''}
       <div class="small muted">${t('Asl rasm o‘zgarmaydi. Natija yoqsa — albomga alohida nusxa bo‘lib qo‘shiladi.')}</div></div></div>`);
@@ -1048,7 +1057,7 @@ function enhanceSheet(it) {
       // tiniqlashtirish — telefonning o'zida (bepul, cheklovsiz); yuzlarni tiklash — serverda
       const prog = (p) => { const el = box.querySelector('#en-p'); if (el) el.textContent = `${t('AI ishlamoqda…')} ${Math.round(p * 100)}%`; };
       const r = mode === 'up' ? { url: await localUpscale(it.src, prog) }
-        : await api(`album/i/${it.id}/enhance`, { method: 'POST', body: { mode }, timeout: 250000 });
+        : await api(`album/i/${it.id}/enhance`, { method: 'POST', body: { mode, ...(mode === 'restore' ? await smallFor(it.src) : {}) }, timeout: 250000 });
       // tiklangan rasm ~1000 px bo'ladi — telefonda 2× kattalashtiramiz (bo'lmasa o'zi qoladi)
       if (mode === 'restore') { prog(0); r.url = await localUpscale(r.url, prog, true).catch(() => r.url); }
       box.innerHTML = `<div class="cmp" id="cmp"><img src="${r.url}" alt=""><div class="cmp-a"><img src="${it.src || it.thumb}" alt=""></div><input type="range" min="0" max="100" value="50" id="cmp-r"><span class="cmp-l">${t('Asl')}</span><span class="cmp-r">${t('Yangi')}</span></div>
@@ -1916,7 +1925,7 @@ function uploadForm(sh) {
       <div class="thumbs" id="pv"></div>
       <div class="card note hidden" id="bigw"></div>
       <div class="field"><label>${t('Albom')}</label>${albumSelect(S.albumFilter !== 'all' ? S.albumFilter : S.album.albums[0]?.id)}</div>
-      <label class="row card" style="padding:10px 12px;margin-bottom:10px;gap:10px"><input type="checkbox" name="fix"><div class="grow"><b>🪄 ${t('Eski rasmni tuzatish')}</b><div class="small muted">${S.album?.rst ? t('AI tirnalgan, yirtilgan, dog‘ joylarni tuzatib, tiniqlashtiradi. Asl rasm ham, tiklangan nusxa ham albomga qo‘shiladi.') : t('Yuklangach tuzatish oynasi ochiladi: tirnalgan, ko‘chgan, dog‘ joylarni barmoq bilan bo‘yaysiz — ular tuzatiladi, rasm tiniqlashadi. Asl rasm ham, tuzatilgani ham albomda qoladi.')}</div></div></label>
+      <label class="row card" style="padding:10px 12px;margin-bottom:10px;gap:10px"><input type="checkbox" name="fix"><div class="grow"><b>🪄 ${t('Eski rasmni tuzatish')}</b><div class="small muted">${S.album?.rst ? t('AI rasmni qayta chizib tiklaydi: shikastlar yo‘qoladi, rasm tiniq bo‘ladi. Asl rasm ham, tiklangan nusxa ham albomga qo‘shiladi.') : t('Yuklangach tuzatish oynasi ochiladi: tirnalgan, ko‘chgan, dog‘ joylarni barmoq bilan bo‘yaysiz — ular tuzatiladi, rasm tiniqlashadi. Asl rasm ham, tuzatilgani ham albomda qoladi.')}</div></div></label>
       <div class="field" id="capf"><label>${t('Izoh — kim, qachon, qayerda?')}</label><textarea class="input" name="caption" maxlength="900" placeholder="${t('Masalan: Bobomning 80 yillik yubileyi, 2019')}"></textarea></div>
       <button class="btn btn-primary btn-block" id="ub" disabled>${t('Yuklash')}</button>
       <div class="hint" style="margin-top:12px">📦 ${t('50 MB dan katta fayllarni bot orqali yuboring: «Albomga qo‘shish» → «Bot orqali yuborish».')}</div>
@@ -1977,8 +1986,12 @@ function uploadForm(sh) {
         if (ai && r.item?.id) {
           btn.innerHTML = `<span class="spin"></span> ${ok + 1}/${files.length} · 🪄 ${t('AI tiklamoqda…')}`;
           try {
-            const e1 = await api(`album/i/${r.item.id}/enhance`, { method: 'POST', body: { mode: 'restore' }, timeout: 250000 });
-            await api(`album/i/${r.item.id}/enhance`, { method: 'POST', body: { mode: 'restore', rid: e1.rid }, timeout: 90000 });
+            const fu = URL.createObjectURL(file);
+            const e1 = await api(`album/i/${r.item.id}/enhance`, { method: 'POST', body: { mode: 'restore', ...(await smallFor(fu)) }, timeout: 250000 });
+            btn.innerHTML = `<span class="spin"></span> ${ok + 1}/${files.length} · 🔍 ${t('AI tiniqlashtirmoqda…')}`;
+            const big = await localUpscale(e1.url, null, true).catch(() => null);
+            if (big?.startsWith('data:')) await uploadOriginal(new File([dataBlob(big)], 'restored.jpg', { type: 'image/jpeg' }), { album: r.album.id, caption: `🪄 ${body.caption || ''}`.trim() });
+            else await api(`album/i/${r.item.id}/enhance`, { method: 'POST', body: { mode: 'restore', rid: e1.rid }, timeout: 90000 });
           } catch (err) { toast(err.message, true); }
         }
         if (fix && !ai) toFix.push({ src: URL.createObjectURL(file), album: r.album.id, caption: body.caption || '' });

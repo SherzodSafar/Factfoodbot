@@ -11,8 +11,31 @@ const MODELS = {
 const versions = new Map();
 // O'z serverimiz (Oracle Cloud, enhance-server/) bo'lsa — avval o'sha; bo'lmasa Replicate
 export const enhanceOn = () => !!(process.env.ENHANCE_URL || process.env.REPLICATE_API_TOKEN);
-// pulli (~$0.04/rasm) — faqat GEMINI_RESTORE=1 bo'lsa yoqiladi
-export const restoreOn = () => process.env.GEMINI_RESTORE === '1' && !!(process.env.GEMINI_API_KEY_PAID || process.env.GEMINI_API_KEY);
+// 🪄 restore: Cloudflare Workers AI (FLUX.2 klein, kuniga 10 000 neuron bepul) — asosiy;
+// Gemini pulli (~$0.04/rasm) — faqat GEMINI_RESTORE=1 bo'lsa
+const cfAccount = () => process.env.CF_ACCOUNT_ID || process.env.R2_ACCOUNT_ID;
+export const cfOn = () => !!(process.env.CF_AI_TOKEN && cfAccount());
+const geminiOn = () => process.env.GEMINI_RESTORE === '1' && !!(process.env.GEMINI_API_KEY_PAID || process.env.GEMINI_API_KEY);
+export const restoreOn = () => cfOn() || geminiOn();
+const CF_PROMPT = 'Restore this damaged old photograph into a clean, sharp, high quality studio portrait photo. Remove all scratches, cracks, creases, stains, dust, glare and peeled or missing spots and reconstruct those areas naturally. Crop away the paper border, frame and table so only the photo remains. Keep it black and white. Keep exactly the same person: same face, facial features, eyes, expression, age, hairstyle, clothing, hat and badge, same pose and composition. Photorealistic, fine detail, natural skin texture.';
+/** small — telefonda 512 px dan kichraytirilgan JPEG; w,h — natija o'lchami (16 ga karrali). */
+async function cfRestore(small, w, h) {
+  const fd = new FormData();
+  fd.append('prompt', CF_PROMPT);
+  fd.append('input_image_0', new Blob([small], { type: 'image/jpeg' }), 'photo.jpg');
+  fd.append('width', String(w)); fd.append('height', String(h));
+  const model = process.env.CF_AI_MODEL || '@cf/black-forest-labs/flux-2-klein-9b';
+  const r = await fetch(`https://api.cloudflare.com/client/v4/accounts/${cfAccount()}/ai/run/${model}`, {
+    method: 'POST', headers: { authorization: `Bearer ${process.env.CF_AI_TOKEN}` }, body: fd, signal: AbortSignal.timeout(120e3) });
+  const ct = r.headers.get('content-type') || '';
+  if (r.ok && ct.startsWith('image/')) return { buf: Buffer.from(await r.arrayBuffer()), mime: ct };
+  const j = await r.json().catch(() => ({}));
+  const img = j.result?.image || j.image;
+  if (r.ok && img) return { buf: Buffer.from(img, 'base64'), mime: 'image/jpeg' };
+  const msg = `Cloudflare ${r.status}: ${(j.errors?.[0]?.message || JSON.stringify(j)).slice(0, 200)}`;
+  console.error('restore', msg);
+  throw new HttpError(502, /4006|neuron|limit|quota|429/i.test(msg) ? 'Bugungi bepul AI limiti tugadi. Ertaga urinib ko‘ring' : `Rasmni tiklab bo‘lmadi: ${msg}`);
+}
 
 // 🪄 restore — Gemini rasm modeli: tirnalgan/yirtilgan/dog' joylarni tuzatadi, tiniqlashtiradi (qiyofa saqlanadi)
 const PROMPT = `Restore this old damaged photograph. Remove all scratches, cracks, creases, tears, dust, stains and missing (peeled) emulsion spots, and reconstruct the damaged areas naturally. Remove the yellowing, fix faded contrast, reduce noise and make it sharp and detailed, like a high quality professional scan of the original print. Keep it black-and-white (or its original colors). VERY IMPORTANT: preserve each person's identity, facial features, expression, age, hairstyle, clothing, insignia, pose and composition exactly — do not beautify, retouch faces, add or remove anything, or change the framing. If the photo is shown on a table or with a border, crop to the photograph itself. Return only the restored photo.`;
@@ -73,8 +96,14 @@ async function version(model) {
 }
 
 /** buf — rasm baytlari. Natija: { buf, mime } (o'z serverimiz) yoki { url } (replicate.delivery). */
-export async function enhanceImage(buf, mime, mode) {
-  if (mode === 'restore') return geminiRestore(buf, mime);
+export async function enhanceImage(buf, mime, mode, opt = {}) {
+  if (mode === 'restore') {
+    if (cfOn() && opt.small) {
+      try { return await cfRestore(opt.small, opt.w, opt.h); } catch (e) { if (!geminiOn()) throw e; }
+    }
+    if (!geminiOn()) throw new HttpError(400, 'Rasmni yuboring');
+    return geminiRestore(buf, mime);
+  }
   if (!enhanceOn()) throw new HttpError(400, 'Sifatni oshirish hali sozlanmagan');
   if (process.env.ENHANCE_URL) {
     try { return await ownServer(buf, mode); } catch (e) { if (!process.env.REPLICATE_API_TOKEN) throw e; console.error('enhance server', e.message); }

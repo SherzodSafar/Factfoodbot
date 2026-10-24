@@ -470,7 +470,7 @@ async function route(req, res) {
     const by = { id: uid, name: nameOf(user) || 'Tahrirchi' };
     if (parts.length === 1 && m === 'GET') {
       const doc = await loadAlbum(tree.id);
-      return send(res, 200, { ...publicAlbum(doc, tree, uid), hasChannel: !!tree.channel, canUpload: canUpload(tree, uid, role), canEdit: role === 'edit', me: uid, inline: await botInline().catch(() => false), enh: !!(process.env.ENHANCE_URL || process.env.REPLICATE_API_TOKEN), rst: process.env.GEMINI_RESTORE === '1' && !!(process.env.GEMINI_API_KEY_PAID || process.env.GEMINI_API_KEY) });
+      return send(res, 200, { ...publicAlbum(doc, tree, uid), hasChannel: !!tree.channel, canUpload: canUpload(tree, uid, role), canEdit: role === 'edit', me: uid, inline: await botInline().catch(() => false), enh: !!(process.env.ENHANCE_URL || process.env.REPLICATE_API_TOKEN), rst: !!((process.env.CF_AI_TOKEN && (process.env.CF_ACCOUNT_ID || process.env.R2_ACCOUNT_ID)) || (process.env.GEMINI_RESTORE === '1' && (process.env.GEMINI_API_KEY_PAID || process.env.GEMINI_API_KEY))) });
     }
     // shox oilasi albomini kim ocha oladi: tahrirchi — istalgan shox uchun, qolganlar — o'zi egallagan shox(lar) uchun
     const myHeads = () => {
@@ -773,9 +773,13 @@ async function route(req, res) {
         if (!(mode === 'restore' ? E.restoreOn() : E.enhanceOn())) throw new HttpError(400, 'Sifatni oshirish hali sozlanmagan');
         if (!it.fileId || !/image|photo/.test(`${it.type} ${it.mime || ''}`)) throw new HttpError(400, 'Faqat rasmlar uchun');
         if (!await rateLimit('enh:' + uid, 15, 864e5)) throw new HttpError(429, 'Bugungi limit tugadi (15 ta). Ertaga urinib ko‘ring');
-        const buf = await downloadFile(it.fileId);
+        // Cloudflare: telefon 512 px gacha kichraytirgan nusxani yuboradi (model talabi); kunlik umumiy chek — bepul limit ichida qolish uchun
+        const small = mode === 'restore' && typeof body.small === 'string' && body.small.length < 700e3 ? Buffer.from(body.small, 'base64') : null;
+        const r16 = (v) => Math.max(256, Math.min(1024, Math.round((Number(v) || 0) / 16) * 16));
+        if (small && E.cfOn() && !await rateLimit('enh:cf', Number(process.env.CF_AI_DAILY || 60), 864e5)) throw new HttpError(429, 'Bugungi bepul AI limiti tugadi. Ertaga urinib ko‘ring');
+        const buf = small && E.cfOn() ? small : await downloadFile(it.fileId);
         if (!buf) throw new HttpError(400, 'Rasmni olib bo‘lmadi');
-        const out = await E.enhanceImage(buf, it.mime || 'image/jpeg', mode);
+        const out = await E.enhanceImage(buf, it.mime || 'image/jpeg', mode, { small, w: r16(body.w), h: r16(body.h) });
         if (out.url) return send(res, 200, { url: out.url });
         // o'z serverimiz natijasi — vaqtincha omborda, imzolangan havola bilan ko'rsatiladi
         const rid = Math.random().toString(36).slice(2, 12);
