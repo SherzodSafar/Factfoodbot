@@ -986,20 +986,54 @@ function myBar(el) {
   bar.querySelector('#ob3')?.addEventListener('click', () => photoMenu(me));
   bar.querySelector('#ob3x')?.addEventListener('click', () => { store.set('sh_noph_' + tr.id, 1); myBar(el); });
 }
+// Telefonda ishlaydigan AI (Real-ESRGAN slim, UpscalerJS + TensorFlow.js) — kerak bo'lganda yuklanadi (~2.4 MB)
+const loadJs = (src) => new Promise((ok, bad) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => bad(new Error(t('Yuklab bo‘lmadi. Internetni tekshiring'))); document.head.append(s); });
+let upscalerP = null;
+function getUpscaler() {
+  return (upscalerP ||= (async () => {
+    window.DefaultUpscalerJSModel ||= {};
+    if (!window.tf) await loadJs('/vendor/tf.min.js');
+    if (!window.Upscaler) await loadJs('/vendor/upscaler.min.js');
+    return new window.Upscaler({ model: { scale: 2, modelType: 'layers', path: '/vendor/esrgan-x2/model.json', inputRange: [0, 255], outputRange: [0, 255] } });
+  })().catch((e) => { upscalerP = null; throw e; }));
+}
+async function localUpscale(src, onP) {
+  const up = await getUpscaler();
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.src = src;
+  await img.decode();
+  // telefon kuchi uchun: kirish 1000 px gacha (natija 2000 px); WebGL yo'q bo'lsa (sekin) — 500 px
+  await window.tf.ready();
+  const lim = window.tf.getBackend() === 'webgl' ? 1000 : 500;
+  const k = Math.min(1, lim / Math.max(img.naturalWidth, img.naturalHeight));
+  const c = document.createElement('canvas');
+  c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  const out = await up.upscale(c, { patchSize: 64, padding: 6, output: 'tensor', progress: (p) => onP?.(p) });
+  const oc = document.createElement('canvas');
+  oc.width = out.shape[1]; oc.height = out.shape[0];
+  const px = await window.tf.browser.toPixels(window.tf.tidy(() => out.clipByValue(0, 255).cast('int32')));
+  out.dispose();
+  oc.getContext('2d').putImageData(new ImageData(px, oc.width, oc.height), 0, 0);
+  return oc.toDataURL('image/jpeg', 0.92);
+}
 // ✨ Rasm sifatini oshirish: tanlash → natija (oldin/keyin) → albomga alohida nusxa (asli qoladi)
 function enhanceSheet(it) {
   const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">✨ ${t('Sifatni oshirish')}</div><button class="icon-btn" data-close>${I.close}</button></div>
     <div class="sheet-body" id="en-b"><div style="display:grid;gap:10px">
       <button class="card banner" data-m="up" style="text-align:left"><div style="font-size:24px">🔍</div><div class="grow"><b>${t('Tiniqlashtirish')}</b><div class="small muted">${t('Hamma rasmlar uchun. Rasmni kattalashtirib, tiniq qiladi — odamlar qiyofasi o‘zgarmaydi.')}</div></div></button>
-      <button class="card banner" data-m="face" style="text-align:left"><div style="font-size:24px">🙂</div><div class="grow"><b>${t('Yuzlarni tiklash')}</b><div class="small muted">${t('Faqat yuzlari juda xira yoki shikastlangan eski rasmlar uchun. AI yuzlarni qayta chizadi — natijani asli bilan albatta solishtiring.')}</div></div></button>
+      ${S.album?.enh ? `<button class="card banner" data-m="face" style="text-align:left"><div style="font-size:24px">🙂</div><div class="grow"><b>${t('Yuzlarni tiklash')}</b><div class="small muted">${t('Faqat yuzlari juda xira yoki shikastlangan eski rasmlar uchun. AI yuzlarni qayta chizadi — natijani asli bilan albatta solishtiring.')}</div></div></button>` : ''}
       <div class="small muted">${t('Asl rasm o‘zgarmaydi. Natija yoqsa — albomga alohida nusxa bo‘lib qo‘shiladi.')}</div></div></div>`);
   sh.classList.add('over-rv');
   const box = sh.querySelector('#en-b');
   sh.querySelectorAll('[data-m]').forEach((b) => (b.onclick = async () => {
     const mode = b.dataset.m;
-    box.innerHTML = `<div class="empty"><span class="spin" style="color:var(--primary)"></span><div class="small muted" style="margin-top:10px">${t('AI ishlamoqda… 10–60 soniya')}</div></div>`;
+    box.innerHTML = `<div class="empty"><span class="spin" style="color:var(--primary)"></span><div class="small muted" style="margin-top:10px" id="en-p">${t('AI ishlamoqda… 10–60 soniya')}</div></div>`;
     try {
-      const r = await api(`album/i/${it.id}/enhance`, { method: 'POST', body: { mode }, timeout: 190000 });
+      // tiniqlashtirish — telefonning o'zida (bepul, cheklovsiz); yuzlarni tiklash — serverda
+      const r = mode === 'up' ? { url: await localUpscale(it.src, (p) => { const el = box.querySelector('#en-p'); if (el) el.textContent = `${t('AI ishlamoqda…')} ${Math.round(p * 100)}%`; }) }
+        : await api(`album/i/${it.id}/enhance`, { method: 'POST', body: { mode }, timeout: 250000 });
       box.innerHTML = `<div class="cmp" id="cmp"><img src="${r.url}" alt=""><div class="cmp-a"><img src="${it.src || it.thumb}" alt=""></div><input type="range" min="0" max="100" value="50" id="cmp-r"><span class="cmp-l">${t('Asl')}</span><span class="cmp-r">${t('Yangi')}</span></div>
         <div class="small muted" style="margin:8px 2px">${t('Chiziqni suring va solishtiring. Yuzlar tanib bo‘lmas darajada o‘zgargan bo‘lsa — saqlamang.')}</div>
         <button class="btn btn-primary btn-block" id="en-s">💾 ${t('Albomga saqlash (asli ham qoladi)')}</button>`;
@@ -1009,7 +1043,12 @@ function enhanceSheet(it) {
       box.querySelector('#cmp-r').oninput = (e) => set(e.target.value);
       box.querySelector('#en-s').onclick = async (e) => {
         e.currentTarget.disabled = true;
-        try { await api(`album/i/${it.id}/enhance`, { method: 'POST', body: { mode, save: r.url }, timeout: 90000 }); toast(t('Saqlandi ✓')); closeTopSheet(); loadAlbum(true).catch(() => {}); } catch (err) { toast(err.message, true); e.currentTarget.disabled = false; }
+        try {
+          if (r.url.startsWith('data:')) {
+            const blob = await (await fetch(r.url)).blob();
+            await uploadOriginal(new File([blob], 'enhanced.jpg', { type: blob.type || 'image/jpeg' }), { album: it.album, caption: `✨ ${it.caption || ''}`.trim() });
+          } else await api(`album/i/${it.id}/enhance`, { method: 'POST', body: { mode, save: r.rid ? undefined : r.url, rid: r.rid }, timeout: 90000 });
+          toast(t('Saqlandi ✓')); closeTopSheet(); loadAlbum(true).catch(() => {}); } catch (err) { toast(err.message, true); e.currentTarget.disabled = false; }
       };
     } catch (err) { box.innerHTML = `<div class="empty small muted">${esc(err.message)}</div>`; }
   }));
@@ -1223,7 +1262,7 @@ function openViewer(ids, index, opts = {}) {
         ${it.kind === 'video' && it.type !== 'animation' ? `<button class="rv-b" data-act="mute">${VI.mute(false)}</button>` : ''}
         ${it.kind === 'video' && it.src ? `<button class="rv-b spd" data-act="spd"><b>1×</b></button>` : ''}
         ${inTelegram && (!it.priv || it.member) ? `<button class="rv-b" data-act="send">${VI.send}<span class="sn">${fmtN(it.sends)}</span></button>` : ''}
-        <div class="rv-below">${S.album?.enh && inTelegram && it.kind === 'image' && (!it.priv || it.member) ? `<button class="rv-b" data-act="enh"><b style="font-size:20px">✨</b></button>` : ''}
+        <div class="rv-below">${inTelegram && it.kind === 'image' && it.src && (!it.priv || it.member) ? `<button class="rv-b" data-act="enh"><b style="font-size:20px">✨</b></button>` : ''}
           ${inTelegram ? `<button class="rv-b" data-act="tags"><b style="font-size:20px">👥</b><span class="tgn">${(it.tags || []).length || ''}</span></button>` : ''}
           ${it.priv && it.member && albOf(it)?.mine ? `<button class="rv-b pubb ${it.pub ? 'on' : ''}" data-act="pub"><b>🌐</b><span>${it.pub ? t('Umumiyda') : t('Umumiy')}</span></button>` : ''}</div>
       </div>

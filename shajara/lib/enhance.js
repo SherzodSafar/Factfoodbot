@@ -9,7 +9,14 @@ const MODELS = {
   face: { model: 'sczhou/codeformer', input: { upscale: 2, codeformer_fidelity: 0.7, background_enhance: false, face_upsample: true } },
 };
 const versions = new Map();
-export const enhanceOn = () => !!process.env.REPLICATE_API_TOKEN;
+// O'z serverimiz (Oracle Cloud, enhance-server/) bo'lsa — avval o'sha; bo'lmasa Replicate
+export const enhanceOn = () => !!(process.env.ENHANCE_URL || process.env.REPLICATE_API_TOKEN);
+async function ownServer(buf, mode) {
+  const r = await fetch(`${process.env.ENHANCE_URL.replace(/\/$/, '')}/enhance?mode=${mode}`, {
+    method: 'POST', headers: { 'x-key': process.env.ENHANCE_KEY || '', 'content-type': 'application/octet-stream' }, body: buf, signal: AbortSignal.timeout(240e3) });
+  if (!r.ok) throw new HttpError(502, `Server: ${(await r.text().catch(() => '')).slice(0, 150) || r.status}`);
+  return { buf: Buffer.from(await r.arrayBuffer()), mime: r.headers.get('content-type') || 'image/jpeg' };
+}
 const H = () => ({ authorization: `Bearer ${process.env.REPLICATE_API_TOKEN}`, 'content-type': 'application/json' });
 
 async function version(model) {
@@ -22,9 +29,12 @@ async function version(model) {
   return v;
 }
 
-/** buf — rasm baytlari. Natija: tayyor rasm havolasi (replicate.delivery). */
+/** buf — rasm baytlari. Natija: { buf, mime } (o'z serverimiz) yoki { url } (replicate.delivery). */
 export async function enhanceImage(buf, mime, mode) {
   if (!enhanceOn()) throw new HttpError(400, 'Sifatni oshirish hali sozlanmagan');
+  if (process.env.ENHANCE_URL) {
+    try { return await ownServer(buf, mode); } catch (e) { if (!process.env.REPLICATE_API_TOKEN) throw e; console.error('enhance server', e.message); }
+  }
   const M = MODELS[mode];
   if (!M) throw new HttpError(400, 'Noto‘g‘ri rejim');
   // rasm Replicate fayllariga yuklanadi (katta data: URI qabul qilinmasligi mumkin), bo'lmasa — data URI
@@ -47,5 +57,5 @@ export async function enhanceImage(buf, mime, mode) {
   if (j?.status !== 'succeeded') throw new HttpError(502, j?.status ? 'Rasmni yaxshilab bo‘lmadi. Keyinroq urinib ko‘ring' : (j?.detail || 'AI xizmati javob bermadi').slice(0, 200));
   const out = Array.isArray(j.output) ? j.output[0] : j.output;
   if (!/^https:\/\/([a-z0-9-]+\.)*replicate\.delivery\//.test(String(out))) throw new HttpError(502, 'AI natijasi topilmadi');
-  return out;
+  return { url: out };
 }

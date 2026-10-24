@@ -462,7 +462,7 @@ async function route(req, res) {
     const by = { id: uid, name: nameOf(user) || 'Tahrirchi' };
     if (parts.length === 1 && m === 'GET') {
       const doc = await loadAlbum(tree.id);
-      return send(res, 200, { ...publicAlbum(doc, tree, uid), hasChannel: !!tree.channel, canUpload: canUpload(tree, uid, role), canEdit: role === 'edit', me: uid, inline: await botInline().catch(() => false), enh: !!process.env.REPLICATE_API_TOKEN });
+      return send(res, 200, { ...publicAlbum(doc, tree, uid), hasChannel: !!tree.channel, canUpload: canUpload(tree, uid, role), canEdit: role === 'edit', me: uid, inline: await botInline().catch(() => false), enh: !!(process.env.ENHANCE_URL || process.env.REPLICATE_API_TOKEN) });
     }
     // shox oilasi albomini kim ocha oladi: tahrirchi — istalgan shox uchun, qolganlar — o'zi egallagan shox(lar) uchun
     const myHeads = () => {
@@ -744,15 +744,16 @@ async function route(req, res) {
         if (!uid || !tree.members?.[uid] || !member) throw new HttpError(403, 'Ruxsat yo‘q');
         const E = await import('../lib/enhance.js');
         const body = await readBody(req);
-        if (body.save) {
-          const src = String(body.save);
-          if (!/^https:\/\/([a-z0-9-]+\.)*replicate\.delivery\//.test(src)) throw new HttpError(400, 'Noto‘g‘ri havola');
+        if (body.save || body.rid) {
+          const src = String(body.save || '');
+          if (!body.rid && !/^https:\/\/([a-z0-9-]+\.)*replicate\.delivery\//.test(src)) throw new HttpError(400, 'Noto‘g‘ri havola');
           const target = ia?.priv ? ia.ch?.id : tree.channel?.id;
           if (!target) throw new HttpError(400, 'Avval albom kanalini ulang');
-          const buf = Buffer.from(await (await fetch(src)).arrayBuffer());
+          const buf = body.rid ? (await getFile(`enh/${String(body.rid).replace(/[^a-z0-9]/g, '')}.jpg`))?.buffer : Buffer.from(await (await fetch(src)).arrayBuffer());
+          if (!buf) throw new HttpError(410, 'Natija eskirgan. Qayta urinib ko‘ring');
           const cap = `📁 <b>${escapeHtml(ia?.name || 'Umumiy')}</b>\n✨ ${body.mode === 'face' ? 'Yuzlari tiklangan nusxa' : 'Sifati oshirilgan nusxa'}${it.caption ? '\n' + escapeHtml(cleanName(it.caption, 800)) : ''}\n— ${escapeHtml(by.name)}`;
           const asPhoto = buf.length < 9.5 * 1024 * 1024;
-          const sent = await tgUpload(asPhoto ? 'sendPhoto' : 'sendDocument', { chat_id: target, caption: cap, parse_mode: 'HTML' }, asPhoto ? 'photo' : 'document', buf, 'enhanced.png', 'image/png');
+          const sent = await tgUpload(asPhoto ? 'sendPhoto' : 'sendDocument', { chat_id: target, caption: cap, parse_mode: 'HTML' }, asPhoto ? 'photo' : 'document', buf, body.rid ? 'enhanced.jpg' : 'enhanced.png', body.rid ? 'image/jpeg' : 'image/png');
           if (!sent.ok) throw new HttpError(502, 'Telegramga yuklab bo‘lmadi');
           const media = mediaOf(sent.result);
           await addToAlbum(tree, { inChannel: true, albumId: it.album, caption: `✨ ${it.caption || ''}`.trim(), media: [{ ...media, ch: { chat: target, msg: sent.result.message_id } }], by, silent: true });
@@ -765,7 +766,13 @@ async function route(req, res) {
         if (!await rateLimit('enh:' + uid, 15, 864e5)) throw new HttpError(429, 'Bugungi limit tugadi (15 ta). Ertaga urinib ko‘ring');
         const buf = await downloadFile(it.fileId);
         if (!buf) throw new HttpError(400, 'Rasmni olib bo‘lmadi');
-        return send(res, 200, { url: await E.enhanceImage(buf, it.mime || 'image/jpeg', body.mode === 'face' ? 'face' : 'up') });
+        const out = await E.enhanceImage(buf, it.mime || 'image/jpeg', body.mode === 'face' ? 'face' : 'up');
+        if (out.url) return send(res, 200, { url: out.url });
+        // o'z serverimiz natijasi — vaqtincha omborda, imzolangan havola bilan ko'rsatiladi
+        const rid = Math.random().toString(36).slice(2, 12);
+        await putFile(`enh/${rid}.jpg`, out.buf, out.mime);
+        const { e, s } = signMedia('enh:' + rid);
+        return send(res, 200, { url: `/api/enh/${rid}?e=${e}&s=${s}`, rid });
       }
       // «Rasmdagilar kim?» — shajaradagi odamlarni belgilash
       if (parts[3] === 'tags' && m === 'POST') {
@@ -961,6 +968,13 @@ async function route(req, res) {
   }
 
   // ---- Zaxira nusxa
+  // AI natijasini ko'rsatish (imzolangan, vaqtincha)
+  if (parts[0] === 'enh' && /^[a-z0-9]{6,12}$/.test(parts[1] || '') && m === 'GET') {
+    if (!verifyMedia('enh:' + parts[1], url.searchParams.get('e'), url.searchParams.get('s'))) throw new HttpError(403, 'Havola eskirgan');
+    const f = await getFile(`enh/${parts[1]}.jpg`);
+    if (!f) throw new HttpError(404, 'Topilmadi');
+    return send(res, 200, f.buffer, { 'content-type': f.contentType || 'image/jpeg', 'cache-control': 'private, max-age=3600' });
+  }
   // Xotira sahifasi (marhumlar): oila a'zolari xotira va duolar yozadi
   if (parts[0] === 'memory' && parts[1]) {
     const { tree, uid, user, role } = await authTree(req);
