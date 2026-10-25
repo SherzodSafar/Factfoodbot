@@ -134,7 +134,7 @@ export async function findTreeByCode(code) {
 export async function loadTree(id) {
   const t = await readJson(treeKey(id));
   if (!t) throw new HttpError(404, 'Shajara topilmadi');
-  return t.data;
+  return fixDead(t.data);
 }
 
 function validateCodes(viewCode, editCode) {
@@ -209,7 +209,7 @@ function byId(tree, id) {
 }
 
 export async function mutateTree(treeId, fn) {
-  const r = await updateJson(treeKey(treeId), fn);
+  const r = await updateJson(treeKey(treeId), (t) => { const res = fn(fixDead(t)); fixDead(t); return res; });
   if (!r) throw new HttpError(404, 'Shajara topilmadi');
   return r;
 }
@@ -349,21 +349,27 @@ export async function changeSettings(tree, body, who) {
 }
 
 /** Bugungi tug'ilgan kunlar va xotira kunlari (Toshkent vaqti bilan). */
-/** Vafot etgan (yoki vafot sanasi bor / 100 yoshdan oshgan — tirik deb hisoblanmaydi): tabrik va taklif xabarlarida ishlatilmaydi. */
-export const isDead = (p, year = new Date().getFullYear()) => !!(p.deceased || p.death || (p.birth && year - Number(String(p.birth).slice(0, 4)) > 100));
+/** Vafot etgan (vafot sanasi bor yoki 160 yoshdan oshgan — tirik deb hisoblanmaydi): tabrik va taklif xabarlarida ishlatilmaydi. */
+export const isDead = (p, year = new Date().getFullYear()) => !!(p.deceased || p.death || (p.birth && year - Number(String(p.birth).slice(0, 4)) > 160));
+/** Vafot sanasi bor, lekin «vafot etgan» belgisi yo'q — belgi qo'yiladi. */
+function fixDead(t) { for (const p of t?.persons || []) if (p.death && !p.deceased) p.deceased = true; return t; }
 export function todaysEvents(tree, date = new Date()) {
   const local = new Date(date.getTime() + 5 * 3600e3);
   const md = `${String(local.getUTCMonth() + 1).padStart(2, '0')}-${String(local.getUTCDate()).padStart(2, '0')}`;
   const year = local.getUTCFullYear();
   const births = [];
-  const memorials = [];
+  const memorials = []; // marhumlar: vafot kuni (kind:'death') va tavallud kuni (kind:'birth') — bitta «xotira kunlari» xabarida
+  const yOf = (v) => Number(String(v).slice(0, 4));
   for (const p of tree.persons) {
-    if (p.birth?.length === 10 && p.birth.slice(5) === md && !isDead(p, year)) {
-      births.push({ id: p.id, name: p.name, gender: p.gender, age: year - Number(p.birth.slice(0, 4)) });
+    const dead = isDead(p, year);
+    // vafotdagi yoshi (hurmat qo'shimchasi uchun)
+    const dAge = dead && p.birth && p.death ? yOf(p.death) - yOf(p.birth) : null;
+    if (p.birth?.length === 10 && p.birth.slice(5) === md) {
+      if (!dead) births.push({ id: p.id, name: p.name, gender: p.gender, age: year - yOf(p.birth) });
+      else memorials.push({ id: p.id, name: p.name, gender: p.gender, kind: 'birth', years: year - yOf(p.birth), dAge });
     }
     if (p.death?.length === 10 && p.death.slice(5) === md) {
-      memorials.push({ id: p.id, name: p.name, gender: p.gender, years: year - Number(p.death.slice(0, 4)),
-        age: p.birth ? year - Number(String(p.birth).slice(0, 4)) : null });
+      memorials.push({ id: p.id, name: p.name, gender: p.gender, kind: 'death', years: year - yOf(p.death), dAge });
     }
   }
   return { births, memorials };

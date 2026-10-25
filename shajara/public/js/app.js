@@ -999,7 +999,7 @@ let upscalerP = null;
 function getUpscaler() {
   return (upscalerP ||= (async () => {
     window.DefaultUpscalerJSModel ||= {};
-    if (!window.tf) await loadJs('/vendor/tf.min.js');
+    if (typeof window.tf?.ready !== 'function') await loadJs('/vendor/tf.min.js?v=2'); // v2: CSP (eval'siz) uchun tuzatilgan
     if (!window.Upscaler) await loadJs('/vendor/upscaler.min.js');
     return new window.Upscaler({ model: { scale: 2, modelType: 'layers', path: '/vendor/esrgan-x2/model.json', inputRange: [0, 255], outputRange: [0, 255] } });
   })().catch((e) => { upscalerP = null; throw e; }));
@@ -1066,12 +1066,13 @@ function enhanceSheet(it) {
       ${S.album?.rcol ? `<label class="row card" style="padding:10px 12px;gap:10px"><input type="checkbox" id="en-col"><div class="grow"><b>🎨 ${t('Oq-qora rasmni rangli qilish')}</b><div class="small muted">${t('Belgilansa — AI oq-qora rasmga tabiiy rang beradi. Belgilanmasa rasm o‘z rangida qoladi.')}</div></div></label>` : ''}
       <button class="card banner" data-m="fix" style="text-align:left"><div style="font-size:24px">🩹</div><div class="grow"><b>${t('Shikastlarni tuzatish')}</b><div class="small muted">${t('Tirnalgan, ko‘chgan, dog‘ tushgan joylarni barmoq bilan bo‘yang — atrofdagi rasm bilan to‘ldiriladi, so‘ng tiniqlashtiriladi. Bepul.')}</div></div></button>
       <button class="card banner" data-m="up" style="text-align:left"><div style="font-size:24px">🔍</div><div class="grow"><b>${t('Telefonda tiniqlashtirish')}</b><div class="small muted">${t('Internetsiz, oddiyroq usul: rasm 2 barobar kattalashib, biroz tiniqlashadi.')}</div></div></button>
-      <div class="small muted">${t('Asl rasm o‘zgarmaydi. Natija yoqsa — albomga alohida nusxa bo‘lib qo‘shiladi.')}</div></div></div>`);
+      <label class="row card" style="padding:10px 12px;gap:10px"><input type="checkbox" id="en-keep" checked><div class="grow"><b>📎 ${t('Aslini ham saqlash')}</b><div class="small muted">${t('Belgilansa — asl rasm ham, ishlov berilgani ham albomda qoladi. Belgilanmasa — faqat ishlov berilgani.')}</div></div></label></div></div>`);
   sh.classList.add('over-rv');
   const box = sh.querySelector('#en-b');
   sh.querySelectorAll('[data-m]').forEach((b) => (b.onclick = async () => {
     const mode = b.dataset.m;
-    if (mode === 'fix') return repairEditor(it, sh, box);
+    const keep = sh.querySelector('#en-keep')?.checked !== false;
+    if (mode === 'fix') return repairEditor(keep ? it : { ...it, delId: it.id }, sh, box);
     const color = !!sh.querySelector('#en-col')?.checked;
     box.innerHTML = `<div class="empty"><span class="spin" style="color:var(--primary)"></span><div class="small muted" style="margin-top:10px" id="en-p">${mode === 'restore' ? t('AI ishlamoqda… 30–90 soniya') : t('AI ishlamoqda…')}</div></div>`;
     try {
@@ -1098,6 +1099,7 @@ function enhanceSheet(it) {
             const blob = dataBlob(r.url); // fetch(data:) CSP (connect-src) da bloklanadi
             await uploadOriginal(new File([blob], 'enhanced.jpg', { type: blob.type || 'image/jpeg' }), { album: it.album, caption: `✨ ${it.caption || ''}`.trim() });
           } else await api(`album/i/${it.id}/enhance`, { method: 'POST', body: { rid: r.rid, color }, timeout: 90000 });
+          if (!keep) { await api(`album/i/${it.id}`, { method: 'DELETE' }).catch(() => {}); closeAllSheets(); }
           toast(t('Saqlandi ✓')); closeTopSheet(); loadAlbum(true).catch(() => {}); } catch (err) { toast(err.message, true); e.currentTarget.disabled = false; }
       };
     } catch (err) { box.innerHTML = `<div class="empty small muted">${esc(err.message)}</div>`; }
@@ -1118,6 +1120,7 @@ async function repairEditor(it, sh, box) {
   let R, img;
   try {
     R = await import('./restore.js?v=1');
+    import('./migan.js?v=1').then((M) => M.preload()); // AI model bo'yash paytida yuklanib turadi
     img = new Image(); img.crossOrigin = 'anonymous'; img.src = it.src; await img.decode();
   } catch (err) { box.innerHTML = `<div class="empty small muted">${esc(err.message)}</div>`; return; }
   const k = Math.min(1, 1000 / Math.max(img.naturalWidth, img.naturalHeight));
@@ -1173,7 +1176,9 @@ async function repairEditor(it, sh, box) {
     try {
       await new Promise((r) => setTimeout(r, 30));
       const d = bx.getImageData(0, 0, W, H);
-      R.inpaint(d.data, W, H, R.dilate(mask, W, H, 1));
+      // MI-GAN (telefonda AI) — bo'lmasa oddiy to'ldirish
+      const ai = await import('./migan.js?v=1').then((M) => M.inpaintAI(d.data, W, H, R.dilate(mask, W, H, 2), (p) => { const el = box.querySelector('#en-p'); if (el) el.textContent = `${t('AI tuzatmoqda…')} ${Math.round(p * 100)}%`; }).then(() => true)).catch((e) => { console.warn('migan', e); return false; });
+      if (!ai) R.inpaint(d.data, W, H, R.dilate(mask, W, H, 1));
       R.levels(d.data);
       bx.putImageData(d, 0, 0);
       const prog = (p) => { const el = box.querySelector('#en-p'); if (el) el.textContent = `${t('AI tiniqlashtirmoqda…')} ${Math.round(p * 100)}%`; };
@@ -1196,6 +1201,7 @@ async function repairEditor(it, sh, box) {
         e.currentTarget.disabled = true;
         try {
           await uploadOriginal(new File([dataBlob(url)], 'restored.jpg', { type: 'image/jpeg' }), { album: it.album, caption: `🩹 ${it.caption || ''}`.trim() });
+          if (it.delId) await api(`album/i/${it.delId}`, { method: 'DELETE' }).catch(() => {});
           toast(t('Saqlandi ✓')); closeTopSheet(); loadAlbum(true).catch(() => {});
         } catch (err) { toast(err.message, true); e.currentTarget.disabled = false; }
       };
@@ -1949,13 +1955,25 @@ function uploadForm(sh) {
       <div class="thumbs" id="pv"></div>
       <div class="card note hidden" id="bigw"></div>
       <div class="field"><label>${t('Albom')}</label>${albumSelect(S.albumFilter !== 'all' ? S.albumFilter : S.album.albums[0]?.id)}</div>
-      <label class="row card" style="padding:10px 12px;margin-bottom:10px;gap:10px"><input type="checkbox" name="fix"><div class="grow"><b>🪄 ${t('Sifatli qilish (AI)')}</b><div class="small muted">${t('Yuklangach AI rasmni asl holicha tiniqlashtiradi: odamlar, ranglar, joylashuv o‘zgarmaydi. Asl rasm ham, sifatli nusxa ham albomda qoladi.')}</div></div></label>
-      ${S.album?.rcol ? `<label class="row card" style="padding:10px 12px;margin-bottom:10px;gap:10px"><input type="checkbox" name="color"><div class="grow"><b>🎨 ${t('Oq-qora rasmni rangli qilish')}</b><div class="small muted">${t('«Sifatli qilish» bilan birga ishlaydi.')}</div></div></label>` : ''}
+      <div class="card up-proc" style="padding:10px 12px;margin-bottom:10px">
+        <div class="small muted" style="margin-bottom:6px">✨ ${t('Rasmlarga ishlov berish (ixtiyoriy)')}</div>
+        <label class="row" style="gap:10px;padding:6px 0"><input type="radio" name="proc" value="" checked><b class="grow">${t('Ishlov bermaslik')}</b></label>
+        <label class="row" style="gap:10px;padding:6px 0"><input type="radio" name="proc" value="ai"><div class="grow"><b>🪄 ${t('Sifatli qilish (AI)')}</b><div class="small muted">${t('Odamlar, ranglar, joylashuv o‘zgarmaydi. Serverda fonda ishlaydi — ilovadan chiqib ketsangiz ham davom etadi, tayyor bo‘lgach bot xabar beradi.')}</div></div></label>
+        <label class="row" style="gap:10px;padding:6px 0"><input type="radio" name="proc" value="up"><div class="grow"><b>🔍 ${t('Telefonda tiniqlashtirish')}</b><div class="small muted">${t('Kichik rasmlar 2 barobar kattalashib tiniqlashadi. Ilova ochiq turganda fonda ishlaydi.')}</div></div></label>
+        <label class="row" style="gap:10px;padding:6px 0"><input type="radio" name="proc" value="fix"><div class="grow"><b>🩹 ${t('Shikastlarni tuzatish')}</b><div class="small muted">${t('Yuklangach har bir rasm ochiladi: shikastlangan joylarni bo‘yaysiz, AI to‘ldiradi.')}</div></div></label>
+        ${S.album?.rcol ? `<label class="row hidden" id="up-col" style="gap:10px;padding:6px 0"><input type="checkbox" name="color"><div class="grow"><b>🎨 ${t('Oq-qora rasmni rangli qilish')}</b></div></label>` : ''}
+        <label class="row hidden" id="up-keep" style="gap:10px;padding:8px 0 2px;border-top:1px solid var(--line);margin-top:4px"><input type="checkbox" name="keep" checked><div class="grow"><b>📎 ${t('Aslini ham saqlash')}</b><div class="small muted">${t('Belgilansa — asl rasm ham, ishlov berilgani ham albomda qoladi. Belgilanmasa — faqat ishlov berilgani.')}</div></div></label>
+      </div>
       <div class="field" id="capf"><label>${t('Izoh — kim, qachon, qayerda?')}</label><textarea class="input" name="caption" maxlength="900" placeholder="${t('Masalan: Bobomning 80 yillik yubileyi, 2019')}"></textarea></div>
       <button class="btn btn-primary btn-block" id="ub" disabled>${t('Yuklash')}</button>
       <div class="hint" style="margin-top:12px">📦 ${t('50 MB dan katta fayllarni bot orqali yuboring: «Albomga qo‘shish» → «Bot orqali yuborish».')}</div>
     </form>`;
   bindAlbumSelect(sh);
+  sh.querySelectorAll('[name=proc]').forEach((r) => (r.onchange = () => {
+    const v = sh.querySelector('[name=proc]:checked').value;
+    sh.querySelector('#up-keep').classList.toggle('hidden', !v);
+    sh.querySelector('#up-col')?.classList.toggle('hidden', v !== 'ai');
+  }));
   const input = sh.querySelector('[name=files]');
   let files = [];
   input.onchange = () => {
@@ -1993,30 +2011,34 @@ function uploadForm(sh) {
     const btn = sh.querySelector('#ub');
     btn.disabled = true;
     let ok = 0;
-    const toFix = [];
+    const toFix = [], later = [], bgAI = [];
+    const proc = f.get('proc') || '', keep = !!f.get('keep'), color = !!f.get('color');
     const caps = [...sh.querySelectorAll('[data-cap]')].map((x) => x.value.trim());
     for (const [i, file] of files.entries()) {
       btn.innerHTML = `<span class="spin"></span> ${ok + 1}/${files.length}`;
       if (files.length > 1) body.caption = caps[i] || '';
       const pct = sh.querySelector(`[data-pct="${i}"]`);
       try {
-        const fix = f.get('fix') && /^image\/(jpeg|png|webp)/.test(file.type);
-        const ai = fix && S.album?.rst !== false;
+        const isImg = /^image\/(jpeg|png|webp)/.test(file.type);
+        const ai = isImg && proc === 'ai' && S.album?.rst !== false;
         // asl rasm o'zgarmasdan yuklanadi; tuzatish oynasi yuklashdan keyin ochiladi (natija — alohida nusxa)
         const src = file;
         const r = await uploadOriginal(src, body, (k) => {
           btn.innerHTML = `<span class="spin"></span> ${ok + 1}/${files.length} · ${Math.round(k * 100)}%`;
           if (pct) pct.textContent = `${Math.round(k * 100)}%`;
         });
+        // 🪄 serverda fonda: so'rov yuboriladi, natijani kutilmaydi (ilova yopilsa ham ishlaydi)
         if (ai && r.item?.id) {
-          btn.innerHTML = `<span class="spin"></span> ${ok + 1}/${files.length} · 🪄 ${t('AI sifatli qilmoqda…')}`;
+          btn.innerHTML = `<span class="spin"></span> ${ok + 1}/${files.length} · 🪄`;
           try {
-            const color = !!f.get('color'), prep = await prepForAI(URL.createObjectURL(file));
-            const e1 = await api(`album/i/${r.item.id}/enhance`, { method: 'POST', body: { img: prep.img, color }, timeout: 290000 });
-            await api(`album/i/${r.item.id}/enhance`, { method: 'POST', body: { rid: e1.rid, color }, timeout: 90000 });
+            const prep = await prepForAI(URL.createObjectURL(file));
+            await api(`album/i/${r.item.id}/enhance`, { method: 'POST', body: { img: prep.img, color, bg: true, keep }, timeout: 60000 });
+            bgAI.push(r.item.id);
           } catch (err) { toast(err.message, true); }
         }
-        if (fix && !ai) toFix.push({ src: URL.createObjectURL(file), album: r.album.id, caption: body.caption || '' });
+        const x = { file, src: URL.createObjectURL(file), album: r.album.id, caption: body.caption || '', delId: keep ? null : r.item?.id };
+        if (isImg && (proc === 'up' || (proc === 'ai' && !ai))) later.push(x);
+        if (isImg && proc === 'fix') toFix.push(x);
         if (pct) pct.textContent = '✅';
         if (body.albumName) { body.album = r.album.id; delete body.albumName; }
         ok++;
@@ -2027,10 +2049,28 @@ function uploadForm(sh) {
       }
     }
     closeAllSheets();
-    if (ok) toast(t('{n} ta fayl qo‘shildi 📸', { n: ok }));
+    if (ok) toast(t('{n} ta fayl qo‘shildi 📸', { n: ok }) + (bgAI.length ? ' · ' + t('🪄 AI fonda ishlamoqda — tayyor bo‘lgach bot xabar beradi') : ''));
     await refreshAlbum();
     for (const x of toFix) await repairSheet(x);
+    if (later.length) localEnhanceQueue(later);
   };
+}
+
+// 🔍 Telefonda tiniqlashtirish (yuklashdan keyin, fonda — ilovaning boshqa bo'limlarida yuraverish mumkin)
+async function localEnhanceQueue(list) {
+  let done = 0, skip = 0;
+  for (const [i, x] of list.entries()) {
+    try {
+      toast(`🔍 ${t('Tiniqlashtirilmoqda…')} ${i + 1}/${list.length}`);
+      const url = await localUpscale(x.src, null, true);
+      if (!url.startsWith('data:')) { skip++; continue; } // rasm allaqachon katta — kerak emas
+      await uploadOriginal(new File([dataBlob(url)], 'tiniq.jpg', { type: 'image/jpeg' }), { album: x.album, caption: `🔍 ${x.caption}`.trim() });
+      if (x.delId) await api(`album/i/${x.delId}`, { method: 'DELETE' }).catch(() => {});
+      done++;
+    } catch (err) { toast(err.message, true); }
+  }
+  toast(done ? t('🔍 {n} ta rasm tiniqlashtirildi ✓', { n: done }) + (skip ? ` · ${t('{n} tasi allaqachon katta', { n: skip })}` : '') : t('Rasmlar allaqachon yetarlicha katta — tiniqlashtirish kerak emas'));
+  if (S.tab === 'album') refreshAlbum().catch(() => {});
 }
 
 // ------------------------------------------------------------ Tahlil tab ---

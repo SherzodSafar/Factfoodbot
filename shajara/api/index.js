@@ -751,11 +751,9 @@ async function route(req, res) {
       if (parts[3] === 'enhance' && m === 'POST') {
         if (!uid || !tree.members?.[uid] || !member) throw new HttpError(403, 'Ruxsat yo‘q');
         const body = await readBody(req);
-        if (body.rid) {
-          const target = ia?.priv ? ia.ch?.id : tree.channel?.id;
-          if (!target) throw new HttpError(400, 'Avval albom kanalini ulang');
-          const buf = (await getFile(`enh/${String(body.rid).replace(/[^a-z0-9]/g, '')}.jpg`))?.buffer;
-          if (!buf) throw new HttpError(410, 'Natija eskirgan. Qayta urinib ko‘ring');
+        const target = ia?.priv ? ia.ch?.id : tree.channel?.id;
+        // natijani albomga alohida nusxa qilib qo'shish
+        const saveCopy = async (buf) => {
           const cap = `📁 <b>${escapeHtml(ia?.name || 'Umumiy')}</b>\n✨ ${body.color ? 'Sifatli va rangli qilingan nusxa' : 'Sifatli qilingan nusxa'}${it.caption ? '\n' + escapeHtml(cleanName(it.caption, 800)) : ''}\n— ${escapeHtml(by.name)}`;
           // hujjat sifatida — Telegram siqmaydi, sifat to'liq saqlanadi
           const sent = await tgUpload('sendDocument', { chat_id: target, caption: cap, parse_mode: 'HTML' }, 'document', buf, 'sifatli.jpg', 'image/jpeg');
@@ -764,6 +762,12 @@ async function route(req, res) {
           await addToAlbum(tree, { inChannel: true, albumId: it.album, caption: `✨ ${it.caption || ''}`.trim(), media: [{ ...media, ch: { chat: target, msg: sent.result.message_id } }], by, silent: true });
           // belgilangan odamlar yangi nusxaga ham o'tadi
           if (it.tags?.length) await mutateAlbum(tree.id, (d) => { const x = d.items.find((y) => y.ch?.msg === sent.result.message_id && String(y.ch?.chat) === String(target)); if (x) x.tags = [...it.tags]; });
+        };
+        if (body.rid) {
+          if (!target) throw new HttpError(400, 'Avval albom kanalini ulang');
+          const buf = (await getFile(`enh/${String(body.rid).replace(/[^a-z0-9]/g, '')}.jpg`))?.buffer;
+          if (!buf) throw new HttpError(410, 'Natija eskirgan. Qayta urinib ko‘ring');
+          await saveCopy(buf);
           return send(res, 200, { ok: true });
         }
         if (!it.fileId || !/image|photo/.test(`${it.type} ${it.mime || ''}`)) throw new HttpError(400, 'Faqat rasmlar uchun');
@@ -771,6 +775,27 @@ async function route(req, res) {
         // telefon tayyorlagan nusxa (skrinshot chetlari kesilgan, ≤1600 px); bo'lmasa — asl fayl
         const img = typeof body.img === 'string' && body.img.length < 4e6 ? Buffer.from(body.img, 'base64') : await downloadFile(it.fileId);
         if (!img?.length) throw new HttpError(400, 'Rasmni olib bo‘lmadi');
+        // fonda (yuklash paytida): ilova yopilsa ham ishlaydi; tayyor bo'lgach albomga qo'shiladi va bot xabar beradi.
+        // keep=false — asl fayl o'rniga faqat ishlov berilgani qoladi
+        if (body.bg) {
+          if (!target) throw new HttpError(400, 'Avval albom kanalini ulang');
+          const job = (async () => {
+            try {
+              const out = await (await import('../lib/enhance.js')).restorePhoto(img, { color: !!body.color });
+              await saveCopy(out.buf);
+              if (body.keep === false) {
+                await mutateAlbum(tree.id, (d) => { d.items = d.items.filter((y) => y.id !== iid); });
+                if (it.ch) await tg('deleteMessage', { chat_id: it.ch.chat, message_id: it.ch.msg }).catch(() => {});
+              }
+              await tg('sendMessage', { chat_id: uid, text: `✨ Rasm sifatli qilindi va «${ia?.name || 'Umumiy'}» albomiga qo‘shildi.` }).catch(() => {});
+            } catch (e) {
+              console.error('enhance bg', e.message);
+              await tg('sendMessage', { chat_id: uid, text: `⚠️ Rasmni sifatli qilib bo‘lmadi: ${e.message}. Asl rasm albomda turibdi — keyinroq «✨ Sifatni oshirish» orqali qayta urinib ko‘ring.` }).catch(() => {});
+            }
+          })();
+          try { waitUntil(job); } catch { await job; }
+          return send(res, 202, { ok: true, bg: true });
+        }
         const out = await (await import('../lib/enhance.js')).restorePhoto(img, { color: !!body.color });
         const rid = Math.random().toString(36).slice(2, 12);
         await putFile(`enh/${rid}.jpg`, out.buf, 'image/jpeg');

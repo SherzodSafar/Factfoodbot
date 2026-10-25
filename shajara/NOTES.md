@@ -92,5 +92,11 @@ O'zbekcha, qisqa javob, tokenlarni tejash, tez bajarish. Ruxsat umumiy berilgan 
 - Tug'ilgan kun va xotira kuni — alohida xabarlar (`birthdayText`, `memorialText`). Ismlar ilovadagi kartaga havola.
 - Hurmat qo'shimchasi (`honor`, faqat uz): 30–50 aka/opa, 50–70 ota/ona, 70+ bobo/momo (marhumlarda — vafotdagi yoshi).
 - Haftalik «hali qo'shilmaganlar» eslatmasi asosan 15–45 yoshlilarni ko'rsatadi, ismlar kartaga havola.
-- Tabrik va taklif xabarlarida marhumlar ishlatilmaydi (`isDead`: deceased, vafot sanasi bor yoki 100 yoshdan oshgan).
+- Tabrik va taklif xabarlarida marhumlar ishlatilmaydi (`isDead`: deceased, vafot sanasi bor yoki 160 yoshdan oshgan). Vafot sanasi bor odamga `deceased` avtomatik qo'yiladi (`fixDead` — loadTree/mutateTree).
+- Marhumlarning tavallud va vafot kunlari bitta «Xotira kunlari» xabarida (`memorials[].kind`: birth|death).
 - Telegram ⋮ «Reload»: `sessionStorage.sh_nav` — qayta yuklanganda deep link (start_param) qayta ishlamaydi, oxirgi bo'lim ochiladi.
+
+## Rasm ishlovi (v=56)
+- 🔍 Telefonda tiniqlashtirish: prod CSP `eval`ni taqiqlagani uchun tf.min.js yarim yuklanardi («tf.ready is not a function»). `public/vendor/tf.min.js` ichidagi ikki `Function(...)` chaqiruvi `globalThis`ga almashtirildi (fayl `?v=2` bilan yuklanadi).
+- 🩹 Shikastlarni tuzatish: MI-GAN (Picsart, MIT) telefonda — `public/js/migan.js`, model `public/vendor/migan/migan.onnx` (Sanster/models `migan_traced.pt` → ONNX, 26 MB, kirish `x[1,4,512,512]` = [0.5−mask, rasm·(1−mask)], −1…1), onnxruntime-web 1.22 (`public/vendor/ort/`, WASM, 1 oqim). CSP'ga `'wasm-unsafe-eval'` qo'shildi. Uzun tirnalish — asl o'lchamdagi bir necha 512 oynada, katta yaxlit shikast — kattaroq oyna. Xato bo'lsa — eski push-pull to'ldirish.
+- Yuklashda ishlov: 🪄 AI (serverda fonda: `enhance` `{bg:true, keep}` → waitUntil, tayyor bo'lgach bot xabar beradi), 🔍 telefonda (yuklangandan keyin fonda, ilova ochiq turganda), 🩹 (yuklangach bo'yash oynasi). «📎 Aslini ham saqlash» — belgilanmasa asl fayl o'chiriladi. Albomdagi «✨ Sifatni oshirish» oynasida ham shu belgi bor.

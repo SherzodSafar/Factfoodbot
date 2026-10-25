@@ -6,7 +6,7 @@ import handler from '../api/index.js';
 
 const PORT = Number(process.env.PORT || 3100);
 const ROOT = path.resolve('public');
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.wasm': 'application/wasm', '.onnx': 'application/octet-stream', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json' };
 
 http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');

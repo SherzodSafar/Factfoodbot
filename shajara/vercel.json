@@ -46,7 +46,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' https://telegram.org; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://*.r2.cloudflarestorage.com https://*.r2.dev https://replicate.delivery https://*.replicate.delivery; media-src 'self' blob: https://*.onrender.com https://*.r2.cloudflarestorage.com https://*.r2.dev; connect-src 'self' https://*.onrender.com; object-src 'none'; base-uri 'none'; form-action 'none'"
+          "value": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://telegram.org; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://*.r2.cloudflarestorage.com https://*.r2.dev https://replicate.delivery https://*.replicate.delivery; media-src 'self' blob: https://*.onrender.com https://*.r2.cloudflarestorage.com https://*.r2.dev; connect-src 'self' https://*.onrender.com; object-src 'none'; base-uri 'none'; form-action 'none'"
         },
         {
           "key": "X-Content-Type-Options",
@@ -68,6 +68,15 @@
         {
           "key": "Cache-Control",
           "value": "public, max-age=120, stale-while-revalidate=604800"
+        }
+      ]
+    },
+    {
+      "source": "/vendor/(ort|migan|esrgan-x2)/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=2592000, immutable"
         }
       ]
     }

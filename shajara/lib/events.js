@@ -70,9 +70,9 @@ export function birthdayText(tree, lang) {
 export function memorialText(tree, lang) {
   const { memorials } = todaysEvents(tree);
   if (!memorials.length) return null;
-  const item = (x) => link(tree, 'x' + x.id, escapeHtml(honor(x.name, x.age != null ? x.age - x.years : null, x.gender, lang)));
-  return `🌳 <b>${escapeHtml(tree.title)}</b>\n\n${t(lang, '🤲 <b>Xotira kuni:</b>')}\n`
-    + memorials.map((x) => '• ' + t(lang, '{name} — vafotiga {years} yil', { name: '\u0001', years: x.years }).replace('\u0001', item(x))).join('\n')
+  const item = (x) => link(tree, 'x' + x.id, escapeHtml(honor(x.name, x.dAge, x.gender, lang)));
+  return `🌳 <b>${escapeHtml(tree.title)}</b>\n\n${t(lang, memorials.length > 1 ? '🤲 <b>Xotira kunlari:</b>' : '🤲 <b>Xotira kuni:</b>')}\n`
+    + memorials.map((x) => '• ' + t(lang, x.kind === 'birth' ? '{name} — tavalludiga {years} yil' : '{name} — vafotiga {years} yil', { name: '\u0001', years: x.years }).replace('\u0001', item(x))).join('\n')
     + `\n\n${t(lang, 'Duo bilan yod eting.')}`;
 }
 
