@@ -25,6 +25,14 @@ export async function r2Url(key) {
   return signed.url;
 }
 
+/** Fayl bo'lagi (start…end) — o'z serverimiz orqali berish uchun: brauzer canvas'i R2 havolasini CORS sababli o'qiy olmaydi. */
+export async function r2Range(key, start, end) {
+  const r = await fetch(await r2Url(key), { headers: { range: `bytes=${start}-${end}` }, signal: AbortSignal.timeout(30e3) });
+  if (!r.ok) throw new Error(`r2 ${r.status}`);
+  const buffer = Buffer.from(await r.arrayBuffer());
+  return { buffer, type: r.headers.get('content-type'), range: r.headers.get('content-range') || `bytes 0-${buffer.length - 1}/${buffer.length}` };
+}
+
 /**
  * Faylni R2 ga ko'chirish. readPart(start, end) → Buffer. Bir vaqtda bitta jarayon (kv qulfi).
  * 8 MB lik bo'laklar bilan multipart yuklash — xotira kam ishlatiladi.

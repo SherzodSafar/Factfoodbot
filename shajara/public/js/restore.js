@@ -185,3 +185,24 @@ export function sharpen(c, amount = 0.5) {
   for (let i = 0; i < q.length; i += 4) for (let j = 0; j < 3; j++) q[i + j] = q[i + j] + amount * (q[i + j] - bd[i + j]);
   ctx.putImageData(o, 0, 0);
 }
+
+/** Mahalliy kontrast («clarity»): katta radiusli unsharp — telefon ekranida ham tiniqlik seziladi.
+ *  Xiralashtirish kichraytirib-kattalashtirish bilan (chetlarda qora hoshiya paydo bo'lmaydi). */
+export function clarity(c, amount = 0.15) {
+  const r = Math.max(4, Math.round(Math.max(c.width, c.height) / 120));
+  const s = document.createElement('canvas');
+  s.width = Math.max(1, Math.round(c.width / r)); s.height = Math.max(1, Math.round(c.height / r));
+  const sx = s.getContext('2d');
+  sx.imageSmoothingQuality = 'high';
+  sx.drawImage(c, 0, 0, s.width, s.height);
+  const b = document.createElement('canvas');
+  b.width = c.width; b.height = c.height;
+  const bx = b.getContext('2d', { willReadFrequently: true });
+  bx.imageSmoothingQuality = 'high';
+  bx.drawImage(s, 0, 0, c.width, c.height);
+  const bd = bx.getImageData(0, 0, c.width, c.height).data;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  const o = ctx.getImageData(0, 0, c.width, c.height), q = o.data;
+  for (let i = 0; i < q.length; i += 4) for (let j = 0; j < 3; j++) q[i + j] = q[i + j] + amount * (q[i + j] - bd[i + j]);
+  ctx.putImageData(o, 0, 0);
+}

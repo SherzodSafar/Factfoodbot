@@ -167,6 +167,16 @@ function roleOf(tree, tok, uid) {
 }
 
 /** Token + Telegram foydalanuvchisi → shajara va rol. */
+// R2 dagi fayl bo'lagi o'z serverimiz orqali (≤4 MB): rasmga ishlov berish uchun brauzer canvas'i (R2 CORS bermaydi)
+async function sendR2Range(req, res, key, type) {
+  const r2 = await import('../lib/r2.js');
+  const rg = /^bytes=(\d+)-(\d*)$/.exec(String(req.headers.range || ''));
+  const a = rg ? Number(rg[1]) : 0;
+  const b = Math.min(rg && rg[2] ? Number(rg[2]) : Infinity, a + 4 * 1024 * 1024 - 1);
+  const p = await r2.r2Range(key, a, b);
+  return send(res, 206, p.buffer, { 'content-type': type || p.type || 'application/octet-stream', 'content-range': p.range, 'cache-control': 'private, max-age=3600' });
+}
+
 async function authTree(req, need = 'view') {
   const h = String(req.headers.authorization || '');
   const tok = verifyToken(h.startsWith('Bearer ') ? h.slice(7) : '');
@@ -750,6 +760,8 @@ async function route(req, res) {
       // ✨ AI bilan asl holicha sifatli qilish: natija ko'rsatiladi; «saqlash» bosilsa — albomga alohida nusxa (asli qoladi)
       if (parts[3] === 'enhance' && m === 'POST') {
         if (!uid || !tree.members?.[uid] || !member) throw new HttpError(403, 'Ruxsat yo‘q');
+        // faqat o'zi yuklagan rasmga; boshqalarnikiga — faqat shajara egasi
+        if (String(it.by?.id || '') !== uid && String(tree.owner || '') !== uid) throw new HttpError(403, 'Faqat o‘zingiz yuklagan rasmlarga ishlov bera olasiz');
         const body = await readBody(req);
         const target = ia?.priv ? ia.ch?.id : tree.channel?.id;
         // natijani albomga alohida nusxa qilib qo'shish
@@ -863,7 +875,8 @@ async function route(req, res) {
         return send(res, 200, r.result || {});
       }
       const { canManageItem } = await import('../lib/album.js');
-      if (!canManageItem(tree, ia, it, uid)) throw new HttpError(403, 'Faylni faqat uni yuklagan yoki albomni yaratgan kishi o‘zgartira oladi');
+      // shajara egasi ham (o'zi a'zo bo'lgan albomda) — masalan, ishlov berilgan nusxa aslining o'rniga qolganda
+      if (!canManageItem(tree, ia, it, uid) && !(member && String(tree.owner || '') === String(uid))) throw new HttpError(403, 'Faylni faqat uni yuklagan yoki albomni yaratgan kishi o‘zgartira oladi');
       if (m === 'PATCH') {
         const body = await readBody(req);
         await mutateAlbum(tree.id, (d) => {
@@ -895,6 +908,7 @@ async function route(req, res) {
     if (r2.r2On()) {
       const key = r2.mediaKey(f, xext);
       if (await r2.r2Has(key)) {
+        if (url.searchParams.get('raw')) return sendR2Range(req, res, key, MIME[xext]);
         res.statusCode = 302;
         res.setHeader('location', await r2.r2Url(key));
         res.setHeader('cache-control', 'private, max-age=3600');
@@ -961,6 +975,7 @@ async function route(req, res) {
   // ---- Shox oilasi maxfiy albomi fayli: imzo albom ro'yxatini ko'rishga haqli kishiga beriladi → R2 havolasi
   if (parts[0] === 'pm' && parts[1] && /^[a-z0-9]{10}$/.test(parts[2] || '') && m === 'GET') {
     if (!verifyMedia('pm:' + parts[2], url.searchParams.get('e'), url.searchParams.get('s'))) throw new HttpError(403, 'Havola eskirgan');
+    if (url.searchParams.get('raw')) return sendR2Range(req, res, `p/${parts[1].replace(/[^a-z0-9]/g, '')}/${parts[2]}`);
     const r2 = await import('../lib/r2.js');
     res.statusCode = 302;
     res.setHeader('location', await r2.r2Url(`p/${parts[1].replace(/[^a-z0-9]/g, '')}/${parts[2]}`));
@@ -1001,6 +1016,12 @@ async function route(req, res) {
     if (!verifyMedia('enh:' + parts[1], url.searchParams.get('e'), url.searchParams.get('s'))) throw new HttpError(403, 'Havola eskirgan');
     const f = await getFile(`enh/${parts[1]}.jpg`);
     if (!f) throw new HttpError(404, 'Topilmadi');
+    const rg = /^bytes=(\d+)-(\d*)$/.exec(String(req.headers.range || ''));
+    if (rg) {
+      // katta natija — 4 MB lik bo'laklarda (funksiya javobi chegarasi)
+      const a = Number(rg[1]), b = Math.min(rg[2] ? Number(rg[2]) : Infinity, a + 4 * 1024 * 1024 - 1, f.buffer.length - 1);
+      return send(res, 206, f.buffer.subarray(a, b + 1), { 'content-type': f.contentType || 'image/jpeg', 'content-range': `bytes ${a}-${b}/${f.buffer.length}`, 'cache-control': 'private, max-age=3600' });
+    }
     return send(res, 200, f.buffer, { 'content-type': f.contentType || 'image/jpeg', 'cache-control': 'private, max-age=3600' });
   }
   // Xotira sahifasi (marhumlar): oila a'zolari xotira va duolar yozadi

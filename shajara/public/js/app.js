@@ -993,6 +993,9 @@ function myBar(el) {
   bar.querySelector('#ob3')?.addEventListener('click', () => photoMenu(me));
   bar.querySelector('#ob3x')?.addEventListener('click', () => { store.set('sh_noph_' + tr.id, 1); myBar(el); });
 }
+// ===================== ✨ Rasmga ishlov berish (albomdagi istalgan rasm; yuklash paytida ham) =====================
+// Bir nechta usulni birga tanlash mumkin. Tartib: 🩹 shikast → 🎞 eski rasm → 🔍 telefonda → 🪄 AI (serverda).
+// 🩹 AI dan oldin: AI (CodeFormer) to'ldirilgan joyni (qosh, ko'z) yuz sifatida tabiiy qilib qayta chizadi.
 // Telefonda ishlaydigan AI (Real-ESRGAN slim, UpscalerJS + TensorFlow.js) — kerak bo'lganda yuklanadi (~2.4 MB)
 const loadJs = (src) => new Promise((ok, bad) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => bad(new Error(t('Yuklab bo‘lmadi. Internetni tekshiring'))); document.head.append(s); });
 let upscalerP = null;
@@ -1001,45 +1004,62 @@ function getUpscaler() {
     window.DefaultUpscalerJSModel ||= {};
     if (typeof window.tf?.ready !== 'function') await loadJs('/vendor/tf.min.js?v=2'); // v2: CSP (eval'siz) uchun tuzatilgan
     if (!window.Upscaler) await loadJs('/vendor/upscaler.min.js');
+    await window.tf.ready();
     return new window.Upscaler({ model: { scale: 2, modelType: 'layers', path: '/vendor/esrgan-x2/model.json', inputRange: [0, 255], outputRange: [0, 255] } });
   })().catch((e) => { upscalerP = null; throw e; }));
 }
-async function localUpscale(src, onP, noShrink) {
-  const up = await getUpscaler();
-  let img = src;
-  if (!(src instanceof HTMLCanvasElement)) {
-    img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.src = src;
-    await img.decode();
-  } else { img.naturalWidth = src.width; img.naturalHeight = src.height; }
-  // telefon kuchi uchun: kirish 1000 px gacha (natija 2000 px); WebGL yo'q bo'lsa (sekin) — 500 px
-  await window.tf.ready();
-  const lim = window.tf.getBackend() === 'webgl' ? 1000 : 500;
-  const k = Math.min(1, lim / Math.max(img.naturalWidth, img.naturalHeight));
-  if (noShrink && k < 1) return src instanceof HTMLCanvasElement ? src.toDataURL('image/jpeg', 0.92) : src; // kichraytirib kattalashtirish — sifatni pasaytiradi
+// Albom rasmini xotiraga olish — o'z serverimiz orqali, 4 MB lik bo'laklarda: R2 ga yo'naltirilgan rasmni canvas
+// CORS sababli o'qiy olmaydi, katta (4.5 MB+) faylni esa server bitta javobda bera olmaydi.
+async function fetchBlob(src) {
+  const u = new URL(src, location.href);
+  if (u.origin !== location.origin) throw new Error(t('Rasmni olib bo‘lmadi'));
+  u.searchParams.set('raw', '1');
+  const CH = 4 * 1024 * 1024 - 1, parts = [];
+  let pos = 0, total = 1, type = '';
+  while (pos < total) {
+    const r = await fetch(u, { headers: { range: `bytes=${pos}-${pos + CH}` }, signal: AbortSignal.timeout(90e3) });
+    if (r.status === 200) return r.blob();
+    if (r.status !== 206) throw new Error(`${t('Rasmni olib bo‘lmadi')} (${r.status})`);
+    total = Number(/\/(\d+)\s*$/.exec(r.headers.get('content-range') || '')?.[1]) || 0;
+    type ||= r.headers.get('content-type') || '';
+    const b = await r.arrayBuffer();
+    if (!b.byteLength) break;
+    parts.push(b);
+    pos += b.byteLength;
+  }
+  return new Blob(parts, { type: type || 'image/jpeg' });
+}
+// Rasm (fayl yoki albom havolasi) → canvas: skrinshot chetidagi qora tasmalar kesiladi, uzun tomoni ≤ max
+async function loadForEdit(src, max = 2400) {
+  const blob = src instanceof Blob ? src : await fetchBlob(src);
+  let bmp = await createImageBitmap(blob).catch(() => null);
+  if (!bmp) {
+    bmp = new Image();
+    bmp.src = URL.createObjectURL(blob);
+    await bmp.decode().catch(() => { throw new Error(t('Bu rasm formatini ochib bo‘lmadi')); });
+  }
+  const W = bmp.naturalWidth || bmp.width, H = bmp.naturalHeight || bmp.height;
+  const [x0, y0, x1, y1] = screenshotCrop(bmp, W, H);
+  const w = x1 - x0, h = y1 - y0, k = Math.min(1, max / Math.max(w, h));
   const c = document.createElement('canvas');
-  c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
-  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-  const out = await up.upscale(c, { patchSize: 64, padding: 6, output: 'tensor', progress: (p) => onP?.(p) });
-  const oc = document.createElement('canvas');
-  oc.width = out.shape[1]; oc.height = out.shape[0];
-  const px = await window.tf.browser.toPixels(window.tf.tidy(() => out.clipByValue(0, 255).cast('int32')));
-  out.dispose();
-  oc.getContext('2d').putImageData(new ImageData(px, oc.width, oc.height), 0, 0);
-  return oc.toDataURL('image/jpeg', 0.92);
+  c.width = Math.round(w * k); c.height = Math.round(h * k);
+  const x = c.getContext('2d', { willReadFrequently: true });
+  x.imageSmoothingQuality = 'high';
+  x.drawImage(bmp, x0, y0, w, h, 0, 0, c.width, c.height);
+  bmp.close?.();
+  return c;
 }
-// AI uchun tayyorlash: telefon skrinshotidagi qora tasmalar (holat paneli, tugmalar) kesiladi, uzun tomoni ≤1600 px.
-// Natija: { img: base64 JPEG (serverga), url: dataURL — solishtirishda «Asl» sifatida }
-async function prepForAI(src) {
-  const img = new Image(); img.crossOrigin = 'anonymous'; img.src = src; await img.decode();
-  const [x0, y0, x1, y1] = screenshotCrop(img, img.naturalWidth, img.naturalHeight);
-  const w = x1 - x0, h = y1 - y0, k = Math.min(1, 1600 / Math.max(w, h));
-  const c = document.createElement('canvas'); c.width = Math.round(w * k); c.height = Math.round(h * k);
-  c.getContext('2d').drawImage(img, x0, y0, w, h, 0, 0, c.width, c.height);
-  const url = c.toDataURL('image/jpeg', 0.92);
-  return { img: url.split(',')[1], url };
+const canvasBlob = (c, q = 0.92) => new Promise((ok, bad) => c.toBlob((b) => (b ? ok(b) : bad(new Error(t('Rasmni saqlab bo‘lmadi')))), 'image/jpeg', q));
+function scaled(c, k) {
+  const o = document.createElement('canvas');
+  o.width = Math.max(1, Math.round(c.width * k)); o.height = Math.max(1, Math.round(c.height * k));
+  const x = o.getContext('2d', { willReadFrequently: true });
+  x.imageSmoothingQuality = 'high';
+  x.drawImage(c, 0, 0, o.width, o.height);
+  return o;
 }
+// AI serverga: ≤1600 px JPEG (base64)
+const prepForAI = (c) => scaled(c, Math.min(1, 1600 / Math.max(c.width, c.height))).toDataURL('image/jpeg', 0.92).split(',')[1];
 // Telefon skrinshoti (rasm ko'rish oynasi): tepa va pastda qop-qora tasmalar — faqat rasmning o'zi qoldiriladi.
 // Oddiy fotosuratlarga tegilmaydi: faqat cho'ziq (≥1.7:1) rasmda va ikki chetida ham qora tasma bo'lsa.
 function screenshotCrop(img, W, H) {
@@ -1057,156 +1077,247 @@ function screenshotCrop(img, W, H) {
   const f = (tall ? H : W) / n;
   return tall ? [0, Math.round(s0 * f), W, Math.round(s1 * f)] : [Math.round(s0 * f), 0, Math.round(s1 * f), H];
 }
-const dataBlob = (u) => { const [h, b] = u.split(','); const s = atob(b); const a = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) a[i] = s.charCodeAt(i); return new Blob([a], { type: h.slice(5).split(';')[0] }); };
-// ✨ Rasm sifatini oshirish: tanlash → natija (oldin/keyin) → albomga alohida nusxa (asli qoladi)
-function enhanceSheet(it) {
-  const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">✨ ${t('Sifatni oshirish')}</div><button class="icon-btn" data-close>${I.close}</button></div>
-    <div class="sheet-body" id="en-b"><div style="display:grid;gap:10px">
-      <button class="card banner" data-m="restore" style="text-align:left"><div style="font-size:24px">🪄</div><div class="grow"><b>${t('Sifatli qilish (AI)')}</b><div class="small muted">${t('Rasm o‘z holicha qoladi: odamlar, ranglar, joylashuv o‘zgarmaydi. Tiniqlashadi, yuzlar aniqlashadi, o‘lchami 2 barobar kattalashadi.')}</div></div></button>
-      ${S.album?.rcol ? `<label class="row card" style="padding:10px 12px;gap:10px"><input type="checkbox" id="en-col"><div class="grow"><b>🎨 ${t('Oq-qora rasmni rangli qilish')}</b><div class="small muted">${t('Belgilansa — AI oq-qora rasmga tabiiy rang beradi. Belgilanmasa rasm o‘z rangida qoladi.')}</div></div></label>` : ''}
-      <button class="card banner" data-m="fix" style="text-align:left"><div style="font-size:24px">🩹</div><div class="grow"><b>${t('Shikastlarni tuzatish')}</b><div class="small muted">${t('Tirnalgan, ko‘chgan, dog‘ tushgan joylarni barmoq bilan bo‘yang — atrofdagi rasm bilan to‘ldiriladi, so‘ng tiniqlashtiriladi. Bepul.')}</div></div></button>
-      <button class="card banner" data-m="up" style="text-align:left"><div style="font-size:24px">🔍</div><div class="grow"><b>${t('Telefonda tiniqlashtirish')}</b><div class="small muted">${t('Internetsiz, oddiyroq usul: rasm 2 barobar kattalashib, biroz tiniqlashadi.')}</div></div></button>
-      <label class="row card" style="padding:10px 12px;gap:10px"><input type="checkbox" id="en-keep" checked><div class="grow"><b>📎 ${t('Aslini ham saqlash')}</b><div class="small muted">${t('Belgilansa — asl rasm ham, ishlov berilgani ham albomda qoladi. Belgilanmasa — faqat ishlov berilgani.')}</div></div></label></div></div>`);
-  sh.classList.add('over-rv');
-  const box = sh.querySelector('#en-b');
-  sh.querySelectorAll('[data-m]').forEach((b) => (b.onclick = async () => {
-    const mode = b.dataset.m;
-    const keep = sh.querySelector('#en-keep')?.checked !== false;
-    if (mode === 'fix') return repairEditor(keep ? it : { ...it, delId: it.id }, sh, box);
-    const color = !!sh.querySelector('#en-col')?.checked;
-    box.innerHTML = `<div class="empty"><span class="spin" style="color:var(--primary)"></span><div class="small muted" style="margin-top:10px" id="en-p">${mode === 'restore' ? t('AI ishlamoqda… 30–90 soniya') : t('AI ishlamoqda…')}</div></div>`;
-    try {
-      // telefonda tiniqlashtirish — qurilmaning o'zida; «sifatli qilish» — serverda (HF Space)
-      const prog = (p) => { const el = box.querySelector('#en-p'); if (el) el.textContent = `${t('AI ishlamoqda…')} ${Math.round(p * 100)}%`; };
-      let r, asl = it.src || it.thumb;
-      if (mode === 'up') r = { url: await localUpscale(it.src, prog) };
-      else {
-        const prep = await prepForAI(it.src);
-        asl = prep.url; // skrinshot chetlari kesilgan bo'lsa ham bir xil solishtirish
-        r = await api(`album/i/${it.id}/enhance`, { method: 'POST', body: { img: prep.img, color }, timeout: 290000 });
-      }
-      box.innerHTML = `<div class="cmp" id="cmp"><img src="${r.url}" alt=""><div class="cmp-a"><img src="${asl}" alt=""></div><input type="range" min="0" max="100" value="50" id="cmp-r"><span class="cmp-l">${t('Asl')}</span><span class="cmp-r">${t('Yangi')}</span></div>
-        <div class="small muted" style="margin:8px 2px">${t('Chiziqni suring va solishtiring. Yuzlar tanib bo‘lmas darajada o‘zgargan bo‘lsa — saqlamang.')}</div>
-        <button class="btn btn-primary btn-block" id="en-s">💾 ${t('Albomga saqlash (asli ham qoladi)')}</button>`;
-      const cmp = box.querySelector('#cmp');
-      const set = (v) => cmp.style.setProperty('--x', v + '%');
-      set(50);
-      box.querySelector('#cmp-r').oninput = (e) => set(e.target.value);
-      box.querySelector('#en-s').onclick = async (e) => {
-        e.currentTarget.disabled = true;
-        try {
-          if (r.url.startsWith('data:')) {
-            const blob = dataBlob(r.url); // fetch(data:) CSP (connect-src) da bloklanadi
-            await uploadOriginal(new File([blob], 'enhanced.jpg', { type: blob.type || 'image/jpeg' }), { album: it.album, caption: `✨ ${it.caption || ''}`.trim() });
-          } else await api(`album/i/${it.id}/enhance`, { method: 'POST', body: { rid: r.rid, color }, timeout: 90000 });
-          if (!keep) { await api(`album/i/${it.id}`, { method: 'DELETE' }).catch(() => {}); closeAllSheets(); }
-          toast(t('Saqlandi ✓')); closeTopSheet(); loadAlbum(true).catch(() => {}); } catch (err) { toast(err.message, true); e.currentTarget.disabled = false; }
-      };
-    } catch (err) { box.innerHTML = `<div class="empty small muted">${esc(err.message)}</div>`; }
-  }));
+const tick = () => new Promise((r) => setTimeout(r, 30));
+
+// 🎞 Eski rasmni tuzatish: har kanal darajalari (sarg'ayish, xiralik, oq balans) + yengil keskinlik. Rasmga hech narsa chizilmaydi.
+function oldFix(c, R) {
+  const x = c.getContext('2d', { willReadFrequently: true });
+  const d = x.getImageData(0, 0, c.width, c.height);
+  R.levels(d.data);
+  x.putImageData(d, 0, 0);
+  R.sharpen(c, 0.5);
+}
+// 🔍 Telefonda tiniqlashtirish: kichik rasm 2× kattalashadi; kattasi yarmidan qayta tiklanadi (o'lchami o'sha,
+// chiziqlar tiniq, shovqin kam), so'ng keskinlik va mahalliy kontrast — telefon ekranida ham farq ko'rinadi.
+async function upStep(c, onP, R) {
+  const up = await getUpscaler();
+  const lim = window.tf.getBackend() === 'webgl' ? 1000 : 500;
+  const L = Math.max(c.width, c.height);
+  const inL = L <= lim ? L : Math.min(lim, Math.round(L / 2));
+  const out = await up.upscale(scaled(c, inL / L), { patchSize: 64, padding: 6, output: 'tensor', progress: (p) => onP?.(p) });
+  const oc = document.createElement('canvas');
+  oc.width = out.shape[1]; oc.height = out.shape[0];
+  const px = await window.tf.browser.toPixels(window.tf.tidy(() => out.clipByValue(0, 255).cast('int32')));
+  out.dispose();
+  oc.getContext('2d', { willReadFrequently: true }).putImageData(new ImageData(px, oc.width, oc.height), 0, 0);
+  const res = oc.width < c.width ? scaled(oc, c.width / oc.width) : oc;
+  // katta rasmda aslning mayda detallari ham saqlansin: 60% qayta tiklangan + 40% asl
+  if (inL < L) { const x = res.getContext('2d', { willReadFrequently: true }); x.globalAlpha = 0.4; x.drawImage(c, 0, 0, res.width, res.height); x.globalAlpha = 1; }
+  R.sharpen(res, 0.4);
+  R.clarity(res, 0.18);
+  return res;
 }
 
-// alohida oyna (yuklashdan keyin): yopilganda keyingi rasmga o'tiladi
-function repairSheet(it) {
-  return new Promise((done) => {
-    const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">🩹 ${t('Shikastlarni tuzatish')}</div><button class="icon-btn" data-close>${I.close}</button></div><div class="sheet-body" id="en-b"></div>`);
-    new MutationObserver((_, o) => { if (!sh.isConnected) { o.disconnect(); done(); } }).observe(document.body, { childList: true, subtree: true });
-    repairEditor(it, sh, sh.querySelector('#en-b'));
-  });
+const STEP_IC = { fix: '🩹', old: '🎞', up: '🔍', ai: '🪄' };
+// usullar tanlovi (albomdagi rasm va yuklash oynasi uchun bir xil)
+function stepsHtml(upload) {
+  const L = [
+    ['fix', t('Shikastlarni tuzatish'), upload ? t('Yuklangach har bir rasm ochiladi: shikastlangan joylarni bo‘yaysiz, AI to‘ldiradi.') : t('Tirnalgan, ko‘chgan, dog‘ tushgan joylarni barmoq bilan bo‘yaysiz — AI atrofiga qarab to‘ldiradi. Telefonda, bepul.')],
+    ['old', t('Eski rasmni tuzatish'), t('Rang, kontrast va tiniqlik tuzatiladi: sarg‘ayish va xiralik ketadi.')],
+    ['up', t('Telefonda tiniqlashtirish'), t('Kichik rasm 2 barobar kattalashadi, kattasi tiniqlashadi. Internetsiz.')],
+    ['ai', t('Sifatli qilish (AI)'), upload ? t('Odamlar, ranglar, joylashuv o‘zgarmaydi. Serverda fonda ishlaydi — ilovadan chiqib ketsangiz ham davom etadi, tayyor bo‘lgach bot xabar beradi.') : t('Odamlar, ranglar, joylashuv o‘zgarmaydi: tiniqlashadi, yuzlar aniqlashadi, o‘lchami 2 barobar. Serverda, 30–90 soniya.')],
+  ];
+  return `<div class="card en-steps" style="padding:4px 12px;margin-bottom:10px">
+    ${upload ? `<div class="small muted" style="padding:6px 0 2px">✨ ${t('Rasmlarga ishlov berish (ixtiyoriy, bir nechtasini birga tanlash mumkin)')}</div>` : ''}
+    ${L.map(([k, name, desc]) => `<label class="row" style="gap:10px;padding:8px 0"><input type="checkbox" name="st" value="${k}"><div class="grow"><b>${STEP_IC[k]} ${name}</b><div class="small muted">${desc}</div></div></label>`).join('')}
+    ${S.album?.rcol ? `<label class="row hidden" data-col style="gap:10px;padding:2px 0 8px 30px"><input type="checkbox" name="color"><b class="grow">🎨 ${t('Oq-qora rasmni rangli qilish')}</b></label>` : ''}
+    <div class="small muted hidden" data-order style="padding:2px 0 8px">${t('Bir nechtasi tanlansa — shu tartibda: 🩹 → 🎞 → 🔍 → 🪄')}</div>
+    <label class="row hidden" data-keep style="gap:10px;padding:8px 0;border-top:1px solid var(--line)"><input type="checkbox" name="keep" checked><div class="grow"><b>📎 ${t('Aslini ham saqlash')}</b><div class="small muted">${t('Belgilansa — asl rasm ham, ishlov berilgani ham albomda qoladi. Belgilanmasa — faqat ishlov berilgani.')}</div></div></label>
+  </div>`;
 }
-// 🩹 Shikastlarni tuzatish: barmoq bilan belgilash (+ avto-taklif) → to'ldirish → darajalar → ESRGAN 2× → keskinlik
-async function repairEditor(it, sh, box) {
-  box.innerHTML = `<div class="empty"><span class="spin" style="color:var(--primary)"></span></div>`;
-  let R, img;
-  try {
-    R = await import('./restore.js?v=1');
-    import('./migan.js?v=1').then((M) => M.preload()); // AI model bo'yash paytida yuklanib turadi
-    img = new Image(); img.crossOrigin = 'anonymous'; img.src = it.src; await img.decode();
-  } catch (err) { box.innerHTML = `<div class="empty small muted">${esc(err.message)}</div>`; return; }
-  const k = Math.min(1, 1000 / Math.max(img.naturalWidth, img.naturalHeight));
-  const W = Math.round(img.naturalWidth * k), H = Math.round(img.naturalHeight * k);
-  box.innerHTML = `<div class="rp-wrap" id="rpw"><div class="rp-in" id="rpi"><canvas id="rpb"></canvas><canvas id="rpm" class="rp-m"></canvas></div></div>
-    <div class="seg" id="rpt" style="margin-top:8px"><button type="button" class="on" data-t="paint">🖌 ${t('Bo‘yash')}</button><button type="button" data-t="erase">🧽 ${t('O‘chirish')}</button><button type="button" data-t="pan">✋ ${t('Surish')}</button></div>
-    <div class="row" style="gap:8px;margin-top:8px;align-items:center"><span class="small muted">${t('Cho‘tka')}</span><input type="range" id="rps" min="3" max="60" value="14" class="grow">
-      <button type="button" class="btn btn-ghost btn-sm" id="rpz">🔍 1×</button><button type="button" class="btn btn-ghost btn-sm" id="rpu">↩️</button></div>
-    <div class="small muted" style="margin:8px 2px">${t('Shikastlangan joylarni (oq dog‘, ko‘chgan, tirnalgan) qizil bilan bo‘yang. Mayda joylar uchun 🔍 bilan kattalashtiring. Ko‘z, nishon kabi joylarga tegmang.')}</div>
-    <div class="row" style="gap:8px"><button type="button" class="btn btn-ghost grow" id="rpa">🤖 ${t('Avto-topish')}</button><button type="button" class="btn btn-primary grow" id="rpg">✨ ${t('Tuzatish')}</button></div>`;
-  const cb = box.querySelector('#rpb'), cm = box.querySelector('#rpm'), wrap = box.querySelector('#rpw'), inner = box.querySelector('#rpi');
-  cb.width = cm.width = W; cb.height = cm.height = H;
-  const bx = cb.getContext('2d', { willReadFrequently: true }), mx = cm.getContext('2d', { willReadFrequently: true });
-  bx.drawImage(img, 0, 0, W, H);
-  let tool = 'paint', zoom = 1, last = null;
-  const hist = [];
-  const snap = () => { hist.push(mx.getImageData(0, 0, W, H)); if (hist.length > 8) hist.shift(); };
-  box.querySelectorAll('#rpt button').forEach((b) => (b.onclick = () => {
-    tool = b.dataset.t;
-    box.querySelectorAll('#rpt button').forEach((x) => x.classList.toggle('on', x === b));
-    cm.style.touchAction = tool === 'pan' ? 'auto' : 'none';
-  }));
-  box.querySelector('#rpz').onclick = (e) => {
-    zoom = zoom >= 3 ? 1 : zoom + 1;
-    inner.style.width = zoom * 100 + '%';
-    e.currentTarget.textContent = `🔍 ${zoom}×`;
+function readSteps(root) {
+  const on = new Set([...root.querySelectorAll('[name=st]:checked')].map((x) => x.value));
+  return { fix: on.has('fix'), old: on.has('old'), up: on.has('up'), ai: on.has('ai'), n: on.size, color: on.has('ai') && !!root.querySelector('[name=color]')?.checked, keep: root.querySelector('[name=keep]')?.checked !== false };
+}
+function bindSteps(root, onChange) {
+  const upd = () => {
+    const o = readSteps(root);
+    root.querySelector('[data-col]')?.classList.toggle('hidden', !o.ai);
+    root.querySelector('[data-order]')?.classList.toggle('hidden', o.n < 2);
+    root.querySelector('[data-keep]')?.classList.toggle('hidden', !o.n);
+    onChange?.(o);
   };
-  box.querySelector('#rpu').onclick = () => { const d = hist.pop(); if (d) mx.putImageData(d, 0, 0); else mx.clearRect(0, 0, W, H); };
-  const pt = (e) => { const r = cm.getBoundingClientRect(); return [((e.clientX - r.left) * W) / r.width, ((e.clientY - r.top) * H) / r.height]; };
-  const stroke = (a, b) => {
-    const sz = +box.querySelector('#rps').value * Math.max(1, W / 1000) / Math.sqrt(zoom);
-    mx.globalCompositeOperation = tool === 'erase' ? 'destination-out' : 'source-over';
-    mx.strokeStyle = mx.fillStyle = '#ff2d2d'; mx.lineWidth = sz; mx.lineCap = mx.lineJoin = 'round';
-    mx.beginPath(); mx.moveTo(...a); mx.lineTo(...b); mx.stroke();
-  };
-  cm.style.touchAction = 'none';
-  cm.addEventListener('pointerdown', (e) => { if (tool === 'pan') return; snap(); cm.setPointerCapture(e.pointerId); last = pt(e); stroke(last, last); });
-  cm.addEventListener('pointermove', (e) => { if (!last) return; const p = pt(e); stroke(last, p); last = p; });
-  const end = () => (last = null);
-  cm.addEventListener('pointerup', end); cm.addEventListener('pointercancel', end);
-  box.querySelector('#rpa').onclick = () => {
-    snap();
-    const m = R.detectDefects(bx.getImageData(0, 0, W, H).data, W, H);
-    const o = mx.getImageData(0, 0, W, H);
-    for (let i = 0; i < m.length; i++) if (m[i]) { o.data[i * 4] = 255; o.data[i * 4 + 1] = 45; o.data[i * 4 + 2] = 45; o.data[i * 4 + 3] = 255; }
-    mx.putImageData(o, 0, 0);
-    toast(t('Topilgan joylarni tekshiring: keraksizini 🧽 bilan o‘chiring'));
-  };
-  box.querySelector('#rpg').onclick = async () => {
-    const md = mx.getImageData(0, 0, W, H).data, mask = new Uint8Array(W * H);
-    for (let i = 0; i < mask.length; i++) mask[i] = md[i * 4 + 3] > 20 ? 1 : 0;
-    box.innerHTML = `<div class="empty"><span class="spin" style="color:var(--primary)"></span><div class="small muted" style="margin-top:10px" id="en-p">${t('Tuzatilmoqda…')}</div></div>`;
+  root.querySelectorAll('[name=st]').forEach((x) => (x.onchange = upd));
+  upd();
+}
+// ✨ faqat o'zi yuklagan rasmga; boshqalarnikiga — faqat shajara egasi
+const canEnhance = (it) => !!myId() && (String(it?.by?.id || '') === myId() || !!S.tree?.isOwner);
+
+function enhanceSheet(it) {
+  const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">✨ ${t('Sifatni oshirish')}</div><button class="icon-btn" data-close>${I.close}</button></div>
+    <div class="sheet-body" id="en-b">${stepsHtml(false)}
+      <button class="btn btn-primary btn-block" id="en-go" disabled>✨ ${t('Boshlash')}</button>
+      <div class="small muted" style="margin-top:8px">${t('Asl rasm o‘zgarmaydi. Natija yoqsa — albomga alohida nusxa bo‘lib qo‘shiladi.')}</div></div>`);
+  sh.classList.add('over-rv');
+  const box = sh.querySelector('#en-b');
+  bindSteps(box, (o) => (box.querySelector('#en-go').disabled = !o.n));
+  box.querySelector('#en-go').onclick = async () => {
+    const o = readSteps(box);
+    const wait = (msg) => { box.innerHTML = `<div class="empty"><span class="spin" style="color:var(--primary)"></span><div class="small muted" style="margin-top:10px" id="en-p">${msg}</div></div>`; };
+    wait(t('Rasm yuklanmoqda…'));
     try {
-      await new Promise((r) => setTimeout(r, 30));
-      const d = bx.getImageData(0, 0, W, H);
-      // MI-GAN (telefonda AI) — bo'lmasa oddiy to'ldirish
-      const ai = await import('./migan.js?v=1').then((M) => M.inpaintAI(d.data, W, H, R.dilate(mask, W, H, 2), (p) => { const el = box.querySelector('#en-p'); if (el) el.textContent = `${t('AI tuzatmoqda…')} ${Math.round(p * 100)}%`; }).then(() => true)).catch((e) => { console.warn('migan', e); return false; });
-      if (!ai) R.inpaint(d.data, W, H, R.dilate(mask, W, H, 1));
-      R.levels(d.data);
-      bx.putImageData(d, 0, 0);
-      const prog = (p) => { const el = box.querySelector('#en-p'); if (el) el.textContent = `${t('AI tiniqlashtirmoqda…')} ${Math.round(p * 100)}%`; };
-      let url = await localUpscale(cb, prog, true).catch(() => null);
-      if (!url) { R.sharpen(cb, 0.5); url = cb.toDataURL('image/jpeg', 0.92); }
-      else {
-        const im2 = new Image(); im2.src = url; await im2.decode();
-        const c2 = document.createElement('canvas'); c2.width = im2.width; c2.height = im2.height;
-        c2.getContext('2d').drawImage(im2, 0, 0); R.sharpen(c2, 0.35); url = c2.toDataURL('image/jpeg', 0.92);
-      }
-      box.innerHTML = `<div class="cmp" id="cmp"><img src="${url}" alt=""><div class="cmp-a"><img src="${it.src || it.thumb}" alt=""></div><input type="range" min="0" max="100" value="50" id="cmp-r"><span class="cmp-l">${t('Asl')}</span><span class="cmp-r">${t('Yangi')}</span></div>
-        <div class="small muted" style="margin:8px 2px">${t('Chiziqni suring va solishtiring.')}</div>
-        <div class="row" style="gap:8px"><button class="btn btn-ghost grow" id="en-again">🩹 ${t('Yana tuzatish')}</button><button class="btn btn-primary grow" id="en-s">💾 ${t('Saqlash')}</button></div>`;
-      const cmp = box.querySelector('#cmp');
-      cmp.style.setProperty('--x', '50%');
-      box.querySelector('#cmp-r').oninput = (e) => cmp.style.setProperty('--x', e.target.value + '%');
-      // natija ustida yana davom ettirish (qolgan dog'lar uchun)
-      box.querySelector('#en-again').onclick = () => repairEditor({ ...it, src: url }, sh, box);
-      box.querySelector('#en-s').onclick = async (e) => {
-        e.currentTarget.disabled = true;
-        try {
-          await uploadOriginal(new File([dataBlob(url)], 'restored.jpg', { type: 'image/jpeg' }), { album: it.album, caption: `🩹 ${it.caption || ''}`.trim() });
-          if (it.delId) await api(`album/i/${it.delId}`, { method: 'DELETE' }).catch(() => {});
-          toast(t('Saqlandi ✓')); closeTopSheet(); loadAlbum(true).catch(() => {});
-        } catch (err) { toast(err.message, true); e.currentTarget.disabled = false; }
-      };
-    } catch (err) { box.innerHTML = `<div class="empty small muted">${esc(err.message)}</div>`; }
+      const c = await loadForEdit(it.src);
+      const asl = URL.createObjectURL(await canvasBlob(c));
+      const res = await runSteps(c, o, { box, sh, wait, itemId: it.id });
+      if (res) await showResult(res, { box, sh, it, o, asl, wait });
+    } catch (err) { if (sh.isConnected) box.innerHTML = `<div class="empty small muted">${esc(err.message)}</div>`; }
   };
+}
+// Tanlangan usullar ketma-ket. Natija: { blob, rid } (AI — serverdagi nusxa) yoki { blob } (telefonda)
+async function runSteps(c, o, { box, sh, wait, itemId }) {
+  const R = await import('./restore.js?v=2');
+  const pct = (label) => (p) => { const el = box.querySelector('#en-p'); if (el) el.textContent = `${label} ${Math.round(p * 100)}%`; };
+  if (o.fix) { c = await repairStep(c, box, R, sh); if (!c) return null; }
+  if (o.old) { wait(`🎞 ${t('Rang va kontrast tuzatilmoqda…')}`); await tick(); oldFix(c, R); }
+  if (o.up) { const l = `🔍 ${t('AI tiniqlashtirmoqda…')}`; wait(l); c = await upStep(c, pct(l), R); }
+  if (o.ai) {
+    wait(`🪄 ${t('AI ishlamoqda… 30–90 soniya')}`);
+    const r = await api(`album/i/${itemId}/enhance`, { method: 'POST', body: { img: prepForAI(c), color: o.color }, timeout: 290000 });
+    return { rid: r.rid, blob: await fetchBlob(r.url) };
+  }
+  return { blob: await canvasBlob(c) };
+}
+async function showResult(res, { box, sh, it, o, asl, wait }) {
+  if (!sh.isConnected) return;
+  const url = URL.createObjectURL(res.blob);
+  box.innerHTML = `<div class="cmp" id="cmp"><img src="${url}" alt=""><div class="cmp-a"><img src="${asl}" alt=""></div><input type="range" min="0" max="100" value="50" id="cmp-r"><span class="cmp-l">${t('Asl')}</span><span class="cmp-r">${t('Yangi')}</span></div>
+    <div class="small muted" style="margin:8px 2px">${t('Chiziqni suring va solishtiring. Yuzlar tanib bo‘lmas darajada o‘zgargan bo‘lsa — saqlamang.')}</div>
+    <div class="row" style="gap:8px"><button class="btn btn-ghost grow" id="en-again">🩹 ${t('Yana tuzatish')}</button><button class="btn btn-primary grow" id="en-s">💾 ${o.keep ? t('Saqlash') : t('Asl o‘rniga saqlash')}</button></div>`;
+  const cmp = box.querySelector('#cmp');
+  cmp.style.setProperty('--x', '50%');
+  box.querySelector('#cmp-r').oninput = (e) => cmp.style.setProperty('--x', e.target.value + '%');
+  // natija ustida yana shikast tuzatish (qolgan dog'lar uchun)
+  box.querySelector('#en-again').onclick = async () => {
+    wait(t('Rasm yuklanmoqda…'));
+    try {
+      const c = await repairStep(await loadForEdit(res.blob, 3200), box, await import('./restore.js?v=2'), sh);
+      if (c) await showResult({ blob: await canvasBlob(c) }, { box, sh, it, o: { ...o, fix: true }, asl, wait });
+    } catch (err) { if (sh.isConnected) box.innerHTML = `<div class="empty small muted">${esc(err.message)}</div>`; }
+  };
+  box.querySelector('#en-s').onclick = async (e) => {
+    e.currentTarget.disabled = true;
+    try {
+      const ic = Object.keys(STEP_IC).filter((k) => o[k]).map((k) => STEP_IC[k]).join('');
+      if (res.rid) await api(`album/i/${it.id}/enhance`, { method: 'POST', body: { rid: res.rid, color: o.color }, timeout: 90000 });
+      else await uploadOriginal(new File([res.blob], 'tuzatilgan.jpg', { type: 'image/jpeg' }), { album: it.album, caption: `${ic} ${it.caption || ''}`.trim() });
+      if (!o.keep) await api(`album/i/${it.id}`, { method: 'DELETE' }).catch(() => {});
+      toast(t('Saqlandi ✓'));
+      if (o.keep) closeTopSheet(); else closeAllSheets();
+      loadAlbum(true).catch(() => {});
+    } catch (err) { toast(err.message, true); e.currentTarget.disabled = false; }
+  };
+}
+
+// Yuklangandan keyin ishlov (fonda): 🩹 tanlansa — har rasm uchun bo'yash oynasi ochiladi; qolganlari o'zi ishlaydi.
+// 🪄 — serverda: rasm yuborilgach ilovadan chiqib ketsa ham davom etadi, tayyor bo'lgach bot xabar beradi.
+async function processUploads(jobs, o) {
+  const R = await import('./restore.js?v=2');
+  const ic = Object.keys(STEP_IC).filter((k) => o[k]).map((k) => STEP_IC[k]).join('');
+  let done = 0, bg = 0;
+  for (const [i, j] of jobs.entries()) {
+    try {
+      let c = await loadForEdit(j.file);
+      if (o.fix) {
+        const sh = openSheet(`<div class="sheet-head"><div class="h2 grow">🩹 ${t('Shikastlarni tuzatish')}${jobs.length > 1 ? ` · ${i + 1}/${jobs.length}` : ''}</div><button class="icon-btn" data-close>${I.close}</button></div><div class="sheet-body" id="en-b"></div>`);
+        c = await repairStep(c, sh.querySelector('#en-b'), R, sh);
+        if (sh.isConnected) closeTopSheet();
+        if (!c) continue; // oyna yopildi — bu rasmga ishlov berilmaydi
+      }
+      if (jobs.length > 1 || o.old || o.up || o.ai) toast(`✨ ${t('Ishlov berilmoqda…')} ${i + 1}/${jobs.length}`);
+      if (o.old) { await tick(); oldFix(c, R); }
+      if (o.up) c = await upStep(c, null, R);
+      if (o.ai) {
+        await api(`album/i/${j.itemId}/enhance`, { method: 'POST', body: { img: prepForAI(c), color: o.color, bg: true, keep: o.keep }, timeout: 60000 });
+        bg++;
+        continue;
+      }
+      await uploadOriginal(new File([await canvasBlob(c)], 'tuzatilgan.jpg', { type: 'image/jpeg' }), { album: j.album, caption: `${ic} ${j.caption}`.trim() });
+      if (!o.keep) await api(`album/i/${j.itemId}`, { method: 'DELETE' }).catch(() => {});
+      done++;
+    } catch (err) { toast(err.message, true); }
+  }
+  const bgMsg = t('🪄 AI fonda ishlamoqda — tayyor bo‘lgach bot xabar beradi');
+  if (done) toast(t('✨ {n} ta rasmga ishlov berildi', { n: done }) + (bg ? ' · ' + bgMsg : ''));
+  else if (bg) toast(bgMsg);
+  refreshAlbum().catch(() => {});
+}
+
+// 🩹 Shikastlarni tuzatish: barmoq bilan belgilash (+ avto-topish) → MI-GAN (telefonda AI) bilan to'ldirish.
+// Bo'yash ko'rinishi ≤1000 px, to'ldirish esa rasmning o'z o'lchamida. Natija: canvas; oyna yopilsa — null.
+function repairStep(c, box, R, sh) {
+  return new Promise((done) => {
+    if (sh) new MutationObserver((_, ob) => { if (!sh.isConnected) { ob.disconnect(); done(null); } }).observe(document.body, { childList: true, subtree: true });
+    import('./migan.js?v=1').then((M) => M.preload()); // AI model bo'yash paytida yuklanib turadi
+    const k = Math.min(1, 1000 / Math.max(c.width, c.height));
+    const W = Math.round(c.width * k), H = Math.round(c.height * k);
+    box.innerHTML = `<div class="rp-wrap" id="rpw"><div class="rp-in" id="rpi"><canvas id="rpb"></canvas><canvas id="rpm" class="rp-m"></canvas></div></div>
+      <div class="seg" id="rpt" style="margin-top:8px"><button type="button" class="on" data-t="paint">🖌 ${t('Bo‘yash')}</button><button type="button" data-t="erase">🧽 ${t('O‘chirish')}</button><button type="button" data-t="pan">✋ ${t('Surish')}</button></div>
+      <div class="row" style="gap:8px;margin-top:8px;align-items:center"><span class="small muted">${t('Cho‘tka')}</span><input type="range" id="rps" min="3" max="60" value="14" class="grow">
+        <button type="button" class="btn btn-ghost btn-sm" id="rpz">🔍 1×</button><button type="button" class="btn btn-ghost btn-sm" id="rpu">↩️</button></div>
+      <div class="small muted" style="margin:8px 2px">${t('Shikastlangan joylarni (oq dog‘, ko‘chgan, tirnalgan) qizil bilan bo‘yang. Mayda joylar uchun 🔍 bilan kattalashtiring. Ko‘z, nishon kabi joylarga tegmang.')}</div>
+      <div class="row" style="gap:8px"><button type="button" class="btn btn-ghost grow" id="rpa">🤖 ${t('Avto-topish')}</button><button type="button" class="btn btn-primary grow" id="rpg">✨ ${t('Tuzatish')}</button></div>
+      <button type="button" class="btn btn-ghost btn-sm full" id="rpk" style="margin-top:8px">⏭ ${t('Shikastsiz davom etish')}</button>`;
+    const cb = box.querySelector('#rpb'), cm = box.querySelector('#rpm'), inner = box.querySelector('#rpi');
+    cb.width = cm.width = W; cb.height = cm.height = H;
+    const bx = cb.getContext('2d', { willReadFrequently: true }), mx = cm.getContext('2d', { willReadFrequently: true });
+    bx.imageSmoothingQuality = 'high';
+    bx.drawImage(c, 0, 0, W, H);
+    let tool = 'paint', zoom = 1, last = null;
+    const hist = [];
+    const snap = () => { hist.push(mx.getImageData(0, 0, W, H)); if (hist.length > 8) hist.shift(); };
+    box.querySelectorAll('#rpt button').forEach((b) => (b.onclick = () => {
+      tool = b.dataset.t;
+      box.querySelectorAll('#rpt button').forEach((x) => x.classList.toggle('on', x === b));
+      cm.style.touchAction = tool === 'pan' ? 'auto' : 'none';
+    }));
+    box.querySelector('#rpz').onclick = (e) => {
+      zoom = zoom >= 3 ? 1 : zoom + 1;
+      inner.style.width = zoom * 100 + '%';
+      e.currentTarget.textContent = `🔍 ${zoom}×`;
+    };
+    box.querySelector('#rpu').onclick = () => { const d = hist.pop(); if (d) mx.putImageData(d, 0, 0); else mx.clearRect(0, 0, W, H); };
+    const pt = (e) => { const r = cm.getBoundingClientRect(); return [((e.clientX - r.left) * W) / r.width, ((e.clientY - r.top) * H) / r.height]; };
+    const stroke = (a, b) => {
+      const sz = +box.querySelector('#rps').value * Math.max(1, W / 1000) / Math.sqrt(zoom);
+      mx.globalCompositeOperation = tool === 'erase' ? 'destination-out' : 'source-over';
+      mx.strokeStyle = mx.fillStyle = '#ff2d2d'; mx.lineWidth = sz; mx.lineCap = mx.lineJoin = 'round';
+      mx.beginPath(); mx.moveTo(...a); mx.lineTo(...b); mx.stroke();
+    };
+    cm.style.touchAction = 'none';
+    cm.addEventListener('pointerdown', (e) => { if (tool === 'pan') return; snap(); cm.setPointerCapture(e.pointerId); last = pt(e); stroke(last, last); });
+    cm.addEventListener('pointermove', (e) => { if (!last) return; const p = pt(e); stroke(last, p); last = p; });
+    const end = () => (last = null);
+    cm.addEventListener('pointerup', end); cm.addEventListener('pointercancel', end);
+    box.querySelector('#rpa').onclick = () => {
+      snap();
+      const m = R.detectDefects(bx.getImageData(0, 0, W, H).data, W, H);
+      const o = mx.getImageData(0, 0, W, H);
+      for (let i = 0; i < m.length; i++) if (m[i]) { o.data[i * 4] = 255; o.data[i * 4 + 1] = 45; o.data[i * 4 + 2] = 45; o.data[i * 4 + 3] = 255; }
+      mx.putImageData(o, 0, 0);
+      toast(t('Topilgan joylarni tekshiring: keraksizini 🧽 bilan o‘chiring'));
+    };
+    box.querySelector('#rpk').onclick = () => done(c);
+    box.querySelector('#rpg').onclick = async () => {
+      // belgi rasmning o'z o'lchamiga kattalashtiriladi
+      const big = document.createElement('canvas'); big.width = c.width; big.height = c.height;
+      const gx = big.getContext('2d', { willReadFrequently: true });
+      gx.drawImage(cm, 0, 0, c.width, c.height);
+      const md = gx.getImageData(0, 0, c.width, c.height).data, mask = new Uint8Array(c.width * c.height);
+      let any = 0;
+      for (let i = 0; i < mask.length; i++) if (md[i * 4 + 3] > 20) { mask[i] = 1; any++; }
+      if (!any) return toast(t('Avval shikastlangan joylarni bo‘yang'), true);
+      box.innerHTML = `<div class="empty"><span class="spin" style="color:var(--primary)"></span><div class="small muted" style="margin-top:10px" id="en-p">${t('Tuzatilmoqda…')}</div></div>`;
+      await tick();
+      const x = c.getContext('2d', { willReadFrequently: true });
+      const d = x.getImageData(0, 0, c.width, c.height);
+      const r = Math.max(2, Math.round(2 / k));
+      // MI-GAN (telefonda AI) — bo'lmasa oddiy to'ldirish
+      const ai = await import('./migan.js?v=1').then((M) => M.inpaintAI(d.data, c.width, c.height, R.dilate(mask, c.width, c.height, r), (p) => { const el = box.querySelector('#en-p'); if (el) el.textContent = `${t('AI tuzatmoqda…')} ${Math.round(p * 100)}%`; }).then(() => true)).catch((e) => { console.warn('migan', e); return false; });
+      if (!ai) R.inpaint(d.data, c.width, c.height, R.dilate(mask, c.width, c.height, Math.max(1, r - 1)));
+      x.putImageData(d, 0, 0);
+      done(c);
+    };
+  });
 }
 
 // «Rasmdagilar kim?» — shajaradan belgilash
@@ -1417,7 +1528,7 @@ function openViewer(ids, index, opts = {}) {
         ${it.kind === 'video' && it.type !== 'animation' ? `<button class="rv-b" data-act="mute">${VI.mute(false)}</button>` : ''}
         ${it.kind === 'video' && it.src ? `<button class="rv-b spd" data-act="spd"><b>1×</b></button>` : ''}
         ${inTelegram && (!it.priv || it.member) ? `<button class="rv-b" data-act="send">${VI.send}<span class="sn">${fmtN(it.sends)}</span></button>` : ''}
-        <div class="rv-below">${inTelegram && it.kind === 'image' && it.src && (!it.priv || it.member) ? `<button class="rv-b" data-act="enh"><b style="font-size:20px">✨</b></button>` : ''}
+        <div class="rv-below">${inTelegram && it.kind === 'image' && it.src && (!it.priv || it.member) && canEnhance(it) ? `<button class="rv-b" data-act="enh"><b style="font-size:20px">✨</b></button>` : ''}
           ${inTelegram ? `<button class="rv-b" data-act="tags"><b style="font-size:20px">👥</b><span class="tgn">${(it.tags || []).length || ''}</span></button>` : ''}
           ${it.priv && it.member && albOf(it)?.mine ? `<button class="rv-b pubb ${it.pub ? 'on' : ''}" data-act="pub"><b>🌐</b><span>${it.pub ? t('Umumiyda') : t('Umumiy')}</span></button>` : ''}</div>
       </div>
@@ -1955,25 +2066,13 @@ function uploadForm(sh) {
       <div class="thumbs" id="pv"></div>
       <div class="card note hidden" id="bigw"></div>
       <div class="field"><label>${t('Albom')}</label>${albumSelect(S.albumFilter !== 'all' ? S.albumFilter : S.album.albums[0]?.id)}</div>
-      <div class="card up-proc" style="padding:10px 12px;margin-bottom:10px">
-        <div class="small muted" style="margin-bottom:6px">✨ ${t('Rasmlarga ishlov berish (ixtiyoriy)')}</div>
-        <label class="row" style="gap:10px;padding:6px 0"><input type="radio" name="proc" value="" checked><b class="grow">${t('Ishlov bermaslik')}</b></label>
-        <label class="row" style="gap:10px;padding:6px 0"><input type="radio" name="proc" value="ai"><div class="grow"><b>🪄 ${t('Sifatli qilish (AI)')}</b><div class="small muted">${t('Odamlar, ranglar, joylashuv o‘zgarmaydi. Serverda fonda ishlaydi — ilovadan chiqib ketsangiz ham davom etadi, tayyor bo‘lgach bot xabar beradi.')}</div></div></label>
-        <label class="row" style="gap:10px;padding:6px 0"><input type="radio" name="proc" value="up"><div class="grow"><b>🔍 ${t('Telefonda tiniqlashtirish')}</b><div class="small muted">${t('Kichik rasmlar 2 barobar kattalashib tiniqlashadi. Ilova ochiq turganda fonda ishlaydi.')}</div></div></label>
-        <label class="row" style="gap:10px;padding:6px 0"><input type="radio" name="proc" value="fix"><div class="grow"><b>🩹 ${t('Shikastlarni tuzatish')}</b><div class="small muted">${t('Yuklangach har bir rasm ochiladi: shikastlangan joylarni bo‘yaysiz, AI to‘ldiradi.')}</div></div></label>
-        ${S.album?.rcol ? `<label class="row hidden" id="up-col" style="gap:10px;padding:6px 0"><input type="checkbox" name="color"><div class="grow"><b>🎨 ${t('Oq-qora rasmni rangli qilish')}</b></div></label>` : ''}
-        <label class="row hidden" id="up-keep" style="gap:10px;padding:8px 0 2px;border-top:1px solid var(--line);margin-top:4px"><input type="checkbox" name="keep" checked><div class="grow"><b>📎 ${t('Aslini ham saqlash')}</b><div class="small muted">${t('Belgilansa — asl rasm ham, ishlov berilgani ham albomda qoladi. Belgilanmasa — faqat ishlov berilgani.')}</div></div></label>
-      </div>
+      ${stepsHtml(true)}
       <div class="field" id="capf"><label>${t('Izoh — kim, qachon, qayerda?')}</label><textarea class="input" name="caption" maxlength="900" placeholder="${t('Masalan: Bobomning 80 yillik yubileyi, 2019')}"></textarea></div>
       <button class="btn btn-primary btn-block" id="ub" disabled>${t('Yuklash')}</button>
       <div class="hint" style="margin-top:12px">📦 ${t('50 MB dan katta fayllarni bot orqali yuboring: «Albomga qo‘shish» → «Bot orqali yuborish».')}</div>
     </form>`;
   bindAlbumSelect(sh);
-  sh.querySelectorAll('[name=proc]').forEach((r) => (r.onchange = () => {
-    const v = sh.querySelector('[name=proc]:checked').value;
-    sh.querySelector('#up-keep').classList.toggle('hidden', !v);
-    sh.querySelector('#up-col')?.classList.toggle('hidden', v !== 'ai');
-  }));
+  bindSteps(sh);
   const input = sh.querySelector('[name=files]');
   let files = [];
   input.onchange = () => {
@@ -2011,34 +2110,19 @@ function uploadForm(sh) {
     const btn = sh.querySelector('#ub');
     btn.disabled = true;
     let ok = 0;
-    const toFix = [], later = [], bgAI = [];
-    const proc = f.get('proc') || '', keep = !!f.get('keep'), color = !!f.get('color');
+    const o = readSteps(sh), jobs = [];
     const caps = [...sh.querySelectorAll('[data-cap]')].map((x) => x.value.trim());
     for (const [i, file] of files.entries()) {
       btn.innerHTML = `<span class="spin"></span> ${ok + 1}/${files.length}`;
       if (files.length > 1) body.caption = caps[i] || '';
       const pct = sh.querySelector(`[data-pct="${i}"]`);
       try {
-        const isImg = /^image\/(jpeg|png|webp)/.test(file.type);
-        const ai = isImg && proc === 'ai' && S.album?.rst !== false;
-        // asl rasm o'zgarmasdan yuklanadi; tuzatish oynasi yuklashdan keyin ochiladi (natija — alohida nusxa)
-        const src = file;
-        const r = await uploadOriginal(src, body, (k) => {
+        // asl rasm o'zgarmasdan yuklanadi; tanlangan ishlovlar yuklashdan keyin (natija — alohida nusxa)
+        const r = await uploadOriginal(file, body, (k) => {
           btn.innerHTML = `<span class="spin"></span> ${ok + 1}/${files.length} · ${Math.round(k * 100)}%`;
           if (pct) pct.textContent = `${Math.round(k * 100)}%`;
         });
-        // 🪄 serverda fonda: so'rov yuboriladi, natijani kutilmaydi (ilova yopilsa ham ishlaydi)
-        if (ai && r.item?.id) {
-          btn.innerHTML = `<span class="spin"></span> ${ok + 1}/${files.length} · 🪄`;
-          try {
-            const prep = await prepForAI(URL.createObjectURL(file));
-            await api(`album/i/${r.item.id}/enhance`, { method: 'POST', body: { img: prep.img, color, bg: true, keep }, timeout: 60000 });
-            bgAI.push(r.item.id);
-          } catch (err) { toast(err.message, true); }
-        }
-        const x = { file, src: URL.createObjectURL(file), album: r.album.id, caption: body.caption || '', delId: keep ? null : r.item?.id };
-        if (isImg && (proc === 'up' || (proc === 'ai' && !ai))) later.push(x);
-        if (isImg && proc === 'fix') toFix.push(x);
+        if (o.n && /^image\/(jpeg|png|webp)/.test(file.type) && r.item?.id) jobs.push({ file, itemId: r.item.id, album: r.album.id, caption: body.caption || '' });
         if (pct) pct.textContent = '✅';
         if (body.albumName) { body.album = r.album.id; delete body.albumName; }
         ok++;
@@ -2049,28 +2133,10 @@ function uploadForm(sh) {
       }
     }
     closeAllSheets();
-    if (ok) toast(t('{n} ta fayl qo‘shildi 📸', { n: ok }) + (bgAI.length ? ' · ' + t('🪄 AI fonda ishlamoqda — tayyor bo‘lgach bot xabar beradi') : ''));
+    if (ok) toast(t('{n} ta fayl qo‘shildi 📸', { n: ok }));
     await refreshAlbum();
-    for (const x of toFix) await repairSheet(x);
-    if (later.length) localEnhanceQueue(later);
+    if (jobs.length) processUploads(jobs, o);
   };
-}
-
-// 🔍 Telefonda tiniqlashtirish (yuklashdan keyin, fonda — ilovaning boshqa bo'limlarida yuraverish mumkin)
-async function localEnhanceQueue(list) {
-  let done = 0, skip = 0;
-  for (const [i, x] of list.entries()) {
-    try {
-      toast(`🔍 ${t('Tiniqlashtirilmoqda…')} ${i + 1}/${list.length}`);
-      const url = await localUpscale(x.src, null, true);
-      if (!url.startsWith('data:')) { skip++; continue; } // rasm allaqachon katta — kerak emas
-      await uploadOriginal(new File([dataBlob(url)], 'tiniq.jpg', { type: 'image/jpeg' }), { album: x.album, caption: `🔍 ${x.caption}`.trim() });
-      if (x.delId) await api(`album/i/${x.delId}`, { method: 'DELETE' }).catch(() => {});
-      done++;
-    } catch (err) { toast(err.message, true); }
-  }
-  toast(done ? t('🔍 {n} ta rasm tiniqlashtirildi ✓', { n: done }) + (skip ? ` · ${t('{n} tasi allaqachon katta', { n: skip })}` : '') : t('Rasmlar allaqachon yetarlicha katta — tiniqlashtirish kerak emas'));
-  if (S.tab === 'album') refreshAlbum().catch(() => {});
 }
 
 // ------------------------------------------------------------ Tahlil tab ---
@@ -2594,48 +2660,6 @@ const fileB64 = (blob) => new Promise((ok, bad) => {
   r.onerror = () => bad(r.error);
   r.readAsDataURL(blob);
 });
-// 🪄 Eski (chop etilgan) rasmni avtomatik tuzatish — faqat oddiy ishlov, rasmga hech narsa «chizilmaydi»:
-// har kanal bo'yicha darajalarni cho'zish (sarg'ayish/xiralikni ketkazadi, oq balans), so'ng yengil keskinlik.
-async function autoFix(file) {
-  const img = await createImageBitmap(file);
-  const k = Math.min(1, 3000 / Math.max(img.width, img.height));
-  const c = document.createElement('canvas');
-  c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
-  const ctx = c.getContext('2d', { willReadFrequently: true });
-  ctx.drawImage(img, 0, 0, c.width, c.height);
-  const d = ctx.getImageData(0, 0, c.width, c.height);
-  const p = d.data;
-  const lo = [], hi = [];
-  for (let ch = 0; ch < 3; ch++) {
-    const h = new Uint32Array(256);
-    for (let i = ch; i < p.length; i += 16) h[p[i]]++; // har 4-piksel — tezlik uchun
-    const n = p.length / 16;
-    let s = 0, a = 0, b = 255;
-    for (let v = 0; v < 256; v++) { s += h[v]; if (s > n * 0.005) { a = v; break; } }
-    s = 0;
-    for (let v = 255; v >= 0; v--) { s += h[v]; if (s > n * 0.005) { b = v; break; } }
-    if (b - a < 100) { const m = (a + b) / 2; a = Math.max(0, m - 50); b = Math.min(255, m + 50); } // haddan oshirmaslik
-    lo[ch] = a; hi[ch] = b;
-  }
-  const lut = [0, 1, 2].map((ch) => Uint8ClampedArray.from({ length: 256 }, (_, v) => ((v - lo[ch]) * 255) / (hi[ch] - lo[ch])));
-  for (let i = 0; i < p.length; i += 4) { p[i] = lut[0][p[i]]; p[i + 1] = lut[1][p[i + 1]]; p[i + 2] = lut[2][p[i + 2]]; }
-  ctx.putImageData(d, 0, 0);
-  // yengil keskinlik (unsharp mask): asl + 0.5 × (asl − xiralashtirilgan)
-  if ('filter' in ctx) {
-    const b = document.createElement('canvas');
-    b.width = c.width; b.height = c.height;
-    const bx = b.getContext('2d', { willReadFrequently: true });
-    bx.filter = `blur(${Math.max(1, Math.round(c.width / 1500))}px)`;
-    bx.drawImage(c, 0, 0);
-    const bd = bx.getImageData(0, 0, c.width, c.height).data;
-    const o = ctx.getImageData(0, 0, c.width, c.height);
-    const q = o.data;
-    for (let i = 0; i < q.length; i += 4) for (let j = 0; j < 3; j++) q[i + j] = q[i + j] + 0.5 * (q[i + j] - bd[i + j]);
-    ctx.putImageData(o, 0, 0);
-  }
-  const blob = await new Promise((ok) => c.toBlob(ok, 'image/jpeg', 0.92));
-  return new File([blob], (file.name || 'photo').replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' });
-}
 // Katta rasmni (telefon kamerasi) 2000 px gacha kichraytirib JPEG qilamiz — yuklash tezlashadi
 async function shrinkImage(file) {
   const img = await createImageBitmap(file);
