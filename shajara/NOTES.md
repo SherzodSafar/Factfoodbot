@@ -92,4 +92,5 @@ O'zbekcha, qisqa javob, tokenlarni tejash, tez bajarish. Ruxsat umumiy berilgan 
 - Tug'ilgan kun va xotira kuni — alohida xabarlar (`birthdayText`, `memorialText`). Ismlar ilovadagi kartaga havola.
 - Hurmat qo'shimchasi (`honor`, faqat uz): 30–50 aka/opa, 50–70 ota/ona, 70+ bobo/momo (marhumlarda — vafotdagi yoshi).
 - Haftalik «hali qo'shilmaganlar» eslatmasi asosan 15–45 yoshlilarni ko'rsatadi, ismlar kartaga havola.
+- Tabrik va taklif xabarlarida marhumlar ishlatilmaydi (`isDead`: deceased, vafot sanasi bor yoki 100 yoshdan oshgan).
 - Telegram ⋮ «Reload»: `sessionStorage.sh_nav` — qayta yuklanganda deep link (start_param) qayta ishlamaydi, oxirgi bo'lim ochiladi.

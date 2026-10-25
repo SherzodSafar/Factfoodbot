@@ -349,6 +349,8 @@ export async function changeSettings(tree, body, who) {
 }
 
 /** Bugungi tug'ilgan kunlar va xotira kunlari (Toshkent vaqti bilan). */
+/** Vafot etgan (yoki vafot sanasi bor / 100 yoshdan oshgan — tirik deb hisoblanmaydi): tabrik va taklif xabarlarida ishlatilmaydi. */
+export const isDead = (p, year = new Date().getFullYear()) => !!(p.deceased || p.death || (p.birth && year - Number(String(p.birth).slice(0, 4)) > 100));
 export function todaysEvents(tree, date = new Date()) {
   const local = new Date(date.getTime() + 5 * 3600e3);
   const md = `${String(local.getUTCMonth() + 1).padStart(2, '0')}-${String(local.getUTCDate()).padStart(2, '0')}`;
@@ -356,7 +358,7 @@ export function todaysEvents(tree, date = new Date()) {
   const births = [];
   const memorials = [];
   for (const p of tree.persons) {
-    if (p.birth?.length === 10 && p.birth.slice(5) === md && !p.deceased) {
+    if (p.birth?.length === 10 && p.birth.slice(5) === md && !isDead(p, year)) {
       births.push({ id: p.id, name: p.name, gender: p.gender, age: year - Number(p.birth.slice(0, 4)) });
     }
     if (p.death?.length === 10 && p.death.slice(5) === md) {

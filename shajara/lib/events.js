@@ -1,6 +1,6 @@
 // Kunlik voqealar: tug'ilgan kunlar va xotira kunlari, webhook kaliti.
 import { hashCode, signInvite } from './auth.js';
-import { todaysEvents } from './tree.js';
+import { todaysEvents, isDead } from './tree.js';
 import { t } from './i18n.js';
 import { escapeHtml } from './notify.js';
 
@@ -34,7 +34,7 @@ export const birthdayOutsiders = (tree) => todaysEvents(tree).births.some((b) =>
 /** Haftalik turtki: shajarada bor, lekin ilovaga hali kirmagan tirik qarindoshlar — taklif qilishga undash. */
 export function nudgeText(tree, lang) {
   const L = linked(tree);
-  const alive = tree.persons.filter((p) => !p.deceased);
+  const alive = tree.persons.filter((p) => !isDead(p));
   const all = alive.filter((p) => !L.has(p.id) && !(ageOf(p) != null && ageOf(p) < 12));
   if (!all.length) return null;
   // asosan 15–45 yoshlilar (telefon va Telegram'dan faol foydalanadiganlar); ular bo'lmasa — qolganlar
@@ -82,7 +82,7 @@ export function upcomingText(tree, lang, linkFor) {
   const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   const list = [];
   for (const p of tree.persons) {
-    if (p.deceased || p.birth?.length !== 10) continue;
+    if (isDead(p) || p.birth?.length !== 10) continue;
     const [y, m, d] = p.birth.split('-').map(Number);
     let next = Date.UTC(now.getUTCFullYear(), m - 1, d);
     if (next < today) next = Date.UTC(now.getUTCFullYear() + 1, m - 1, d);
