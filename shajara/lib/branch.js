@@ -193,23 +193,79 @@ export async function remindBranch(tree, bid, to) {
 }
 
 /** Taklifni saqlash va shajara egasi/tahrirchilariga (zanjirda — yuqori mas'ulga ham) xabar berish. */
-export async function submitProposal(tree, bid, b, user, ops) {
+// qon qarindoshlar ismida familiya/otasining ismi bo'lsa — faqat ism
+function normOps(tree, ops) {
   ops = (Array.isArray(ops) ? ops : []).slice(0, 500);
-  if (!ops.length) throw new HttpError(400, 'O‘zgarish yo‘q');
-  // qon qarindoshlar ismida familiya/otasining ismi bo'lsa — faqat ism
   const byId0 = new Map(tree.persons.map((p) => [p.id, p]));
   for (const o of ops) {
-    if (!o.f?.name) continue;
+    if (!o?.f?.name) continue;
     const blood = o.op === 'add' ? !!(o.father || o.mother) : !!(byId0.get(o.id)?.father_id || byId0.get(o.id)?.mother_id);
     if (blood) o.f.name = stripSurname(o.f.name);
   }
+  return ops;
+}
+const isDraft = (x, bid, uid) => x.status === 'draft' && x.bid === bid && x.by?.id === uid;
+
+/** Chala to'ldirilgan holat (qoralama): mas'ul istalgan vaqtda qaytib davom ettiradi, egasi esa kutmasdan qabul qila oladi.
+ *  state — wizard holati (xom o'zgarishlar + qadam), ops — qabul qilishga yaroqli qismi (ismsiz qatorlar va chala sanalar olib tashlanadi). */
+export async function saveDraft(tree, bid, b, user, raw, step) {
+  const uid = String(user.id);
+  const rawOps = normOps(tree, raw);
+  const ops = [];
+  for (const o of rawOps) {
+    if (!o || !['add', 'update'].includes(o.op)) continue;
+    const f = { ...(o.f || {}) };
+    for (const k of ['birth', 'death']) if (f[k] && !dateOk(f[k])) delete f[k];
+    if (o.op === 'add' && !String(f.name || '').trim()) continue;
+    if ('name' in f && !String(f.name || '').trim()) delete f.name;
+    if (o.op === 'update' && !Object.keys(f).length) continue;
+    ops.push({ ...o, f });
+  }
+  const key = `props/${tree.id}.json`;
+  const now = new Date().toISOString();
+  let first = false;
+  const upd = (d) => {
+    d.items = d.items || [];
+    let x = d.items.find((y) => isDraft(y, bid, uid));
+    if (!x) { x = { id: randomId(10), bid, head: b.head, by: { id: uid, name: nameOf(user) }, at: now, status: 'draft' }; d.items.unshift(x); }
+    Object.assign(x, { ops, warn: checkOps(tree, ops), state: { ops: rawOps, step: Number(step) || 0 }, upd: now });
+    if (ops.length && !x.told) first = x.told = true;
+    d.items = d.items.slice(0, 300);
+  };
+  if (!(await updateJson(key, upd))) { const d = { items: [] }; upd(d); await writeJson(key, d); }
+  if (first) {
+    const head = tree.persons.find((p) => p.id === b.head)?.name || '';
+    const { notifyEditors } = await import('./notify.js');
+    await notifyEditors(tree, `✍️ <b>${esc(tree.title)}</b>\n${esc(nameOf(user))} — <b>${esc(head)}</b> oilasi ma’lumotlarini to‘ldirishni boshladi.\nOxirigacha kutishingiz yoki chala holida ham hozir qabul qilib qo‘yishingiz mumkin (Oila havolalari bo‘limi) 👇`).catch(() => {});
+  }
+  return { n: ops.length };
+}
+/** Wizard ochilgandan keyin egasi chala ma'lumotni qabul qilgan bo'lsa — eski holatdan yuborib bo'lmaydi (takror qo'shilmasin). */
+export async function checkStale(treeId, bid, uid, base) {
+  if (!base) return;
+  const items = (await readJson(`props/${treeId}.json`))?.data?.items || [];
+  const r = items.find((y) => y.status === 'resume' && y.bid === bid && y.by?.id === String(uid));
+  if (r && Date.parse(r.at) > Number(base)) throw new HttpError(409, 'Kiritganlaringiz shajaraga qo‘shildi — sahifa yangilanadi');
+}
+/** Mas'ulning qoralamasi (davom ettirish uchun): { ops, step } yoki null. */
+export async function getDraft(treeId, bid, uid) {
+  const items = (await readJson(`props/${treeId}.json`))?.data?.items || [];
+  const x = items.find((y) => isDraft(y, bid, String(uid))) || items.find((y) => y.status === 'resume' && y.bid === bid && y.by?.id === String(uid));
+  return x?.state || null;
+}
+
+export async function submitProposal(tree, bid, b, user, ops) {
+  ops = normOps(tree, ops);
+  if (!ops.length) throw new HttpError(400, 'O‘zgarish yo‘q');
   validateOps(ops, tree.persons);
   const uid = String(user.id);
   const key = `props/${tree.id}.json`;
   const item = { id: randomId(10), bid, head: b.head, by: { id: uid, name: nameOf(user) }, at: new Date().toISOString(), status: 'pending', ops, warn: checkOps(tree, ops) };
   // ishonchli mas'ul — tekshiruvdan o'tgan bo'lsa darhol qo'shiladi (qaytarish mumkin)
   if (b.trust && !item.warn.length) { const { tree: _t, ...ap } = await applyWithUndo(tree.id, item, nameOf(user)); Object.assign(item, ap); }
-  if (!(await updateJson(key, (d) => { d.items = [item, ...(d.items || [])].slice(0, 300); }))) await writeJson(key, { items: [item] });
+  // to'liq yuborildi — qoralama o'rnini egallaydi
+  const drop = (y) => !((y.status === 'draft' || y.status === 'resume') && y.bid === bid && y.by?.id === uid);
+  if (!(await updateJson(key, (d) => { d.items = [item, ...(d.items || []).filter(drop)].slice(0, 300); }))) await writeJson(key, { items: [item] });
   const adds = ops.filter((o) => o.op === 'add').length;
   const head = tree.persons.find((p) => p.id === b.head)?.name || '';
   const html = `📨 <b>${esc(tree.title)}</b>\n<b>${esc(head)}</b> oilasi bo‘yicha yangi ma’lumotlar ${item.status === 'applied' ? 'avtomatik qo‘shildi' : 'keldi'}: +${adds} kishi, ${ops.length - adds} tuzatish.\n👤 ${esc(nameOf(user))}${item.warn.length ? `\n⚠️ ${item.warn.length} ta ogohlantirish` : ''}\n\n${item.status === 'applied' ? 'Xato bo‘lsa — panelda bir tugma bilan qaytarish mumkin 👇' : 'Ko‘rib chiqib tasdiqlang 👇'}`;

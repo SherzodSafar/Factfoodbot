@@ -357,10 +357,11 @@ export function todaysEvents(tree, date = new Date()) {
   const memorials = [];
   for (const p of tree.persons) {
     if (p.birth?.length === 10 && p.birth.slice(5) === md && !p.deceased) {
-      births.push({ id: p.id, name: p.name, age: year - Number(p.birth.slice(0, 4)) });
+      births.push({ id: p.id, name: p.name, gender: p.gender, age: year - Number(p.birth.slice(0, 4)) });
     }
     if (p.death?.length === 10 && p.death.slice(5) === md) {
-      memorials.push({ id: p.id, name: p.name, years: year - Number(p.death.slice(0, 4)) });
+      memorials.push({ id: p.id, name: p.name, gender: p.gender, years: year - Number(p.death.slice(0, 4)),
+        age: p.birth ? year - Number(String(p.birth).slice(0, 4)) : null });
     }
   }
   return { births, memorials };

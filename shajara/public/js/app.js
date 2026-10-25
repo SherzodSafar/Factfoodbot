@@ -388,7 +388,7 @@ function openTree(tree, token, viewCode) {
   setTree(tree);
   const saved = savedTrees().find((x) => x.id === tree.id) || {};
   saveTreeLocal({ id: tree.id, title: tree.title, count: tree.persons.length, token, viewCode: viewCode || saved.viewCode || null });
-  const want = new URLSearchParams(location.search).get('tab');
+  const want = new URLSearchParams(location.search).get('tab') || S.restoreTab;
   if (want && ['tree', 'list', 'album', 'stats', 'more'].includes(want)) S.tab = want;
   renderMain();
 }
@@ -483,6 +483,7 @@ function switchTab(tab, force) {
     return;
   }
   S.tab = tab;
+  nav.set({ tab });
   haptic('light');
   $app.querySelectorAll('.tab').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
   $app.querySelectorAll('.view').forEach((v) => (v.style.display = v.dataset.view === tab ? '' : 'none'));
@@ -3220,6 +3221,15 @@ async function renderBranchWizard(treeId, bid) {
   const W = new Map(d.persons.map((p) => [p.id, { ...p, spouse_ids: [...p.spouse_ids] }]));
   let seq = 0;
   const newId = () => 'n' + (++seq);
+  // qoralama: avval kiritilganlar tiklanadi va to'xtagan qadamdan davom etiladi
+  for (const o of d.draft?.ops || []) {
+    if (o.op === 'update' && W.has(o.id)) Object.assign(W.get(o.id), o.f);
+    else if (o.op === 'add' && o.tmp) {
+      W.set(o.tmp, { id: o.tmp, ...o.f, father_id: o.father || null, mother_id: o.mother || null, spouse_ids: o.spouse ? [o.spouse] : [], unk: !!o.unk });
+      seq = Math.max(seq, Number(String(o.tmp).slice(1)) || 0);
+    }
+  }
+  for (const o of d.draft?.ops || []) if (o.op === 'update' && o.unk && W.has(o.id)) W.get(o.id).unk = true;
   const kidsOf = (id) => [...W.values()].filter((p) => p.father_id === id || p.mother_id === id);
   const spousesOf = (id) => [...new Set([...(W.get(id)?.spouse_ids || []), ...[...W.values()].filter((p) => p.spouse_ids.includes(id)).map((p) => p.id)])].map((x) => W.get(x)).filter(Boolean);
   // qadamlar: bosh va uning qon avlodlari (juftlar o'z jufti kartasida to'ldiriladi)
@@ -3229,8 +3239,43 @@ async function renderBranchWizard(treeId, bid) {
     walk(d.head);
     return out;
   };
-  let i = 0;
+  let i = Math.max(0, Math.min(Number(d.draft?.step) || 0, order().length - 1));
+  let curSave = null;
   const yr = (v) => Number(String(v || '').slice(0, 4)) || 0;
+  // o'zgarishlar ro'yxati (yuborish va qoralama uchun)
+  const buildOps = () => {
+    const ops = [];
+    for (const x of W.values()) {
+      if (String(x.id).startsWith('n')) {
+        ops.push({ op: 'add', tmp: x.id, f: { name: x.name, gender: x.gender, birth: x.birth, death: x.death, deceased: x.deceased, fname: x.fname || null }, father: x.father_id, mother: x.mother_id, spouse: x.spouse_ids[0] || null, ...(x.unk ? { unk: true } : {}) });
+        continue;
+      }
+      const o = orig.get(x.id);
+      const f = {};
+      if (x.name && x.name !== o.name) f.name = x.name;
+      if (x.gender !== o.gender) f.gender = x.gender;
+      if ((x.birth || null) !== (o.birth || null)) f.birth = x.birth;
+      if ((x.fname || null) !== (o.fname || null)) f.fname = x.fname;
+      if (!!x.deceased !== !!o.deceased) f.deceased = x.deceased;
+      if ((x.death || null) !== (o.death || null) && x.death) f.death = x.death;
+      if (Object.keys(f).length) ops.push({ op: 'update', id: x.id, f, ...(x.unk ? { unk: true } : {}) });
+    }
+    return ops;
+  };
+  // avtomatik saqlash: har qadamda va sahifadan chiqib ketganda
+  let lastDraft = '';
+  let stale = false;
+  const onStale = (err) => { if (err?.status !== 409 || stale) return false; stale = true; toast(err.message); setTimeout(() => renderBranchWizard(treeId, bid), 1200); return true; };
+  const saveDraft = async () => {
+    if (stale) return;
+    const body = { ops: buildOps(), step: i, base: d.base };
+    const k = JSON.stringify(body.ops) + i;
+    if (k === lastDraft || (!body.ops.length && !d.draft)) return;
+    lastDraft = k;
+    try { await api(`br/${treeId}/${bid}/draft`, { method: 'PUT', body, token: null }); } catch (err) { lastDraft = ''; onStale(err); }
+  };
+  const flush = () => { if (document.visibilityState === 'hidden' && document.querySelector('.bw-row')) { curSave?.(); saveDraft(); } };
+  document.addEventListener('visibilitychange', flush);
   const draw = () => {
     const ids = order();
     const p = W.get(ids[i]);
@@ -3267,6 +3312,8 @@ async function renderBranchWizard(treeId, bid) {
         ${!String(p.id).startsWith('n') && p.id !== d.head ? `<button type="button" class="btn btn-ghost btn-sm full" id="dlg" style="margin-top:14px">🔗 ${t('Bu oilani boshqa kishiga topshirish')}</button>` : ''}
         <div class="bw-nav">${i > 0 ? `<button type="button" class="btn btn-soft" id="prev">← ${t('Orqaga')}</button>` : ''}
           <button class="btn btn-primary grow">${i < ids.length - 1 ? `${t('Keyingisi')} →` : `✅ ${t('Yuborish')}`}</button></div>
+        <button type="button" class="btn btn-ghost btn-sm full" id="bw-later" style="margin-top:10px">💾 ${t('Saqlab, keyinroq davom ettirish')}</button>
+        <div class="small muted" style="text-align:center;margin-top:6px">${t('Kiritganlaringiz avtomatik saqlanadi — havolani qayta ochsangiz, shu joydan davom etasiz.')}</div>
         <div style="height:40px"></div></form></div></div>`;
     bindSeg($app);
     const form = $app.querySelector('#bw');
@@ -3352,11 +3399,25 @@ async function renderBranchWizard(treeId, bid) {
         tg?.openTelegramLink ? tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(`${msg} ${r.link}`)}`) : copyText(r.link);
       } catch (err) { toast(err.message, true); }
     });
-    $app.querySelector('#prev')?.addEventListener('click', () => { if (save()) { i--; draw(); window.scrollTo(0, 0); } });
+    curSave = save;
+    $app.querySelector('#prev')?.addEventListener('click', () => { if (save()) { i--; draw(); saveDraft(); window.scrollTo(0, 0); } });
+    $app.querySelector('#bw-later').onclick = async () => {
+      if (!save()) return;
+      lastDraft = '';
+      await saveDraft();
+      if (stale) return;
+      haptic('success');
+      $app.innerHTML = `<div class="empty" style="padding-top:80px"><div class="big">💾</div><b>${t('Saqlandi!')}</b>
+        <p class="small">${t('Istalgan vaqtda havolani qayta ochib, to‘xtagan joyingizdan davom ettirishingiz mumkin.')}</p>
+        <button class="btn btn-primary" id="bw-cont" style="margin-top:14px">✍️ ${t('Davom ettirish')}</button></div>`;
+      $app.querySelector('#bw-cont').onclick = () => { draw(); window.scrollTo(0, 0); };
+      if (tg?.close) setTimeout(() => tg.close(), 1500);
+    };
     form.onsubmit = async (e) => {
       e.preventDefault();
       if (!save(true)) return;
-      if (i < order().length - 1) { i++; haptic('light'); draw(); return; }
+      if (i < order().length - 1) { i++; haptic('light'); draw(); saveDraft(); return; }
+      saveDraft();
       review();
     };
   };
@@ -3379,35 +3440,23 @@ async function renderBranchWizard(treeId, bid) {
     $app.querySelector('#rv-send').onclick = () => submit();
   };
   const submit = async () => {
-    const ops = [];
-    for (const x of W.values()) {
-      if (String(x.id).startsWith('n')) {
-        ops.push({ op: 'add', tmp: x.id, f: { name: x.name, gender: x.gender, birth: x.birth, death: x.death, deceased: x.deceased, fname: x.fname || null }, father: x.father_id, mother: x.mother_id, spouse: x.spouse_ids[0] || null });
-        continue;
-      }
-      const o = orig.get(x.id);
-      const f = {};
-      if (x.name && x.name !== o.name) f.name = x.name;
-      if (x.gender !== o.gender) f.gender = x.gender;
-      if ((x.birth || null) !== (o.birth || null)) f.birth = x.birth;
-      if ((x.fname || null) !== (o.fname || null)) f.fname = x.fname;
-      if (!!x.deceased !== !!o.deceased) f.deceased = x.deceased;
-      if ((x.death || null) !== (o.death || null) && x.death) f.death = x.death;
-      if (Object.keys(f).length) ops.push({ op: 'update', id: x.id, f });
-    }
+    const ops = buildOps().map(({ unk, ...o }) => o);
     if (!ops.length) {
       $app.innerHTML = `<div class="empty" style="padding-top:80px"><div class="big">✅</div><b>${t('Rahmat! Hamma ma’lumot to‘g‘ri ekan — o‘zgarish yo‘q.')}</b></div>`;
       return;
     }
     showLoader();
     try {
-      await api(`br/${treeId}/${bid}`, { method: 'POST', body: { ops }, token: null });
+      await api(`br/${treeId}/${bid}`, { method: 'POST', body: { ops, base: d.base }, token: null });
+      stale = true; // yuborildi — endi qoralama saqlanmaydi
+      document.removeEventListener('visibilitychange', flush);
       $app.innerHTML = `<div class="empty" style="padding-top:80px"><div class="big">🎉</div><b>${t('Rahmat! Ma’lumotlar yuborildi.')}</b>
         <p class="small">${t('Shajara egasi tekshirib tasdiqlagach, ular shajaraga qo‘shiladi. Natija haqida bot xabar beradi.')}</p>
         ${S.tree ? `<button class="btn btn-primary" id="bw-back" style="margin-top:14px">🌳 ${t('Shajaraga qaytish')}</button>` : ''}</div>`;
       $app.querySelector('#bw-back')?.addEventListener('click', () => location.reload());
       haptic('success');
     } catch (err) {
+      if (onStale(err)) return;
       toast(err.message, true);
       i = order().length - 1;
       draw();
@@ -3506,10 +3555,11 @@ async function branchesSheet() {
       <button class="btn btn-primary btn-sm" id="clean-names">${t('Faqat ismni qoldirish')}</button></div>` : '';
     // eslatma kimga: havolani ochgan mas'ul yoki (ochilmagan bo'lsa) shu oilada o'zini belgilagan a'zolar
     const remTargets = r.branches.filter((b) => !b.sent).flatMap((b) => b.claimedName ? [{ bid: b.bid }] : (b.cands || []).map((c) => ({ bid: b.bid, to: c.id })));
-    body.innerHTML = `${clean}${panel}${r.proposals.length ? r.proposals.map((pr, i) => `<div class="card pr-card"><div><b>${t('{name} oilasi', { name: esc(nm(pr.headName)) })}</b> · 👤 ${esc(pr.by?.name || '')} · <span class="muted">${esc(pr.at.slice(0, 10))}</span></div>
+    body.innerHTML = `${clean}${panel}${r.proposals.length ? r.proposals.map((pr, i) => `<div class="card pr-card"><div><b>${t('{name} oilasi', { name: esc(nm(pr.headName)) })}</b> · 👤 ${esc(pr.by?.name || '')} · <span class="muted">${esc((pr.upd || pr.at).slice(0, 10))}</span></div>
+        ${pr.draft ? `<div class="pr-warn" style="background:var(--soft,#eef4ff)">✍️ ${t('Hali to‘ldirilmoqda (chala). Hozir qabul qilsangiz ham bo‘ladi — mas’ul qolganini davom ettiradi.')}</div>` : ''}
         <div class="pr-ops">${pr.ops.map((o) => line(o, pr)).join('')}</div>
         ${(pr.warn || []).length ? `<div class="pr-warn">${pr.warn.map((w) => `⚠️ ${esc(w)}`).join('<br>')}</div>` : ''}
-        <div class="row" style="gap:8px;margin-top:8px"><button class="btn btn-primary btn-sm grow" data-ok="${i}">✅ ${t('Tasdiqlash')}</button><button class="btn btn-ghost btn-sm" data-ed="${i}">✏️</button><button class="btn btn-soft btn-sm" data-no="${i}">${t('Rad etish')}</button></div></div>`).join('')
+        <div class="row" style="gap:8px;margin-top:8px"><button class="btn btn-primary btn-sm grow" data-ok="${i}">✅ ${t(pr.draft ? 'Hozircha borini qabul qilish' : 'Tasdiqlash')}</button><button class="btn btn-ghost btn-sm" data-ed="${i}">✏️</button>${pr.draft ? '' : `<button class="btn btn-soft btn-sm" data-no="${i}">${t('Rad etish')}</button>`}</div></div>`).join('')
       : `<div class="empty" style="padding:20px"><b>${t('Yangi takliflar yo‘q')}</b></div>`}
       <div class="row" style="justify-content:space-between;margin:18px 0 8px"><div class="h3" style="margin:0">🔗 ${t('Faol havolalar')}</div>
         ${remTargets.length > 1 ? `<button class="btn btn-soft btn-sm" id="rem-all">🔔 ${t('Hammasiga eslatma')} · ${remTargets.length}</button>` : ''}</div>
@@ -3518,8 +3568,9 @@ async function branchesSheet() {
         <div class="small muted">${[b.noBirth && t('{n} kishining tug‘ilgan sanasi yo‘q', { n: b.noBirth }), b.noSpouse && t('{n} kishining turmush o‘rtog‘i noma’lum', { n: b.noSpouse }), b.noDeath && t('{n} kishining vafot sanasi yo‘q', { n: b.noDeath })].filter(Boolean).join(', ') || t('Barcha ma’lumotlar to‘liq ✓')}</div>
         <div class="small muted" style="margin-top:4px">${b.claimedName ? '👤 ' + esc(b.claimedName) : b.expired ? '⌛ ' + t('Muddati tugagan') : t('Hali ochilmagan') + (b.exp ? ' · ' + t('{d} gacha', { d: fmtDate(b.exp.slice(0, 10)) }) : '')}${b.parentName ? ' · ↳ ' + esc(nm(b.parentName)) : ''}</div>
         ${b.claimedName ? `<label class="row small" style="gap:8px;margin-top:8px"><span class="switch"><input type="checkbox" data-trust="${b.bid}" ${b.trust ? 'checked' : ''}><span></span></span>${t('Ishonchli mas’ul — tasdiqsiz qo‘shilsin')}</label>` : ''}
-        <div class="row" style="gap:6px;margin-top:8px">${b.claimedName && !b.sent ? `<button class="btn btn-primary btn-sm grow" data-rem="${b.bid}">🔔 ${t('Mas’ulga eslatma yuborish')}</button>`
+        <div class="row" style="gap:6px;margin-top:8px">${b.claimedName && !b.sent && !b.drafting ? `<button class="btn btn-primary btn-sm grow" data-rem="${b.bid}">🔔 ${t('Mas’ulga eslatma yuborish')}</button>`
           : b.sent ? `<span class="grow small muted">📨 ${t('Yubordi — tasdiqlashingizni kutmoqda')}</span>`
+          : b.drafting ? `<span class="grow small muted">✍️ ${t('To‘ldirmoqda (chala)')}</span><button class="btn btn-soft btn-sm" data-rem="${b.bid}">🔔</button>`
           : `<span class="grow row" style="gap:6px;flex-wrap:wrap">${(b.cands || []).map((c) => `<button class="btn btn-primary btn-sm" data-rem="${b.bid}" data-to="${c.id}">🔔 ${esc(shortName(c.name, 14))}</button>`).join('')}<button class="btn ${b.cands?.length ? 'btn-soft' : 'btn-primary'} btn-sm" data-shr="${esc(b.link)}" data-nm="${esc(nm(b.headName))}">📤 ${t('Qayta yuborish')}</button></span>`}
           <button class="btn btn-soft btn-sm" data-copy="${esc(b.link)}">📋</button><button class="btn btn-ghost btn-sm" data-rev="${b.bid}">${t('Bekor qilish')}</button></div></div>`).join('')
       : `<div class="small muted">${t('Havola yaratish: daraxtda oila boshini oching → «Oila havolasi».')}</div>`}
@@ -3595,6 +3646,13 @@ async function branchesSheet() {
   load();
 }
 
+// Telegram «Yangilash» (⋮ → Reload): sahifa qayta yuklanadi, lekin start_param o'sha-o'sha qoladi —
+// eski havola (masalan, shaxs kartasi) qayta ochilmasin, foydalanuvchi turgan bo'lim tiklansin. sessionStorage faqat shu oynada yashaydi.
+const nav = {
+  get() { try { return JSON.parse(sessionStorage.getItem('sh_nav') || 'null'); } catch { return null; } },
+  set(v) { try { sessionStorage.setItem('sh_nav', JSON.stringify({ ...(nav.get() || {}), ...v })); } catch {} },
+};
+
 // =================================================================== ISHGA TUSHIRISH
 function boot() {
   initTelegram();
@@ -3613,10 +3671,15 @@ function boot() {
   S.goUser = /_u(\d{1,15})$/.exec(inv.slice(30))?.[1] || null;
   S.goMemo = /_x(p\d{1,8})$/.exec(inv.slice(30))?.[1] || null;
   S.goAlbumJoin = /_k([A-Za-z0-9]{8})([A-Za-z0-9_-]{10})$/.exec(inv.slice(30)) || null;
+  const back = nav.get();
+  if (back) { // yangilash: havoladagi bir martalik amallar takrorlanmaydi
+    S.goPerson = S.goMedia = S.goInbox = S.goItem = S.goUser = S.goMemo = S.goAlbumJoin = null;
+    S.restoreTab = back.tab;
+  } else nav.set({ tab: null });
   const startCode = params.get('code') || (!inv ? sp : '');
   const br = /^([a-z0-9]{6,20})_([A-Za-z0-9]{4,16})$/.exec(params.get('br') || '');
   if (br) return renderBranchWizard(br[1], br[2]);
-  S.openProps = params.get('props') === '1';
+  S.openProps = !back && params.get('props') === '1';
   const afterOnb = () => {
     mountAiFab();
     if (inv) return joinByInvite(inv);

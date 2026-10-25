@@ -81,3 +81,15 @@ O'zbekcha, qisqa javob, tokenlarni tejash, tez bajarish. Ruxsat umumiy berilgan 
 - Ishlatilmaydigan env (o'chirsa bo'ladi): `CF_AI_TOKEN`, `CF_TEST_KEY`, `GEMINI_RESTORE`. `tmp-cf-test` branchi (o'chirib bo'lmadi, 403) — tarixida shaxsiy surat bor edi → GitHub'da qo'lda o'chirish kerak.
 - Yuborish (`shareVia`): Android'da 2-marta `shareMessage` «WebAppShareMessageOpened» xatosi beradi (SDK bayrog'i tushmaydi) → `Telegram.WebView.postEvent('web_app_send_prepared_message')` bilan to'g'ridan-to'g'ri.
 - Ruxsatlar: repo ildizida `.claude/settings.json` (MCP Vercel/Render/github/claude-code-remote, WebFetch/WebSearch, oddiy Bash) — keyingi sessiyalar o'qishi uchun standart branchda (`claude/pizza-delivery-app-31028s`) ham bo'lishi kerak.
+
+## Oila havolasi: chala to'ldirish va davom ettirish (v=55)
+- Wizard har qadamda va ilovadan chiqqanda qoralamani saqlaydi: `PUT /api/br/:tree/:bid/draft` → `props/<tree>.json`da `status:'draft'` (bitta mas'ulga bitta). `state` — xom o'zgarishlar + qadam; `ops` — qabul qilishga yaroqli qismi (ismsiz qatorlar, chala sanalar olib tashlangan).
+- Havola qayta ochilsa `GET br/...` → `draft` qaytadi, wizard shu qadamdan davom etadi. «💾 Saqlab, keyinroq davom ettirish» tugmasi bor.
+- Egasi «Oila havolalari»da chala qoralamani «Hozircha borini qabul qilish» bilan qo'shadi: havola yopilmaydi, `status:'resume'` belgisi qo'yiladi. Eski ochiq oynadan yuborish 409 → wizard yangilangan shajara bilan qayta yuklanadi (takror qo'shilmaydi).
+- To'liq yuborilganda qoralama o'chadi, oddiy `pending` taklif bo'ladi.
+
+## Bildirishnomalar (v=55)
+- Tug'ilgan kun va xotira kuni — alohida xabarlar (`birthdayText`, `memorialText`). Ismlar ilovadagi kartaga havola.
+- Hurmat qo'shimchasi (`honor`, faqat uz): 30–50 aka/opa, 50–70 ota/ona, 70+ bobo/momo (marhumlarda — vafotdagi yoshi).
+- Haftalik «hali qo'shilmaganlar» eslatmasi asosan 15–45 yoshlilarni ko'rsatadi, ismlar kartaga havola.
+- Telegram ⋮ «Reload»: `sessionStorage.sh_nav` — qayta yuklanganda deep link (start_param) qayta ishlamaydi, oxirgi bo'lim ochiladi.

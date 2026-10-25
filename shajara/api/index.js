@@ -15,7 +15,7 @@ import {
 import { tg, tgUpload, sendDocument, sendStored, mediaOf, downloadFile, fetchFilePart } from '../lib/telegram.js';
 const MIME = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', heic: 'image/heic', mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', mkv: 'video/x-matroska', m4v: 'video/mp4', mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac', ogg: 'audio/ogg', oga: 'audio/ogg', opus: 'audio/ogg', wav: 'audio/wav', flac: 'audio/flac', pdf: 'application/pdf' };
 import { handleUpdate, setupBot, BOT, PLANS, chatKey, linkKey, waitKey } from '../lib/bot.js';
-import { webhookSecret, todayText } from '../lib/events.js';
+import { webhookSecret, birthdayText, memorialText } from '../lib/events.js';
 import { notify, escapeHtml, whoLink } from '../lib/notify.js';
 import { updateUser, getUser } from '../lib/users.js';
 import { waitUntil } from '@vercel/functions';
@@ -1071,11 +1071,12 @@ async function route(req, res) {
       return send(res, 200, {
         branches: Object.entries(tree.branches || {}).filter(([, b]) => !b.revoked && !(b.auto && !b.claimed)).map(([bid, b]) => ({ bid, head: b.head, headName: byId.get(b.head)?.name || '?', claimedName: b.claimedName || null, at: b.at,
           parentName: b.parent ? byId.get(tree.branches[b.parent]?.head)?.name || null : null, ...B.branchStats(tree, b.head), exp: b.exp || null, trust: !!b.trust, expired: !b.claimed && !!b.exp && Date.parse(b.exp) < Date.now(),
-          sent: props.some((x) => x.bid === bid && x.status === 'pending'),
+          sent: props.some((x) => x.bid === bid && x.status === 'pending'), drafting: props.some((x) => x.bid === bid && x.status === 'draft' && x.ops?.length),
           // havola hali ochilmagan: shu oilada o'zini belgilagan a'zolar — ularga bot orqali eslatma yuborsa bo'ladi
           cands: b.claimed ? [] : B.branchMembers(tree, b.head).map(([id, x]) => ({ id, name: x.name })),
           link: `https://t.me/${botName}?start=br_${tree.id}_${bid}` })),
-        proposals: props.filter((x) => x.status === 'pending').map((x) => ({ ...x, headName: byId.get(x.head)?.name || '?' })),
+        // chala to'ldirilayotganlari ham (draft) — egasi kutmasdan qabul qila oladi
+        proposals: props.filter((x) => x.status === 'pending' || (x.status === 'draft' && x.ops?.length)).map(({ state, ...x }) => ({ ...x, draft: x.status === 'draft', headName: byId.get(x.head)?.name || '?' })),
         applied: props.filter((x) => x.status === 'applied' && x.undo).slice(0, 15).map((x) => ({ id: x.id, at: x.doneAt || x.at, by: x.by, headName: byId.get(x.head)?.name || '?', n: x.ops.length })),
         complete: (() => { const c = B.completeness(tree); return { pct: c.pct, total: c.total, missing: c.missing.slice(0, 300) }; })(),
       });
@@ -1103,7 +1104,7 @@ async function route(req, res) {
       const body = await readBody(req);
       const key = `props/${tree.id}.json`;
       const doc = (await readJson(key))?.data || { items: [] };
-      const pr = doc.items.find((x) => x.id === parts[2] && x.status === (body.action === 'undo' ? 'applied' : 'pending'));
+      const pr = doc.items.find((x) => x.id === parts[2] && (body.action === 'undo' ? x.status === 'applied' : x.status === 'pending' || (x.status === 'draft' && body.action === 'apply')));
       if (!pr) throw new HttpError(404, 'Taklif topilmadi');
       if (body.action === 'undo') {
         const r = await B.undoProposal(tok.treeId, pr, nameOf(user));
@@ -1131,10 +1132,20 @@ async function route(req, res) {
         data = r.tree;
         undo = r.undo;
         // qabul qilindi — shu oila havolasi yopiladi (eski xabarlardagi tugmalar ham ishlamaydi); ishonchli mas'ulniki ochiq qoladi
-        if (pr.bid && !tree.branches?.[pr.bid]?.trust) data = (await mutateTree(tok.treeId, (t) => { const b = t.branches?.[pr.bid]; if (b) Object.assign(b, { revoked: true, done: new Date().toISOString() }); })).data;
+        // chala (qoralama) qabul qilinsa — havola ochiq qoladi, mas'ul davom ettiradi
+        if (pr.bid && !tree.branches?.[pr.bid]?.trust && pr.status !== 'draft') data = (await mutateTree(tok.treeId, (t) => { const b = t.branches?.[pr.bid]; if (b) Object.assign(b, { revoked: true, done: new Date().toISOString() }); })).data;
       }
-      await updateJson(key, (d) => { const x = d.items.find((y) => y.id === parts[2]); if (x) { x.status = body.action === 'apply' ? 'applied' : 'rejected'; x.doneAt = new Date().toISOString(); if (undo) x.undo = undo; if (body.action === 'apply') x.ops = pr.ops; } });
-      if (pr.by?.id) (await import('../lib/telegram.js')).tg('sendMessage', { chat_id: pr.by.id, text: body.action === 'apply' ? '✅ Shajaraga kiritgan ma’lumotlaringiz tasdiqlandi. Rahmat!' : 'ℹ️ Taklifingiz ko‘rib chiqildi va qabul qilinmadi.' }).catch(() => {});
+      const now = new Date().toISOString();
+      await updateJson(key, (d) => {
+        const x = d.items.find((y) => y.id === parts[2]);
+        if (x) { x.status = body.action === 'apply' ? 'applied' : 'rejected'; x.doneAt = now; if (undo) x.undo = undo; if (body.action === 'apply') x.ops = pr.ops; delete x.state; }
+        // qoralama qabul qilindi: mas'ul shu qadamdan, yangilangan shajara bilan davom etadi
+        if (pr.status === 'draft') {
+          d.items = d.items.filter((y) => !(y.status === 'resume' && y.bid === pr.bid && y.by?.id === pr.by?.id));
+          d.items.unshift({ id: pr.id + 'r', bid: pr.bid, head: pr.head, by: pr.by, at: now, status: 'resume', state: { ops: [], step: pr.state?.step || 0 } });
+        }
+      });
+      if (pr.by?.id) (await import('../lib/telegram.js')).tg('sendMessage', { chat_id: pr.by.id, text: pr.status === 'draft' ? '✅ Hozirgacha kiritgan ma’lumotlaringiz shajaraga qo‘shildi. Rahmat! Havola orqali kirib, qolganini davom ettirishingiz mumkin.' : body.action === 'apply' ? '✅ Shajaraga kiritgan ma’lumotlaringiz tasdiqlandi. Rahmat!' : 'ℹ️ Taklifingiz ko‘rib chiqildi va qabul qilinmadi.' }).catch(() => {});
       return send(res, 200, { result, tree: out(data, 'edit', uid) });
     }
   }
@@ -1147,16 +1158,23 @@ async function route(req, res) {
     const { tree, b } = await B.claimBranch(parts[1], parts[2], user);
     if (m === 'GET') {
       const persons = B.scopePersons(tree, b.head);
-      return send(res, 200, { title: tree.title, head: b.head, persons, lang: b.lang || null });
+      return send(res, 200, { title: tree.title, head: b.head, persons, lang: b.lang || null, draft: await B.getDraft(tree.id, parts[2], user.id), base: Date.now() });
     }
     if (m === 'POST' && parts[3] === 'sub') {
       if (!await rateLimit('brsub:' + user.id, 20, 60 * 60e3)) throw new HttpError(429, 'Juda ko‘p urinish');
       const body = await readBody(req);
       return send(res, 200, await B.subBranch(tree, parts[2], b, user, body.head));
     }
+    if (m === 'PUT' && parts[3] === 'draft') {
+      if (!await rateLimit('brdraft:' + user.id, 300, 60 * 60e3)) throw new HttpError(429, 'Juda ko‘p urinish');
+      const body = await readBody(req);
+      await B.checkStale(tree.id, parts[2], user.id, body.base);
+      return send(res, 200, await B.saveDraft(tree, parts[2], b, user, body.ops, body.step));
+    }
     if (m === 'POST') {
       if (!await rateLimit('br:' + user.id, 10, 60 * 60e3)) throw new HttpError(429, 'Juda ko‘p yuborildi. Birozdan so‘ng urinib ko‘ring');
       const body = await readBody(req);
+      await B.checkStale(tree.id, parts[2], user.id, body.base);
       await B.submitProposal(tree, parts[2], b, user, body.ops);
       return send(res, 200, { ok: true });
     }
@@ -1320,9 +1338,10 @@ async function route(req, res) {
     for (const key of await listKeys('trees/')) {
       const tr = (await readJson(key))?.data;
       if (!tr) continue;
-      if (!todayText(tr, 'uz')) continue;
       const E = await import('../lib/events.js');
-      sent += await notify(tr, 'bday', (lang) => todayText(tr, lang), { extra: E.birthdayOutsiders(tr) ? (l) => E.inviteButton(tr, l) : null });
+      // tug'ilgan kun va xotira kuni — alohida xabarlar
+      if (birthdayText(tr, 'uz')) sent += await notify(tr, 'bday', (lang) => birthdayText(tr, lang), { extra: E.birthdayOutsiders(tr) ? (l) => E.inviteButton(tr, l) : null });
+      if (memorialText(tr, 'uz')) sent += await notify(tr, 'bday', (lang) => memorialText(tr, lang));
     }
     // to'liq bo'lmagan ma'lumotlar haqida egasiga va shox mas'ullariga eslatma
     // yaqinlarning ertangi tug'ilgan kuni — har kimga shaxsan (shajaradagi o'rni bo'yicha)
