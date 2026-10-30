@@ -39,7 +39,7 @@ def indicators(f):
              e20=ema(C, 20), e50=ema(C, 50), e200=ema(C, 200), sma200=C.rolling(200).mean(),
              rsi14=rsi(C, 14), rsi2=rsi(C, 2), atr=tr.ewm(alpha=1 / 14, adjust=False, ignore_na=True).mean(),
              mom126=C / C.shift(126) - 1, mom252=C / C.shift(252) - 1, mom21=C / C.shift(21) - 1,
-             hh50=H.rolling(50).max().shift(), hh20=H.rolling(20).max().shift(), ll10=L.rolling(10).min().shift(),
+             hh50=H.rolling(50).max().shift(), hh100=H.rolling(100).max().shift(), hh20=H.rolling(20).max().shift(), ll10=L.rolling(10).min().shift(),
              dv=(C * V).rolling(20).mean(), cnt=C.notna().cumsum(), vol20=C.pct_change().rolling(20).std())
     return I
 
@@ -81,10 +81,18 @@ def run_swing(I, pool, mkt, slip, cfg, capital=10000.0):
         sig = up & (I["rsi2"].values < cfg.get("rsi2", 10))
     elif kind == "breakout":
         sig = up & (C > I[cfg.get("hh", "hh50")].values) & (I["mom126"].values > 0)
+    elif kind == "momtop":
+        sc = I["mom126"].where(pd.DataFrame(up & pool, index=I["C"].index, columns=I["C"].columns))
+        rk = sc.rank(axis=1, ascending=False).values
+        idx = I["C"].index
+        wk = idx.isocalendar().week.values
+        last_day = np.r_[wk[1:] != wk[:-1], True]
+        sig = (rk <= cfg.get("K", 5)) & last_day[:, None] & (np.nan_to_num(sc.values, nan=-1) > 0)
     rank = np.nan_to_num(I["mom126"].values, nan=-9)
     rsi2 = I["rsi2"].values
     cash = capital; pos = {}; pend = []; eq = np.empty(T); trades = []
     mk = mkt.values
+    peak = capital
     for t in range(T):
         # kirish
         if pend:
@@ -95,7 +103,8 @@ def run_swing(I, pool, mkt, slip, cfg, capital=10000.0):
                 buy = O[t, j] * (1 + slip)
                 stop = buy - cfg["sl"] * a
                 if cfg.get("sizing") == "risk":
-                    q = val * cfg["risk"] / 100 / max(buy - stop, 1e-9)
+                    rk_ = cfg["risk"] * (0.5 if cfg.get("brake") and val / peak - 1 < -cfg["brake"] else 1.0)
+                    q = val * rk_ / 100 / max(buy - stop, 1e-9)
                     q = min(q, val * cfg["cap"] / 100 / buy)
                 else:
                     q = val * cfg["pct"] / 100 / buy
@@ -142,6 +151,7 @@ def run_swing(I, pool, mkt, slip, cfg, capital=10000.0):
                 pend = [(j, atr[t, j]) for j in js[:free]]
         eq[t] = cash + sum(p["q"] * C[t, j] for j, p in pos.items() if not np.isnan(C[t, j])) + \
             sum(p["q"] * C[t - 1, j] for j, p in pos.items() if np.isnan(C[t, j]) and t > 0 and not np.isnan(C[t - 1, j]))
+        peak = max(peak, eq[t])
     return pd.Series(eq, index=I["C"].index), trades
 
 
@@ -221,6 +231,13 @@ def metrics(eq, trades=None):
     return out
 
 
+def metrics_part(eq, a, b):
+    e = eq[(eq.index >= pd.Timestamp(a)) & (eq.index <= pd.Timestamp(b))]
+    if len(e) < 50:
+        return 0.0
+    return ((e.iloc[-1] / e.iloc[0]) ** (252 / len(e)) - 1) * 100
+
+
 def line(name, m):
     s = f"{name:<26} CAGR {m['cagr']:6.1f}%  DD {m['dd']:6.1f}%  Sharpe {m['sharpe']:4.2f}  yomon yil {m['worst_y']:6.1f}%  +oy {m['pos_m']:3.0f}%"
     if "n" in m:
@@ -244,48 +261,51 @@ def main():
     print(yline(metrics(spy_eq)))
     spy_f = (1 + spy.pct_change().fillna(0) * mkt.shift().fillna(False)).cumprod()
     print(line("SPY + 200 filtr", metrics(spy_f)))
+    B = dict(entry="breakout", sl=3, tp=None, trail=3, trend_exit=False, sizing="risk", risk=1, cap=20, max_pos=8)
+    V = lambda **k: ("swing", "all", {**B, **k})
     strategies = {
-        "joriy (rsi40, top6)": ("swing", "top6", dict(entry="rsi40", sl=2, tp=3, max_days=20, pct=10, max_pos=6, mfilter=False)),
-        "joriy + bozor filtri": ("swing", "top6", dict(entry="rsi40", sl=2, tp=3, max_days=20, pct=10, max_pos=6)),
-        "rsi40 keng, risk": ("swing", "all", dict(entry="rsi40", sl=2, tp=3, max_days=20, sizing="risk", risk=1, cap=20, max_pos=8)),
-        "rsi2 qaytish": ("swing", "all", dict(entry="rsi2", rsi2=10, sl=2.5, tp=None, max_days=10, rsi2_exit=70, sizing="risk", risk=1, cap=20, max_pos=8)),
-        "breakout50 + trail3": ("swing", "all", dict(entry="breakout", sl=3, tp=None, trail=3, trend_exit=False, sizing="risk", risk=1, cap=20, max_pos=8)),
-        "breakout20 + trail2.5": ("swing", "all", dict(entry="breakout", hh="hh20", sl=2.5, tp=None, trail=2.5, trend_exit=False, sizing="risk", risk=1, cap=20, max_pos=8)),
-        "momentum oylik K5": ("mom", "all", dict(K=5, freq="M")),
-        "momentum oylik K8": ("mom", "all", dict(K=8, freq="M")),
-        "momentum haftalik K5": ("mom", "all", dict(K=5, freq="W")),
-        "momentum K8 invvol": ("mom", "all", dict(K=8, freq="M", invvol=True)),
-        "momentum K8 12oy": ("mom", "all", dict(K=8, freq="M", look="mom252")),
+        "brk50 t3 r1 p8 (asos)": V(),
+        "brk50 filtrsiz": V(mfilter=False),
+        "brk100 t3": V(hh="hh100"),
+        "brk50 t4": V(sl=4, trail=4),
+        "brk50 t2.5": V(sl=2.5, trail=2.5),
+        "brk50 r0.5": V(risk=0.5),
+        "brk50 r1.5": V(risk=1.5),
+        "brk50 p12 r0.75": V(max_pos=12, risk=0.75, cap=15),
+        "brk50 p5 cap25": V(max_pos=5, cap=25),
+        "brk50 tormoz10": V(brake=0.10),
+        "brk50 +e200 chiqish": V(trend_exit=True),
+        "momtop K5 + trail3": V(entry="momtop", K=5),
+        "momtop K5 + trail4": V(entry="momtop", K=5, sl=4, trail=4),
     }
     for key, name, lo, hi, min_dv in TIERS:
         member = tier_membership(I, lo, hi, min_dv)
-        top6 = top_pick(I, member)
-        print(f"\n===== {name}: o'rtacha {member.sum(axis=1)[member.index >= TEST_FROM].mean():.0f} ta a'zo =====")
+        print(f"\n===== {name} =====")
         curves = {}
         for sname, (kind, pk, cfg) in strategies.items():
-            pool = top6 if pk == "top6" else member
-            if kind == "swing":
-                eq, tr = run_swing(I, pool, mkt, SLIPPAGE[key], cfg)
-            else:
-                eq, tr = run_mom(I, pool, mkt, SLIPPAGE[key], **cfg)
+            eq, tr = run_swing(I, member, mkt, SLIPPAGE[key], cfg)
             curves[sname] = eq
             m = metrics(eq, tr)
-            print(line(sname, m)); print(yline(m))
-        # moslashuvchan: har oy oxirgi 6 oyda eng yaxshi Sharpe'li strategiyani tanlash
-        R = pd.DataFrame({k: v.pct_change() for k, v in curves.items()}).fillna(0)
-        mr = (1 + R).resample("ME").prod() - 1
-        score = (mr.rolling(6).mean() / mr.rolling(6).std()).shift(1)
-        score = score.replace([np.inf, -np.inf], np.nan)
-        choice = score.apply(lambda r: r.idxmax() if r.notna().any() else None, axis=1)
-        months = R.index.to_period("M")
-        ch = choice.copy(); ch.index = ch.index.to_period("M")
-        adapt = np.array([R.loc[d, ch.get(p)] if isinstance(ch.get(p), str) else 0.0 for d, p in zip(R.index, months)])
-        m = metrics(pd.Series((1 + adapt).cumprod(), index=R.index))
-        print(line("MOSLASHUVCHAN (6oy Sharpe)", m)); print(yline(m))
-        combo = [k for k in curves if k.startswith("momentum oylik K8")] + ["breakout50 + trail3", "rsi2 qaytish"]
-        ens = R[combo].mean(axis=1)
-        m = metrics((1 + ens).cumprod())
-        print(line("ARALASH (mom8+brk+rsi2)", m)); print(yline(m))
+            a, b = metrics_part(eq, "2014-01-01", "2019-12-31"), metrics_part(eq, "2020-01-01", "2026-12-31")
+            print(line(sname, m) + f"  | 14-19: {a:+.1f}%/y 20-26: {b:+.1f}%/y")
+            print(yline(m))
+        # walk-forward: har 6 oyda oxirgi 2 yil Sharpe bo'yicha eng yaxshi sozlamani tanlash
+        R = pd.DataFrame({k: v.pct_change() for k, v in curves.items() if k.startswith("brk")}).fillna(0)
+        half = R.index.year * 2 + (R.index.month > 6)
+        out = pd.Series(0.0, index=R.index)
+        picks = []
+        for h in sorted(set(half)):
+            msk = half == h
+            st = R.index[msk][0]
+            hist = R[(R.index < st) & (R.index >= st - pd.DateOffset(years=2))]
+            if len(hist) < 400:
+                out[msk] = R.loc[msk, "brk50 t3 r1 p8 (asos)"]; continue
+            sh = hist.mean() / hist.std()
+            k = sh.idxmax(); picks.append(k)
+            out[msk] = R.loc[msk, k]
+        m = metrics((1 + out).cumprod())
+        print(line("WALK-FORWARD (6oy, 2y)", m)); print(yline(m))
+        print("   tanlovlar:", pd.Series(picks).value_counts().to_dict())
     print(f"\nJami vaqt {time.time() - t0:.0f}s")
 
 
