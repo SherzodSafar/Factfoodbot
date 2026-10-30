@@ -22,7 +22,8 @@ from zoneinfo import ZoneInfo
 import requests
 
 import data
-from commands import Service
+from commands import HELP, Service
+from menu import Menu
 from paper import Paper
 
 TOKEN = os.environ["BOT_TOKEN"]
@@ -42,12 +43,28 @@ def tg(method, **kw):
     return r.json()
 
 
-def send(chat_id, text):
-    for i in range(0, len(text), 3900):
+def send(chat_id, text, markup=None):
+    parts = [text[i:i + 3900] for i in range(0, len(text), 3900)] or [""]
+    for n, part in enumerate(parts):
+        body = {"chat_id": chat_id, "text": part}
+        if markup and n == len(parts) - 1:
+            body["reply_markup"] = markup
         try:
-            tg("sendMessage", json={"chat_id": chat_id, "text": text[i:i + 3900]})
+            tg("sendMessage", json=body)
         except Exception:
             traceback.print_exc()
+
+
+def edit(chat_id, message_id, text, markup=None):
+    body = {"chat_id": chat_id, "message_id": message_id, "text": text[:3900]}
+    if markup:
+        body["reply_markup"] = markup
+    try:
+        r = tg("editMessageText", json=body)
+        if not r.get("ok") and "not modified" not in str(r.get("description", "")):
+            send(chat_id, text, markup)
+    except Exception:
+        traceback.print_exc()
 
 
 # ---------------- Holatni Telegram'da saqlash ----------------
@@ -105,13 +122,16 @@ def backup_state():
 
 paper = None
 service = None
+menu = None
+MENU_BTN = {"inline_keyboard": [[{"text": "📋 Menyu", "callback_data": "m:main"}]]}
 
 
-def run_and_send(chat_id, fn):
+def run_and_send(chat_id, fn, with_menu=False):
     with busy:
         try:
-            for m in fn():
-                send(chat_id, m)
+            msgs = fn()
+            for i, m in enumerate(msgs):
+                send(chat_id, m, MENU_BTN if with_menu and i == len(msgs) - 1 else None)
         except Exception as e:
             traceback.print_exc()
             send(chat_id, f"⚠️ Xatolik: {e}")
@@ -179,21 +199,90 @@ class Health(BaseHTTPRequestHandler):
         pass
 
 
-COMMANDS = [("holat", "Portfel holati"), ("hisobot", "Hisobot: kunlik/haftalik/oylik"),
+COMMANDS = [("menyu", "Menyu va sozlamalar (tugmalar)"), ("holat", "Portfel holati"), ("hisobot", "Hisobot: kunlik/haftalik/oylik"),
             ("bozor", "Bozor holati"), ("tahlil", "Tahlil va yaxshilash"), ("test", "O'tgan davrda sinash"),
             ("tanlash", "Aksiyalarni qayta tanlash"), ("demo_boshlash", "Boshlash: umumiy summa, masalan 3000"),
-            ("baho", "Real pulga tayyorlik"), ("sozlamalar", "Sozlamalar"), ("ulush", "Har savdoga necha %"),
-            ("kasr", "Kasr aksiya on/off"), ("yordam", "Buyruqlar")]
+            ("baho", "Real pulga tayyorlik"), ("sozlamalar", "Sozlamalar"), ("yordam", "Yordam")]
+
+
+def show_menu(chat_id, page="main"):
+    with paper.lock:
+        text, markup = getattr(menu, Menu.PAGES[page])()
+    send(chat_id, text, markup)
+
+
+def on_callback(cq):
+    chat_id = cq["message"]["chat"]["id"]
+    mid = cq["message"]["message_id"]
+    try:
+        tg("answerCallbackQuery", json={"callback_query_id": cq["id"]})
+    except Exception:
+        pass
+    if cq.get("from", {}).get("id") != OWNER:
+        return
+    if busy.locked() and not cq["data"].startswith(("m:", "h:")):
+        send(chat_id, "⏳ Oldingi buyruq bajarilmoqda, biroz kuting...")
+        return
+    with paper.lock:
+        act = menu.on_callback(cq["data"])
+    handle_action(chat_id, act, mid)
+
+
+def handle_action(chat_id, act, mid=None):
+    kind = act[0]
+    if kind == "edit" and mid:
+        edit(chat_id, mid, act[1], act[2])
+        backup_state()
+    elif kind in ("edit", "edit_new"):
+        send(chat_id, act[1], act[2])
+    elif kind == "ask":
+        send(chat_id, act[1])
+    elif kind == "run":
+        cmd = act[1]
+        if cmd.split()[0] in Service.LONG:
+            send(chat_id, "⏳ Bajarilmoqda, 1–3 daqiqa kuting...")
+        threading.Thread(target=run_and_send, args=(chat_id, lambda: service.handle(cmd), True), daemon=True).start()
+
+
+def on_message(msg):
+    chat_id = msg.get("chat", {}).get("id")
+    text = (msg.get("text") or "").strip()
+    if not chat_id or not text:
+        return
+    if chat_id != OWNER:
+        send(chat_id, "Bu shaxsiy bot.")
+        return
+    if not text.startswith("/"):
+        act = menu.on_text(text)
+        if act:
+            handle_action(chat_id, act)
+        else:
+            show_menu(chat_id)
+        return
+    cmd = text.split()[0].split("@")[0].lower()
+    if cmd in ("/start", "/menyu", "/menu"):
+        show_menu(chat_id)
+        return
+    if cmd in ("/yordam", "/help"):
+        send(chat_id, HELP)
+        show_menu(chat_id, "help")
+        return
+    if busy.locked():
+        send(chat_id, "⏳ Oldingi buyruq bajarilmoqda, tugashi bilan bu ham bajariladi...")
+    elif cmd in Service.LONG:
+        send(chat_id, "⏳ Bajarilmoqda, 1–3 daqiqa kuting...")
+    threading.Thread(target=run_and_send, args=(chat_id, lambda: service.handle(text), True), daemon=True).start()
 
 
 def main():
-    global paper, service
+    global paper, service, menu
     if os.environ.get("PORT"):
         srv = HTTPServer(("0.0.0.0", int(os.environ["PORT"])), Health)
         threading.Thread(target=srv.serve_forever, daemon=True).start()
     restore_state()
     paper = Paper(STATE_FILE)
     service = Service(paper, data.load, data.last_complete_us_day)
+    menu = Menu(service)
     try:
         tg("deleteWebhook", json={})
         tg("setMyCommands", json={"commands": [{"command": c, "description": d} for c, d in COMMANDS]})
@@ -208,20 +297,13 @@ def main():
             r = requests.get(f"{API}/getUpdates", params={"timeout": 50, "offset": offset}, timeout=60).json()
             for u in r.get("result", []):
                 offset = u["update_id"] + 1
-                msg = u.get("message") or {}
-                chat_id = msg.get("chat", {}).get("id")
-                text = msg.get("text", "")
-                if not chat_id or not text.startswith("/"):
-                    continue
-                if chat_id != OWNER:
-                    send(chat_id, "Bu shaxsiy bot.")
-                    continue
-                if busy.locked():
-                    send(chat_id, "⏳ Oldingi buyruq bajarilmoqda, tugashi bilan bu ham bajariladi...")
-                elif text.split()[0].split("@")[0] in Service.LONG:
-                    send(chat_id, "⏳ Bajarilmoqda, 1–3 daqiqa kuting...")
-                threading.Thread(target=run_and_send, args=(chat_id, lambda t=text: service.handle(t)),
-                                 daemon=True).start()
+                try:
+                    if "callback_query" in u:
+                        on_callback(u["callback_query"])
+                        continue
+                    on_message(u.get("message") or {})
+                except Exception:
+                    traceback.print_exc()
         except Exception:
             traceback.print_exc()
             time.sleep(5)

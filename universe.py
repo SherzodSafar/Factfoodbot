@@ -34,8 +34,9 @@ TOST HIMS CELH ELF ROKU SPOT TTD ZM DOCU OKTA TWLO
 """.split()))
 
 
-def select(loader, asof: pd.Timestamp, n=6):
-    """Qaytaradi: {guruh: [tickerlar]}, va izoh qatorlari."""
+def select(loader, asof: pd.Timestamp, n=None, show=8):
+    """Har guruhga narx oralig'i va savdo hajmi shartiga mos BARCHA aksiyalar kiradi (n berilsa — eng ko'pi n ta).
+    Strategiya ulardan kuchli trenddagilarni o'zi tanlaydi. Qaytaradi: {guruh: [tickerlar]}, izoh qatorlari."""
     data = loader(UNIVERSE, asof - pd.Timedelta(days=60), asof)
     rows = []
     for tk, df in data.items():
@@ -53,10 +54,11 @@ def select(loader, asof: pd.Timestamp, n=6):
     for key, name, lo, hi, min_dv in TIERS:
         cand = [r for r in rows if lo <= r["price"] < hi and r["dv"] >= min_dv]
         cand.sort(key=lambda r: (r["up"], r["mom"]), reverse=True)
-        pick = cand[:n]
+        pick = cand[:n] if n else cand
         sel[key] = [r["tk"] for r in pick]
-        notes.append(f"{name}: {len(cand)} ta nomzoddan tanlandi:")
+        ups = sum(r["up"] for r in pick)
+        notes.append(f"{name}: {len(pick)} ta aksiya kuzatiladi, {ups} tasi ko'tarilish trendida. Eng kuchlilari:")
         notes += [f"  • {r['tk']} {r['price']:.2f}$ | 6 oyda {r['mom'] * 100:+.0f}% | "
-                  f"{'📈 trend' if r['up'] else '↔️ trendsiz'} | kuniga {r['dv'] / 1e6:.0f} mln$" for r in pick]
+                  f"{'📈 trend' if r['up'] else '↔️ trendsiz'}" for r in pick[:show]]
     notes.append(f"\nKo'rib chiqilgan aksiyalar: {len(rows)} ta.")
     return sel, notes

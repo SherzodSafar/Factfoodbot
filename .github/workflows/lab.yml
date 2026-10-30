@@ -1,8 +1,9 @@
+# Strategiyalarni real tarixiy narxlarda solishtirish. GitHub → Actions → strategiya-lab → Run workflow.
 name: strategiya-lab
 on:
+  workflow_dispatch:
   push:
-    branches: [ccr-8ce3381b-b2e2bz]
-    paths: ["research/**", ".github/workflows/lab.yml"]
+    paths: ["research/**"]
 jobs:
   lab:
     runs-on: ubuntu-latest

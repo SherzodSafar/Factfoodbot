@@ -9,49 +9,92 @@ from universe import TIERS, TIER_NAME, TIER_ICON, SLIPPAGE, select
 
 DEFAULT_CAPITAL = 30000.0   # umumiy (guruhlarga teng bo'linadi)
 AUTO_COOLDOWN_DAYS = 28     # avtomatik sozlash o'zgarishlari orasidagi eng kam muddat
-PER_TIER = 6
+PER_TIER = None   # har guruhga shartga mos barcha aksiyalar
 
-HELP = """📈 Demo savdo boti — buyruqlar
+HELP = """📈 Demo savdo boti
 
-/demo_boshlash 3000 — UMUMIY 3000$ virtual pul 3 guruhga teng bo'linadi (har biriga 1000$)
-   /demo_boshlash 2000 orta arzon — faqat tanlangan guruhlar (har biriga 1000$)
-/holat — har guruhdagi portfel va ochiq savdolar
-/hisobot kunlik | haftalik | oylik — guruhlarni taqqoslab
-/tanlash — aksiyalarni hozir qayta tanlash
-/bozor — tanlangan aksiyalar holati (trend, RSI)
-/tahlil — xato va ustunliklar, sozlamani yaxshilash taklifi
-/qabul — taklifni qo'llash (/qabul arzon — faqat bitta guruhga)
-/avto on | off — haftalik yaxshilashni avtomatik qo'llash
-/sozlamalar — joriy sozlamalar
-/ulush 15 — har savdoga guruh kapitalining necha % i (standart 10)
-/kasr on | off — kasr aksiya (brokeringiz ruxsat bersa); off — faqat butun aksiya
-/baho — real pulga o'tishga tayyorlik mezonlari
-/test — o'tgan davrda sinash:
-   /test → har guruh uchun hozir tanlangan aksiyalar, oxirgi 2 yil
-   /test AAPL,F 2024-01-01 2025-12-31 3000 → o'zingiz tanlagan aksiyalar (3000$ umumiy)
-/tavsiya — strategiya qanday ishlaydi
-/yangilash — ma'lumotni hozir yangilash
+Eng qulayi — /menyu: barcha amallar va sozlamalar tugmalarda.
 
-Avtomatik: har kuni 03:00 (Toshkent) kunlik hisobot; shanba — haftalik hisobot + tahlil;
-oyning 1-kuni — oylik hisobot + aksiyalarni qayta tanlash.
+Buyruqlar (xohlasangiz yozib ham ishlatsa bo'ladi):
+/demo_boshlash 3000 — UMUMIY 3000$ virtual pul 3 guruhga teng bo'linadi
+   /demo_boshlash 2000 orta arzon — faqat tanlangan guruhlar
+/holat — portfel va ochiq savdolar
+/hisobot kunlik | haftalik | oylik
+/bozor — umumiy bozor va eng kuchli aksiyalar
+/tahlil — xato va ustunliklar, sozlamani tekshirish
+/qabul — tahlil taklifini qo'llash (/qabul arzon — bitta guruhga)
+/baho — real pulga o'tishga tayyorlik
+/test — o'tgan 2 yilda sinash (/test AAPL,F 2024-01-01 2025-12-31 3000)
+/strategiya momentum | breakout | combo | pullback
+/xavf 1 — har savdoda kapitalning necha % i xavf ostida (0.25–2)
+/kasr on | off — kasr aksiya
+/avto on | off — haftalik yaxshilashni o'zi qo'llashi
+/sozlamalar, /tanlash, /yangilash, /yordam
+
+Avtomatik: har kuni 03:00 (Toshkent) kunlik hisobot; shanba — haftalik hisobot, tahlil va baho;
+yangi oy — oylik hisobot va aksiyalar ro'yxatini yangilash.
 ⚠️ Bu demo. Natijalar kelajakdagi foydani kafolatlamaydi."""
 
-ADVICE = """🎯 Aksiyalar qanday tanlanadi
-Bot ~250 ta likvid AQSh aksiyasini ko'rib chiqadi va bugungi narxiga qarab 3 guruhga ajratadi:
-💎 Qimmat (50$+) • 🔷 O'rtacha (10–50$) • 🔹 Arzon (5–10$)
-Har guruhdan 6 tadan: kunlik savdo hajmi katta, ko'tarilish trendida va oxirgi 6 oyda eng kuchli o'sganlari.
-5$ dan arzon aksiyalar olinmaydi — ular juda xavfli. Ro'yxat har oy yangilanadi.
+STRATEGY_NAMES = {
+    "momentum": "Momentum (tavsiya)",
+    "breakout": "Breakout (yangi cho'qqi)",
+    "combo": "Kombinatsiya",
+    "pullback": "Pullback (eski, RSI 40)",
+}
 
-⏱ Savdo qancha davom etadi
-• Kunlik (1D) grafik. Signal kun yopilganda, xarid ertasi kuni ochilishda.
-• Odatda 3–20 kun. Stop-loss (2 ATR) yoki take-profit (3 ATR) tegsa — oldinroq yopiladi.
-• 20 kunda natija bo'lmasa yoki trend buzilsa — chiqiladi.
-• Umumiy bozor (SPY) EMA200 dan pastda bo'lsa — yangi xarid qilinmaydi.
-• Hisobda komissiya, sirpanish (spred) va butun aksiya cheklovi bor — real savdoga yaqinroq.
+HELP_SECTIONS = {
+    "how": ("⚙️ Bot qanday ishlaydi", """• Har kuni AQSh birjasi yopilgach (03:00 Toshkent) bot kunlik narxlarni oladi.
+• ~250 likvid aksiya narxiga qarab 3 guruhga bo'linadi: 💎 50$+ • 🔷 10–50$ • 🔹 5–10$.
+  Har guruhga savdo hajmi yetarli BARCHA aksiyalar kiradi, ro'yxat har oy yangilanadi.
+• Siz kiritgan umumiy virtual pul guruhlarga teng bo'linadi — qaysi guruh yaxshi ishlashini solishtirasiz.
+• Signal kun yopilganda chiqadi, xarid ertasi kuni ochilishda bo'ladi.
+• Hisobda komissiya (0.05%), sirpanish/spred (0.05–0.2%) va butun aksiya cheklovi bor."""),
+    "strat": ("🧠 Strategiyalar", """Hammasi faqat ko'tarilish trendida xarid qiladi (narx > EMA200, EMA50 > EMA200)
+va umumiy bozor (SPY) 200 kunlik o'rtachadan yuqori bo'lsa.
 
-📋 Maqsad
-Siz kiritgan umumiy virtual pul guruhlarga teng bo'linadi — qaysi narx guruhida strategiya yaxshiroq ishlashini ko'rasiz.
-Kamida 2–3 oy demo. Real pulga o'tishdan oldin /baho dagi barcha mezonlar bajarilsin."""
+• Momentum (tavsiya) — har juma guruhda oxirgi 6 oyda eng kuchli o'sgan 5 ta aksiya olinadi.
+• Breakout — narx oxirgi 50 kunlik eng yuqori narxdan oshib yopilsa olinadi.
+• Kombinatsiya — ikkalasi birga (ko'proq savdo).
+• Pullback — eski strategiya (RSI 40). Tarixiy sinovda foyda bermagan, faqat solishtirish uchun.
+
+Chiqish (momentum/breakout/kombinatsiya): take-profit yo'q — foyda o'sishiga ruxsat beriladi.
+Stop narx ortidan 4 ATR masofada ko'tarilib boradi (trailing stop): narx tushsa — chiqadi.
+Hajm: stop tegsa guruh kapitalining ~1% i yo'qotiladi; bitta aksiyaga ko'pi bilan 20%, 8 tagacha savdo."""),
+    "results": ("📊 Tarixiy sinov natijalari", """2014–2026, real narxlar, har oy o'sha paytdagi ma'lumot bilan tanlangan aksiyalar:
+
+Momentum + trailing 4 ATR (yiliga o'rtacha / eng katta tushish / eng yomon yil):
+💎 +8.7% / −17% / −6.6%
+🔷 +9.8% / −17.5% / −4.0%
+🔹 +9.2% / −19% / −6.4%
+Eski pullback: barcha guruhlarda ~0% (ustunlik yo'q).
+SPY ni shunchaki ushlab turish: +13.8% / −34% / −18%.
+
+Xulosa: strategiya SPY dan kamroq foyda, lekin taxminan 2 baravar kichik tushish ko'rsatgan.
+⚠️ Ro'yxat bugungi aksiyalardan tuzilgan (yo'qolib ketgan kompaniyalar yo'q) — real natija pastroq bo'lishi mumkin.
+O'tmish kelajak kafolati emas. Shuning uchun avval demo."""),
+    "adapt": ("🔄 Bozorga moslashish", """Bot bozorga quyidagicha moslashadi:
+• Har juma eng kuchli o'sayotgan aksiyalarni qayta tanlaydi.
+• Umumiy bozor tushishga o'tsa (SPY < 200 kunlik o'rtacha) — yangi xarid to'xtaydi.
+• Stop har bir aksiyaning o'z tebranishiga (ATR) qarab qo'yiladi va narx ortidan ko'tariladi.
+• Har oy aksiyalar ro'yxati yangilanadi.
+• Har shanba sozlamalar oxirgi 2 yil ma'lumotida tekshiriladi.
+  Yangisi faqat ko'rilmagan davrda ham sezilarli yaxshi bo'lsa taklif qilinadi.
+
+Nega har kuni sozlamalarni o'zgartirmaydi? Sinovda "eng yaxshi sozlamaga tez-tez o'tish"
+barqaror sozlamadan yaxshi natija bermadi — u o'tmishga moslashib qoladi."""),
+    "daily": ("⏱ Kun ichi savdo haqida", """Kun ichi (intraday) savdo qo'shilmadi, chunki:
+• Bepul narx ma'lumoti kechikadi va kun ichi tarixi juda qisqa (≈60 kun) — strategiyani ishonchli sinab bo'lmaydi.
+• Spred va komissiya kichik harakatlarda foydaning katta qismini yeydi.
+• Ko'p brokerlarda kichik hisobda kun ichi savdoga cheklov bor.
+• Tadqiqotlarga ko'ra kun ichi savdo qiluvchilarning ko'pchiligi zarar ko'radi.
+Bot kunlik grafikda ishlaydi: savdolar odatda bir necha haftadan bir necha oygacha davom etadi."""),
+    "real": ("🎓 Real pulga qachon?", """/baho dagi barcha mezonlar bajarilsin:
+≥3 oy demo, ≥30 yopilgan savdo, profit factor ≥1.3, natija ijobiy, SPY dan yaxshi, tushish <10%.
+So'ng yo'qotsangiz ham qiynalmaydigan kichik summadan boshlang.
+Kichik summada qimmat aksiyalarni butun dona olib bo'lmaydi — kasr aksiya beradigan broker kerak."""),
+}
+
+ADVICE = "\n\n".join(f"{t}\n{b}" for t, b in (HELP_SECTIONS[k] for k in ("how", "strat", "results")))
 
 
 def _money(x):
@@ -179,7 +222,7 @@ class Service:
             st, dg = stats(pf), diagnose(pf)
             months = period_table(pf, "M", 24)
             mline = " ".join(f"{r['label'][2:]}:{r['change_pct']:+.1f}%" for r in months if r["trades"] or r["change"])
-            msgs.append(fmt_stats(st, f"{name}\nAksiyalar: {', '.join(td)}") + "\n" + fmt_diagnose(dg)
+            msgs.append(fmt_stats(st, f"{name}\nAksiyalar: " + (', '.join(td) if len(td) <= 10 else f"{len(td)} ta")) + "\n" + fmt_diagnose(dg)
                         + "\n" + insights(st, dg) + (f"\n📅 Oylar: {mline}" if mline else ""))
         return msgs
 
@@ -212,12 +255,12 @@ class Service:
 
     def _small_capital_note(self, per):
         p = self.paper.params(self.paper.tiers()[0]) if self.paper.tiers() else Params()
-        budget = per * p.pos_pct / 100
+        budget = per * (8 if p.sizing == "risk" else p.pos_pct) / 100   # odatiy bitta savdo hajmi
         if not p.whole_shares or budget >= 300:
             return ""
-        return (f"\n\n⚠️ Har savdoga ~{_money(budget)} ajratiladi va faqat butun aksiya olinadi — "
-                f"narxi {budget:.0f}$ dan qimmat aksiyalarni sotib ololmaydi. Yechim: kattaroq summa, "
-                f"/ulush 20 yoki brokeringiz kasr aksiyaga ruxsat bersa /kasr on.")
+        return (f"\n\n⚠️ Bitta savdoga odatda ~{_money(budget)} ajratiladi va faqat butun aksiya olinadi — "
+                f"narxi {budget:.0f}$ dan qimmat aksiyalarni sotib ololmaydi. Yechim: kattaroq summa yoki "
+                f"brokeringiz kasr aksiyaga ruxsat bersa /kasr on (yoki /menyu → Sozlamalar).")
 
     def _events(self, res):
         lines = []
@@ -297,7 +340,8 @@ class Service:
                 for tk, pos in pf.positions.items():
                     c = pf.last_close.get(tk, pos["entry"])
                     lines.append(f"• {tk}: {pos['entry']:.2f} → {c:.2f} ({(c / pos['entry'] - 1) * 100:+.2f}%), "
-                                 f"stop {pos['stop']:.2f}, take {pos['take']:.2f}, {pos['bars']} kun")
+                                 f"stop {pos['stop']:.2f}" + (f", take {pos['take']:.2f}" if pos.get("take") else " (trailing)")
+                                 + f", {pos['bars']} kun")
                 if pf.pending:
                     lines.append("🔔 Ertaga xarid: " + ", ".join(pf.pending))
         return ["\n".join(lines)]
@@ -331,21 +375,23 @@ class Service:
         if "SPY" in data:
             m = market_ok(data["SPY"])
             ok = m[max(m)] if m else None
-            lines.append("SPY (umumiy bozor): " + ("📈 EMA200 dan yuqori — xarid ruxsat" if ok else
-                                                   "📉 EMA200 dan past — yangi xarid to'xtatilgan"))
+            lines.append("SPY (umumiy bozor): " + ("📈 200 kunlik o'rtachadan yuqori — xarid ruxsat" if ok else
+                                                   "📉 200 kunlik o'rtachadan past — yangi xarid to'xtatilgan"))
         for tier, tks in groups.items():
-            lines.append(f"\n{TIER_NAME[tier]}")
             p = self._params_for(tier)
-            up = 0
+            rows = []
             for tk in tks:
-                if tk not in data:
-                    continue
-                r = prepare(data[tk], p).iloc[-1]
-                is_up = r["Close"] > r["ema_s"] and r["ema_f"] > r["ema_s"]
-                up += is_up
-                trend = "📈" if is_up else ("📉" if r["Close"] < r["ema_s"] else "↔️")
-                lines.append(f"• {tk}: {r['Close']:.2f} {trend} RSI {r['rsi']:.0f}" + (" 🔔 SIGNAL" if r["signal"] else ""))
-            lines.append(f"Trendda: {up}/{len(tks)}")
+                if tk in data and len(data[tk]) > p.slow:
+                    rows.append((tk, prepare(data[tk], p).iloc[-1]))
+            up = [x for x in rows if x[1]["up"]]
+            up.sort(key=lambda x: -x[1]["mom"])
+            lines.append(f"\n{TIER_NAME[tier]} — trendda {len(up)}/{len(rows)}. Eng kuchlilari:")
+            for tk, r in up[:6]:
+                lines.append(f"• {tk}: {r['Close']:.2f}$, 6 oyda {r['mom'] * 100:+.0f}%"
+                             + (" 🔔 breakout" if r["signal"] else ""))
+            sig = [tk for tk, r in rows if r["signal"]]
+            if sig and p.strategy in ("breakout", "combo", "pullback"):
+                lines.append("🔔 Bugungi signallar: " + ", ".join(sig))
         return ["\n".join(lines)]
 
     # ---------- tahlil va yaxshilash ----------
@@ -419,26 +465,63 @@ class Service:
     def cmd_settings(self):
         tiers = self.paper.tiers() or [None]
         lines = ["⚙️ Sozlamalar"]
-        for t in tiers:
-            p = self.paper.params(t)
-            cap = f", kapital {_money(self.paper.book(t)['portfolio']['capital'])}" if t else ""
-            lines.append(f"{TIER_NAME.get(t, 'Standart')}{cap}: RSI chegara {p.rsi_buy}, stop {p.sl_atr} ATR, "
-                         f"take {p.tp_atr} ATR, max {p.max_days} kun, har savdoga {p.pos_pct}%, "
-                         f"sirpanish {p.slippage * 100:.2f}%, {'kasr aksiya' if not p.whole_shares else 'butun aksiya'}, "
-                         f"bozor filtri {'yoqilgan' if p.market_filter else 'o‘chirilgan'}")
         if self.paper.active:
-            lines.insert(1, f"Umumiy virtual kapital: {_money(self.paper.total_capital)}")
-        lines.append(f"Avtomatik yaxshilash: {'yoqilgan' if (self.paper.state or {}).get('auto_apply') else 'o‘chirilgan'}")
+            lines.append(f"Umumiy virtual kapital: {_money(self.paper.total_capital)} "
+                         f"({len(self.paper.tiers())} guruhga teng)")
+        p0 = self._params_for(tiers[0])
+        lines.append(f"🧠 Strategiya: {STRATEGY_NAMES.get(p0.strategy, p0.strategy)}")
+        if p0.sizing == "risk":
+            lines.append(f"📏 Har savdoda xavf: {p0.risk_pct:g}% (stop tegsa), bitta aksiyaga ≤{p0.pos_pct:g}%, "
+                         f"≤{p0.max_pos} ta savdo")
+        else:
+            lines.append(f"📏 Har savdoga: {p0.pos_pct:g}%")
+        lines.append("🚪 Chiqish: " + (f"trailing stop {p0.trail_atr:g} ATR" if p0.trail_atr else
+                                      f"stop {p0.sl_atr:g} ATR, take {p0.tp_atr:g} ATR, {p0.max_days} kun"))
+        lines.append(f"🧩 {'Kasr aksiya' if not p0.whole_shares else 'Faqat butun aksiya'} • "
+                     f"🛡 Bozor filtri {'yoqilgan' if p0.market_filter else 'o‘chirilgan'} • "
+                     f"🤖 Avto-yaxshilash {'yoqilgan' if (self.paper.state or {}).get('auto_apply') else 'o‘chirilgan'}")
+        for t in tiers:
+            if t:
+                p = self.paper.params(t)
+                n = len(self.paper.book(t)["tickers"])
+                lines.append(f"{TIER_NAME[t]}: {_money(self.paper.book(t)['portfolio']['capital'])}, {n} ta aksiya, "
+                             f"sirpanish {p.slippage * 100:.2f}%")
         return ["\n".join(lines)]
 
     def cmd_share(self, args):
+        """Trend strategiyalarida — xavf foizi, pullback'da — har savdoga ulush."""
         if r := self._need_demo():
             return r
         _, _, nums, _ = parse_args(args)
+        p = self.paper.params(self.paper.tiers()[0])
+        if p.sizing == "risk":
+            if not nums or not 0.25 <= nums[0] <= 2:
+                return ["Masalan: /xavf 1 — stop tegsa guruh kapitalining 1% i yo'qotiladi (0.25–2)"]
+            self.paper.set_all_params("xavf o'zgartirildi", risk_pct=nums[0])
+            return [f"✅ Har savdoda xavf: {nums[0]:g}%"]
         if not nums or not 1 <= nums[0] <= 50:
             return ["Masalan: /ulush 15 — har savdoga guruh kapitalining 15% i (1–50 oralig'ida)"]
         self.paper.set_all_params("ulush o'zgartirildi", pos_pct=nums[0])
         return [f"✅ Har savdoga endi guruh kapitalining {nums[0]:g}% i ajratiladi."]
+
+    def cmd_strategy(self, args):
+        if r := self._need_demo():
+            return r
+        name = (args[0].lower() if args else "")
+        if name not in STRATEGY_NAMES:
+            return ["Strategiyalar: " + ", ".join(STRATEGY_NAMES) + "\nMasalan: /strategiya momentum"]
+        for tier in self.paper.tiers():
+            old = self.paper.params(tier)
+            keep = dict(slippage=old.slippage, whole_shares=old.whole_shares, market_filter=old.market_filter)
+            self.paper.set_params(tier, Params.preset(name, **keep), f"strategiya: {name}")
+        return [f"✅ Strategiya: {STRATEGY_NAMES[name]}. Ochiq savdolar yangi qoidalar bo'yicha davom etadi."]
+
+    def cmd_filter(self, args):
+        if r := self._need_demo():
+            return r
+        on = not args or args[0].lower() == "on"
+        self.paper.set_all_params("bozor filtri", market_filter=on)
+        return ["🛡 Bozor filtri " + ("yoqildi" if on else "o'chirildi")]
 
     def cmd_fractional(self, args):
         if r := self._need_demo():
@@ -467,7 +550,9 @@ class Service:
             "/hisobot": lambda: self.cmd_report(args), "/bozor": self.cmd_market,
             "/tahlil": lambda: self.cmd_analyze(), "/qabul": lambda: self.cmd_accept(args),
             "/avto": lambda: self.cmd_auto(args), "/sozlamalar": self.cmd_settings,
-            "/ulush": lambda: self.cmd_share(args), "/kasr": lambda: self.cmd_fractional(args),
+            "/ulush": lambda: self.cmd_share(args), "/xavf": lambda: self.cmd_share(args),
+            "/kasr": lambda: self.cmd_fractional(args), "/strategiya": lambda: self.cmd_strategy(args),
+            "/filtr": lambda: self.cmd_filter(args),
             "/baho": self.cmd_grade,
         }
         fn = table.get(cmd)

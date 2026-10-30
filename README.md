@@ -9,6 +9,8 @@ kunlik / haftalik / oylik hisobot yuboradi va har hafta xatolarni tahlil qilib, 
 - `paper.py` — demo savdo holati (`demo_state.json` faylida saqlanadi)
 - `commands.py` — bot buyruqlari
 - `bot.py` — Telegram bot + jadval (03:00 Toshkent vaqti)
+- `menu.py` — inline tugmali menyu (`/menyu`)
+- `research/lab.py` — strategiyalarni real tarixda solishtirish (GitHub Actions → strategiya-lab)
 - `cli.py` — Telegram'siz kompyuterda sinash: `python cli.py /test SPY 2024-01-01 2025-12-31`
 
 ## 1. Bot yaratish
@@ -30,5 +32,5 @@ kunlik / haftalik / oylik hisobot yuboradi va har hafta xatolarni tahlil qilib, 
   mahkamlaydi (pin) va qayta ishga tushganda shundan tiklaydi — bu xabarni o'chirmang va pin'dan olmang.
 - Muqobil: botni o'z kompyuteringizda ishga tushiring: `pip install -r requirements.txt`, so'ng `BOT_TOKEN=... python bot.py`.
 
-## Buyruqlar
-`/yordam` — barcha buyruqlar ro'yxati, `/tavsiya` — qaysi aksiyalar va necha kunlik savdo.
+## Boshqarish
+`/menyu` — hamma narsa tugmalarda (sozlamalar, hisobotlar, yordam). `/yordam` — buyruqlar ro'yxati.

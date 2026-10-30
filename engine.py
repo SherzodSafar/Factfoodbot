@@ -1,9 +1,15 @@
 """Strategiya va demo-savdo dvigateli.
 
-Strategiya (TradingView'dagi Pine skript bilan bir xil):
-  - Faqat ko'tarilish trendida: narx > EMA200 va EMA50 > EMA200
-  - RSI 40 dan pastdan yuqoriga kesib o'tganda (tushishdan keyin qaytish) -> ertasi kuni ochilishda xarid
-  - Chiqish: stop-loss (2 ATR), take-profit (3 ATR), trend buzilsa yoki muddat tugasa
+Strategiyalar (kunlik grafik, faqat xarid, ko'tarilish trendida: narx > EMA200 va EMA50 > EMA200):
+  breakout — narx oxirgi 50 kunlik eng yuqori narxdan oshib yopilsa (6 oylik o'sish ijobiy) -> xarid.
+  momentum — har juma guruhda 6 oyda eng kuchli o'sgan 5 ta aksiya -> xarid.
+  combo — ikkalasi birga.  (asosiy: momentum — tarixiy sinovda eng kichik tushish)
+  Chiqish: take-profit yo'q — foyda o'sishiga ruxsat; stop narx ortidan 4 ATR masofada ko'tarilib boradi.
+  Hajm xavf bo'yicha: stop tegsa guruh kapitalining ~1% i yo'qotiladi; bitta aksiyaga ko'pi bilan 20%.
+  pullback (eski) — trendda RSI 40 ni pastdan kesib o'tsa xarid; stop 2 ATR, take 3 ATR, 20 kun.
+
+2014–2026 real tarixiy sinovda (research/lab.py) trend strategiyalari uchala narx guruhida ham ijobiy bo'lgan,
+pullback esa ~0% atrofida qolgan. Bu kelajak kafolati emas.
 """
 from __future__ import annotations
 
@@ -13,27 +19,52 @@ from dataclasses import dataclass, asdict
 import numpy as np
 import pandas as pd
 
+_TREND = dict(sl_atr=4.0, tp_atr=0.0, trail_atr=4.0, max_days=0, trend_exit=False,
+              sizing="risk", risk_pct=1.0, pos_pct=20.0, max_pos=8)
+STRATEGIES = ("momentum", "breakout", "combo", "pullback")
+PRESETS = {
+    "combo": dict(strategy="combo", **_TREND),
+    "breakout": dict(strategy="breakout", **_TREND),
+    "momentum": dict(strategy="momentum", **_TREND),
+    "pullback": dict(strategy="pullback", sl_atr=2.0, tp_atr=3.0, trail_atr=0.0, max_days=20, trend_exit=True,
+                     sizing="pct", pos_pct=10.0, max_pos=8),
+}
+
 
 @dataclass
 class Params:
+    strategy: str = "momentum"
     fast: int = 50          # tez EMA
     slow: int = 200         # sekin EMA (asosiy trend)
+    breakout_len: int = 50  # breakout: necha kunlik eng yuqori narx
+    top_k: int = 5          # momentum: har juma 6 oyda eng kuchli o'sgan shuncha aksiya signal beradi
     rsi_len: int = 14
-    rsi_buy: float = 40     # RSI shu chegarani yuqoriga kesib o'tsa - signal
+    rsi_buy: float = 40     # pullback: RSI shu chegarani yuqoriga kesib o'tsa - signal
     atr_len: int = 14
-    sl_atr: float = 2.0     # stop-loss = kirish - 2*ATR
-    tp_atr: float = 3.0     # take-profit = kirish + 3*ATR
-    max_days: int = 20      # savdoni eng ko'pi bilan necha kun ushlab turish
-    pos_pct: float = 10.0   # har bir savdoga kapitalning necha foizi
+    sl_atr: float = 4.0     # boshlang'ich stop = kirish - sl_atr*ATR
+    tp_atr: float = 0.0     # take-profit = kirish + tp_atr*ATR (0 — yo'q)
+    trail_atr: float = 4.0  # trailing stop: yopilish - trail_atr*ATR dan pastga tushmaydi (0 — yo'q)
+    max_days: int = 0       # eng ko'pi bilan necha kun ushlab turish (0 — cheklovsiz)
+    trend_exit: bool = False  # narx EMA200 dan pastda yopilsa chiqish
+    sizing: str = "risk"    # risk — stop masofasiga qarab; pct — kapitalning pos_pct foizi
+    risk_pct: float = 1.0   # risk: stop tegsa guruh kapitalining necha foizi yo'qotiladi
+    pos_pct: float = 20.0   # pct: har savdoga ulush; risk: bitta aksiyaga eng ko'p ulush
+    max_pos: int = 8        # bir vaqtda eng ko'p ochiq savdo
     commission: float = 0.0005  # 0.05% komissiya
     slippage: float = 0.0005    # sirpanish/spred: xarid shuncha qimmatroq, sotuv shuncha arzonroq
     whole_shares: bool = True   # faqat butun aksiya (ko'p brokerlarda kasr aksiya yo'q)
-    market_filter: bool = True  # SPY EMA200 dan past bo'lsa (umumiy bozor tushishda) yangi xarid yo'q
+    market_filter: bool = True  # SPY 200 kunlik o'rtachadan past bo'lsa yangi xarid yo'q
 
     @classmethod
     def from_dict(cls, d):
-        d = d or {}
+        d = dict(d or {})
+        if "strategy" not in d:   # eski holat fayli — eski strategiya sozlamalari
+            d = {**PRESETS["pullback"], **d, "strategy": "pullback"}
         return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+
+    @classmethod
+    def preset(cls, strategy, **kw):
+        return cls(**{**PRESETS[strategy], **kw})
 
     def to_dict(self):
         return asdict(self)
@@ -64,17 +95,26 @@ def prepare(df: pd.DataFrame, p: Params) -> pd.DataFrame:
     out["ema_s"] = _ema(out["Close"], p.slow)
     out["rsi"] = _rsi(out["Close"], p.rsi_len)
     out["atr"] = _atr(out, p.atr_len)
+    out["mom"] = out["Close"] / out["Close"].shift(126) - 1
+    out["hh"] = out["High"].rolling(p.breakout_len).max().shift()
     enough = pd.Series(np.arange(len(out)) >= p.slow, index=out.index)  # EMA200 uchun yetarli tarix
     up = (out["Close"] > out["ema_s"]) & (out["ema_f"] > out["ema_s"])
-    cross = (out["rsi"] > p.rsi_buy) & (out["rsi"].shift() <= p.rsi_buy)
-    out["signal"] = up & cross & enough
+    if p.strategy in ("breakout", "combo"):
+        sig = (out["Close"] > out["hh"]) & (out["mom"] > 0)
+    elif p.strategy == "momentum":
+        sig = pd.Series(False, index=out.index)   # signal step() da, aksiyalarni solishtirib beriladi
+    else:
+        sig = (out["rsi"] > p.rsi_buy) & (out["rsi"].shift() <= p.rsi_buy)
+    out["up"] = up & enough
+    out["signal"] = up & sig & enough
+    out["mom"] = out["mom"].fillna(-9.0)
     return out
 
 
 def market_ok(spy: pd.DataFrame, slow=200) -> dict:
-    """{sana: True/False} — umumiy bozor (SPY) EMA200 dan yuqorimi."""
+    """{sana: True/False} — umumiy bozor (SPY) 200 kunlik o'rtachadan yuqorimi."""
     c = spy["Close"].astype(float)
-    ok = (c > _ema(c, slow)) & pd.Series(np.arange(len(c)) >= slow, index=c.index)
+    ok = c > c.rolling(slow).mean()
     return {d: bool(v) for d, v in ok.items()}
 
 
@@ -99,7 +139,7 @@ class Portfolio:
         self.capital = float(capital)
         self.cash = float(capital)
         self.positions = {}   # tk -> dict(qty, entry, stop, take, entry_date, bars)
-        self.pending = {}     # tk -> {"atr": ...}  (ertasi kuni ochilishda kiriladi)
+        self.pending = {}     # tk -> {"atr": ..., "mom": ...}  (ertasi kuni ochilishda kiriladi)
         self.trades = []
         self.equity = []      # [[sana, qiymat], ...]
         self.last_close = {}
@@ -137,8 +177,18 @@ class Portfolio:
             exit_date=ds, exit=round(px, 4), reason=reason, days=pos["bars"],
             pnl=round(proceeds - cost, 2), pnl_pct=round((proceeds / cost - 1) * 100, 2)))
 
+    def _qty(self, eq, buy, stop):
+        p = self.p
+        if p.sizing == "risk":
+            budget = min(eq * p.risk_pct / 100 / max(buy - stop, 1e-9) * buy, eq * p.pos_pct / 100)
+        else:
+            budget = eq * p.pos_pct / 100
+        budget = min(budget, self.cash / (1 + p.commission))
+        qty = budget / buy if buy > 0 else 0
+        return (math.floor(qty) if p.whole_shares else qty), budget
+
     def step(self, d, rows: dict, allow_new=True, market=None):
-        """Bitta savdo kunini qayta ishlaydi. market: shu kuni SPY EMA200 dan yuqorimi (None — noma'lum).
+        """Bitta savdo kunini qayta ishlaydi. market: shu kuni SPY 200 kunlikdan yuqorimi (None — noma'lum).
         Qaytaradi: shu kundagi hodisalar ro'yxati."""
         p = self.p
         ds = pd.Timestamp(d).strftime("%Y-%m-%d")
@@ -146,50 +196,68 @@ class Portfolio:
         events = []
         if allow_new and p.market_filter and market is False:
             allow_new = False
+        # 1) kecha signal bo'lganlar — bugun ochilishda xarid (kuchliroq o'sganlari birinchi)
+        order = sorted(self.pending, key=lambda t: -(self.pending[t].get("mom", 0) if isinstance(self.pending[t], dict) else 0))
+        for tk in order:
+            pend = self.pending.pop(tk)
+            r = rows.get(tk)
+            if r is None or tk in self.positions:
+                continue
+            if len(self.positions) >= p.max_pos:
+                events.append(f"⏭ {tk}: bo'sh joy yo'q ({p.max_pos} ta ochiq savdo)")
+                continue
+            buy = r["Open"] * (1 + p.slippage)
+            if isinstance(pend, dict):   # stop/take haqiqiy xarid narxidan hisoblanadi
+                stop = buy - p.sl_atr * pend["atr"]
+                take = buy + p.tp_atr * pend["atr"] if p.tp_atr > 0 else None
+            else:                        # eski holat fayli: [stop, take]
+                stop, take = pend
+            qty, budget = self._qty(eq_prev, buy, stop)
+            if qty > 0 and qty * buy > 1:
+                self.cash -= qty * buy * (1 + p.commission)
+                self.positions[tk] = dict(qty=qty, entry=buy, stop=stop, take=take, entry_date=ds, bars=0)
+                events.append(f"🟢 XARID {tk} {qty:g} dona @ {buy:.2f} (stop {stop:.2f}"
+                              + (f", take {take:.2f})" if take else ", trailing)"))
+            elif buy > 0:
+                events.append(f"⚠️ {tk}: pul yetmadi (1 dona {buy:.2f}$, ajratilgan {budget:.0f}$)")
+        cands = []
+        top = set()
+        if allow_new and p.strategy in ("combo", "momentum") and pd.Timestamp(d).weekday() == 4:
+            # har juma: trenddagi aksiyalar ichida 6 oyda eng kuchli o'sgan top_k tasi
+            ranked = sorted(((r["mom"], tk) for tk, r in rows.items() if r.get("up") and r["mom"] > 0), reverse=True)
+            top = {tk for _, tk in ranked[:p.top_k]}
         for tk, r in rows.items():
             o, h, l, c = r["Open"], r["High"], r["Low"], r["Close"]
-            # 1) kecha signal bo'lgan bo'lsa - bugun ochilishda xarid
-            if tk in self.pending and tk not in self.positions:
-                pend = self.pending.pop(tk)
-                buy = o * (1 + p.slippage)
-                if isinstance(pend, dict):   # stop/take haqiqiy xarid narxidan hisoblanadi
-                    stop, take = buy - p.sl_atr * pend["atr"], buy + p.tp_atr * pend["atr"]
-                else:                        # eski holat fayli: [stop, take]
-                    stop, take = pend
-                budget = min(eq_prev * p.pos_pct / 100, self.cash / (1 + p.commission))
-                qty = budget / buy if buy > 0 else 0
-                if p.whole_shares:
-                    qty = math.floor(qty)
-                if qty > 0 and qty * buy > 1:
-                    self.cash -= qty * buy * (1 + p.commission)
-                    self.positions[tk] = dict(qty=qty, entry=buy, stop=stop, take=take, entry_date=ds, bars=0)
-                    events.append(f"🟢 XARID {tk} {qty:g} dona @ {buy:.2f} (stop {stop:.2f}, take {take:.2f})")
-                elif buy > 0:
-                    events.append(f"⚠️ {tk}: pul yetmadi (1 dona {buy:.2f}$, ajratilgan {budget:.0f}$)")
             # 2) ochiq pozitsiyadan chiqish shartlari
             pos = self.positions.get(tk)
             if pos:
                 pos["bars"] += 1
                 px = reason = None
+                take = pos.get("take")
                 if l <= pos["stop"]:          # bir kunda ikkalasi tegsa - ehtiyotkorlik uchun stop deb hisoblaymiz
-                    px, reason = min(o, pos["stop"]), "stop-loss"
-                elif h >= pos["take"]:
-                    px, reason = max(o, pos["take"]), "take-profit"
-                elif c < r["ema_s"]:
+                    px, reason = min(o, pos["stop"]), ("stop-loss" if pos["stop"] < pos["entry"] else "trailing stop")
+                elif take and h >= take:
+                    px, reason = max(o, take), "take-profit"
+                elif p.trend_exit and c < r["ema_s"]:
                     px, reason = c, "trend buzildi"
-                elif pos["bars"] >= p.max_days:
+                elif p.max_days and pos["bars"] >= p.max_days:
                     px, reason = c, "muddat tugadi"
                 if px is not None:
                     self._close(tk, px, ds, reason)
                     t = self.trades[-1]
-                    events.append(f"{'✅' if t['pnl'] > 0 else '🔴'} SOTUV {tk} @ {px:.2f} ({reason}) "
+                    events.append(f"{'✅' if t['pnl'] > 0 else '🔴'} SOTUV {tk} @ {t['exit']:.2f} ({reason}) "
                                   f"{t['pnl_pct']:+.2f}% / {t['pnl']:+.2f}$")
-            # 3) yangi signal - ertaga kiramiz
+                elif p.trail_atr > 0 and not math.isnan(r["atr"]):
+                    pos["stop"] = max(pos["stop"], c - p.trail_atr * r["atr"])
+            # 3) yangi signal nomzodlari
             if (allow_new and tk not in self.positions and tk not in self.pending
-                    and bool(r["signal"]) and not math.isnan(r["atr"])):
-                self.pending[tk] = {"atr": float(r["atr"])}
-                events.append(f"🔔 SIGNAL {tk} (yopilish {c:.2f}) - ertaga ochilishda xarid")
+                    and (bool(r["signal"]) or tk in top) and not math.isnan(r["atr"])):
+                cands.append((r.get("mom", 0.0), tk, r))
             self.last_close[tk] = c
+        free = p.max_pos - len(self.positions)
+        for mom, tk, r in sorted(cands, key=lambda x: -x[0])[:max(free, 0)]:
+            self.pending[tk] = {"atr": float(r["atr"]), "mom": float(mom)}
+            events.append(f"🔔 SIGNAL {tk} (yopilish {r['Close']:.2f}) - ertaga ochilishda xarid")
         self.equity.append([ds, round(self.value(), 2)])
         self.last_date = ds
         return events
@@ -278,7 +346,11 @@ def buy_hold_pct(df: pd.DataFrame, start, end) -> float | None:
 
 
 # ---------------- Avtomatik yaxshilash (walk-forward) ----------------
-GRID = dict(rsi_buy=[35, 40, 45], sl_atr=[1.5, 2.0, 2.5], tp_atr=[2.0, 3.0, 4.0], max_days=[10, 20, 30])
+_TGRID = dict(trail_atr=[3.0, 4.0], risk_pct=[0.75, 1.0])
+GRIDS = {
+    "combo": _TGRID, "breakout": dict(breakout_len=[50, 100], **_TGRID), "momentum": _TGRID,
+    "pullback": dict(rsi_buy=[35, 40, 45], sl_atr=[1.5, 2.0, 2.5], tp_atr=[2.0, 3.0, 4.0], max_days=[10, 20, 30]),
+}
 
 
 MIN_TRAIN_TRADES = 10   # o'rganish qismida kamida shuncha savdo bo'lmasa, natija tasodif
@@ -292,36 +364,43 @@ def _score(st, min_n=MIN_TRAIN_TRADES):
     return st["return_pct"] - 0.5 * abs(st["max_dd_pct"])   # foyda minus yarim tushish
 
 
+BAR_KEYS = ("strategy", "rsi_buy", "breakout_len")   # bular signalni o'zgartiradi — bars qayta quriladi
+
+
 def optimize(data: dict, p: Params, start, end, capital=10000, market=None) -> dict:
     """Davrni 70% (o'rganish) va 30% (tekshirish) ga bo'ladi.
     Eng yaxshi sozlamani o'rganish qismida topadi va uni ko'rmagan tekshirish qismida sinaydi.
     Shunday qilib 'o'tmishga moslab qo'yish' xavfi kamayadi."""
     import itertools
+    grid = GRIDS[p.strategy]
     base_bars = build_bars(data, p, start, end)
     dates = list(base_bars)
     if len(dates) < 100:
         return dict(ok=False, why="Ma'lumot juda kam (kamida ~100 savdo kuni kerak).")
     cut = dates[int(len(dates) * 0.7)]
     split = lambda bars: ({d: v for d, v in bars.items() if d < cut}, {d: v for d, v in bars.items() if d >= cut})
+    cache = {}
 
-    bars_by_rsi = {}
-    for rb in sorted(set(GRID["rsi_buy"]) | {p.rsi_buy}):
-        q = Params.from_dict({**p.to_dict(), "rsi_buy": rb})
-        bars_by_rsi[rb] = split(build_bars(data, q, start, end))
+    def bars_for(q):
+        key = tuple(getattr(q, k) for k in BAR_KEYS)
+        if key not in cache:
+            cache[key] = split(base_bars if q.strategy == p.strategy and key == tuple(getattr(p, k) for k in BAR_KEYS)
+                               else build_bars(data, q, start, end))
+        return cache[key]
 
-    cur_train = stats(run_bars(bars_by_rsi[p.rsi_buy][0], p, capital, market))
-    cur_test = stats(run_bars(bars_by_rsi[p.rsi_buy][1], p, capital, market))
+    cur_train = stats(run_bars(bars_for(p)[0], p, capital, market))
+    cur_test = stats(run_bars(bars_for(p)[1], p, capital, market))
 
     results = []
-    for rb, sl, tp, md in itertools.product(*GRID.values()):
-        q = Params.from_dict({**p.to_dict(), "rsi_buy": rb, "sl_atr": sl, "tp_atr": tp, "max_days": md})
-        st = stats(run_bars(bars_by_rsi[rb][0], q, capital, market))
+    for combo in itertools.product(*grid.values()):
+        q = Params.from_dict({**p.to_dict(), **dict(zip(grid, combo))})
+        st = stats(run_bars(bars_for(q)[0], q, capital, market))
         results.append((_score(st), q, st))
     results.sort(key=lambda x: x[0], reverse=True)
     best_score, best_p, best_train = results[0]
-    best_test = stats(run_bars(bars_by_rsi[best_p.rsi_buy][1], best_p, capital, market))
+    best_test = stats(run_bars(bars_for(best_p)[1], best_p, capital, market))
 
-    changed = {k: (getattr(p, k), getattr(best_p, k)) for k in GRID if getattr(p, k) != getattr(best_p, k)}
+    changed = {k: (getattr(p, k), getattr(best_p, k)) for k in grid if getattr(p, k) != getattr(best_p, k)}
     better = (bool(changed) and best_test["n"] >= MIN_TEST_TRADES
               and _score(best_test, MIN_TEST_TRADES) > _score(cur_test, MIN_TEST_TRADES) + MIN_GAIN
               and _score(best_train) > _score(cur_train))
