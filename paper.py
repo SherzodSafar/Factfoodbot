@@ -6,8 +6,8 @@ import threading
 
 import pandas as pd
 
-from engine import Params, Portfolio, build_bars
-from universe import TIERS
+from engine import Params, Portfolio, build_bars, market_ok
+from universe import TIERS, SLIPPAGE
 
 
 class Paper:
@@ -46,18 +46,32 @@ class Paper:
     def portfolio(self, tier) -> Portfolio:
         return Portfolio.from_dict(self.book(tier)["portfolio"], self.params(tier))
 
-    def start(self, selection: dict, capital: float):
+    def start(self, selection: dict, total_capital: float):
+        """total_capital — umumiy virtual pul, guruhlarga teng bo'linadi."""
         with self.lock:
             keep = {k: v for k, v in (self.state or {}).items() if k in ("auto_apply", "sent")}
+            per = total_capital / max(len(selection), 1)
             books = {}
             for tier, tks in selection.items():
-                p = self.params(tier) if self.active and tier in self.state["books"] else Params()
+                if self.active and tier in self.state["books"]:
+                    p = self.params(tier)
+                else:
+                    p = Params(slippage=SLIPPAGE.get(tier, Params.slippage))
                 books[tier] = dict(tickers=list(tks), params=p.to_dict(),
-                                   portfolio=Portfolio(p, capital).to_dict(), suggested=None, history=[])
-            self.state = dict(keep, capital=capital, books=books,
+                                   portfolio=Portfolio(p, per).to_dict(), suggested=None, history=[])
+            self.state = dict(keep, capital=total_capital, books=books,
                               started=pd.Timestamp.now().strftime("%Y-%m-%d"),
                               selected_at=pd.Timestamp.now().strftime("%Y-%m-%d"))
             self.save()
+
+    @property
+    def total_capital(self):
+        return sum(self.book(t)["portfolio"]["capital"] for t in self.tiers())
+
+    def set_all_params(self, note, **changes):
+        with self.lock:
+            for tier in self.tiers():
+                self.set_params(tier, Params.from_dict({**self.book(tier)["params"], **changes}), note)
 
     def set_selection(self, selection: dict):
         """Yangi tanlov: ochiq yoki kutilayotgan savdosi bor aksiyalar ham ro'yxatda qoladi (yopilguncha)."""
@@ -84,10 +98,12 @@ class Paper:
         """Har bir guruh uchun oxirgi qayta ishlangan kundan keyingi yopilgan kunlarni o'tkazadi.
         Qaytaradi: {guruh: (yangi kunlar soni, hodisalar)}."""
         with self.lock:
-            all_tk = sorted({t for tier in self.tiers() for t in self.book(tier)["tickers"]})
+            all_tk = sorted({t for tier in self.tiers() for t in self.book(tier)["tickers"]} | {"SPY"})
             lasts = [self.book(t)["portfolio"]["last_date"] for t in self.tiers()]
             start = min([pd.Timestamp(x) for x in lasts if x] or [cutoff])
             data = loader(all_tk, start, cutoff)
+            market = market_ok(data["SPY"]) if "SPY" in data else {}
+            self._update_bench(data.get("SPY"), cutoff)
             out = {}
             for tier in self.tiers():
                 b = self.book(tier)
@@ -102,8 +118,20 @@ class Paper:
                 keys = list(bars)[-1:] if last is None else [d for d in bars if d > last]
                 events = []
                 for d in keys:
-                    events += [f"{d.strftime('%m-%d')} {e}" for e in pf.step(d, bars[d])]
+                    events += [f"{d.strftime('%m-%d')} {e}" for e in pf.step(d, bars[d], market=market.get(d))]
                 b["portfolio"] = pf.to_dict()
                 out[tier] = (len(keys), events)
             self.save()
             return out
+
+    def _update_bench(self, spy, cutoff):
+        """Taqqoslash uchun: demo boshlangandan beri SPY ni shunchaki ushlab tursa qancha bo'lardi."""
+        if spy is None:
+            return
+        c = spy["Close"][spy.index <= cutoff]
+        if c.empty:
+            return
+        b = self.state.setdefault("bench", {})
+        if "start" not in b:
+            b.update(start=float(c.iloc[-1]), start_date=c.index[-1].strftime("%Y-%m-%d"))
+        b.update(last=float(c.iloc[-1]), last_date=c.index[-1].strftime("%Y-%m-%d"))

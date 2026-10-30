@@ -26,6 +26,9 @@ class Params:
     max_days: int = 20      # savdoni eng ko'pi bilan necha kun ushlab turish
     pos_pct: float = 10.0   # har bir savdoga kapitalning necha foizi
     commission: float = 0.0005  # 0.05% komissiya
+    slippage: float = 0.0005    # sirpanish/spred: xarid shuncha qimmatroq, sotuv shuncha arzonroq
+    whole_shares: bool = True   # faqat butun aksiya (ko'p brokerlarda kasr aksiya yo'q)
+    market_filter: bool = True  # SPY EMA200 dan past bo'lsa (umumiy bozor tushishda) yangi xarid yo'q
 
     @classmethod
     def from_dict(cls, d):
@@ -68,6 +71,13 @@ def prepare(df: pd.DataFrame, p: Params) -> pd.DataFrame:
     return out
 
 
+def market_ok(spy: pd.DataFrame, slow=200) -> dict:
+    """{sana: True/False} — umumiy bozor (SPY) EMA200 dan yuqorimi."""
+    c = spy["Close"].astype(float)
+    ok = (c > _ema(c, slow)) & pd.Series(np.arange(len(c)) >= slow, index=c.index)
+    return {d: bool(v) for d, v in ok.items()}
+
+
 def build_bars(data: dict, p: Params, start=None, end=None) -> dict:
     """{sana: {ticker: qator}} ko'rinishiga keltiradi (tez ishlashi uchun)."""
     bars = {}
@@ -89,7 +99,7 @@ class Portfolio:
         self.capital = float(capital)
         self.cash = float(capital)
         self.positions = {}   # tk -> dict(qty, entry, stop, take, entry_date, bars)
-        self.pending = {}     # tk -> [stop, take]  (ertasi kuni ochilishda kiriladi)
+        self.pending = {}     # tk -> {"atr": ...}  (ertasi kuni ochilishda kiriladi)
         self.trades = []
         self.equity = []      # [[sana, qiymat], ...]
         self.last_close = {}
@@ -105,7 +115,7 @@ class Portfolio:
         pf = cls(p, d["capital"])
         pf.cash = d["cash"]
         pf.positions = d["positions"]
-        pf.pending = {k: list(v) for k, v in d["pending"].items()}
+        pf.pending = {k: (v if isinstance(v, dict) else list(v)) for k, v in d["pending"].items()}
         pf.trades = d["trades"]
         pf.equity = d["equity"]
         pf.last_close = d["last_close"]
@@ -118,6 +128,7 @@ class Portfolio:
     def _close(self, tk, px, ds, reason):
         pos = self.positions.pop(tk)
         c = self.p.commission
+        px = px * (1 - self.p.slippage)
         proceeds = pos["qty"] * px * (1 - c)
         cost = pos["qty"] * pos["entry"] * (1 + c)
         self.cash += proceeds
@@ -126,22 +137,35 @@ class Portfolio:
             exit_date=ds, exit=round(px, 4), reason=reason, days=pos["bars"],
             pnl=round(proceeds - cost, 2), pnl_pct=round((proceeds / cost - 1) * 100, 2)))
 
-    def step(self, d, rows: dict, allow_new=True):
-        """Bitta savdo kunini qayta ishlaydi. Qaytaradi: shu kundagi hodisalar ro'yxati."""
+    def step(self, d, rows: dict, allow_new=True, market=None):
+        """Bitta savdo kunini qayta ishlaydi. market: shu kuni SPY EMA200 dan yuqorimi (None — noma'lum).
+        Qaytaradi: shu kundagi hodisalar ro'yxati."""
         p = self.p
         ds = pd.Timestamp(d).strftime("%Y-%m-%d")
         eq_prev = self.equity[-1][1] if self.equity else self.capital
         events = []
+        if allow_new and p.market_filter and market is False:
+            allow_new = False
         for tk, r in rows.items():
             o, h, l, c = r["Open"], r["High"], r["Low"], r["Close"]
             # 1) kecha signal bo'lgan bo'lsa - bugun ochilishda xarid
             if tk in self.pending and tk not in self.positions:
-                stop, take = self.pending.pop(tk)
-                alloc = min(eq_prev * p.pos_pct / 100, self.cash / (1 + p.commission))
-                if alloc > 1 and o > 0:
-                    self.cash -= alloc * (1 + p.commission)
-                    self.positions[tk] = dict(qty=alloc / o, entry=o, stop=stop, take=take, entry_date=ds, bars=0)
-                    events.append(f"🟢 XARID {tk} @ {o:.2f} (stop {stop:.2f}, take {take:.2f})")
+                pend = self.pending.pop(tk)
+                buy = o * (1 + p.slippage)
+                if isinstance(pend, dict):   # stop/take haqiqiy xarid narxidan hisoblanadi
+                    stop, take = buy - p.sl_atr * pend["atr"], buy + p.tp_atr * pend["atr"]
+                else:                        # eski holat fayli: [stop, take]
+                    stop, take = pend
+                budget = min(eq_prev * p.pos_pct / 100, self.cash / (1 + p.commission))
+                qty = budget / buy if buy > 0 else 0
+                if p.whole_shares:
+                    qty = math.floor(qty)
+                if qty > 0 and qty * buy > 1:
+                    self.cash -= qty * buy * (1 + p.commission)
+                    self.positions[tk] = dict(qty=qty, entry=buy, stop=stop, take=take, entry_date=ds, bars=0)
+                    events.append(f"🟢 XARID {tk} {qty:g} dona @ {buy:.2f} (stop {stop:.2f}, take {take:.2f})")
+                elif buy > 0:
+                    events.append(f"⚠️ {tk}: pul yetmadi (1 dona {buy:.2f}$, ajratilgan {budget:.0f}$)")
             # 2) ochiq pozitsiyadan chiqish shartlari
             pos = self.positions.get(tk)
             if pos:
@@ -163,7 +187,7 @@ class Portfolio:
             # 3) yangi signal - ertaga kiramiz
             if (allow_new and tk not in self.positions and tk not in self.pending
                     and bool(r["signal"]) and not math.isnan(r["atr"])):
-                self.pending[tk] = [c - p.sl_atr * r["atr"], c + p.tp_atr * r["atr"]]
+                self.pending[tk] = {"atr": float(r["atr"])}
                 events.append(f"🔔 SIGNAL {tk} (yopilish {c:.2f}) - ertaga ochilishda xarid")
             self.last_close[tk] = c
         self.equity.append([ds, round(self.value(), 2)])
@@ -171,16 +195,17 @@ class Portfolio:
         return events
 
 
-def run_bars(bars: dict, p: Params, capital: float) -> Portfolio:
+def run_bars(bars: dict, p: Params, capital: float, market=None) -> Portfolio:
     pf = Portfolio(p, capital)
+    market = market or {}
     keys = list(bars)
     for i, d in enumerate(keys):
-        pf.step(d, bars[d], allow_new=i < len(keys) - 1)
+        pf.step(d, bars[d], allow_new=i < len(keys) - 1, market=market.get(d))
     return pf
 
 
-def backtest(data: dict, p: Params, start, end, capital=10000) -> Portfolio:
-    return run_bars(build_bars(data, p, start, end), p, capital)
+def backtest(data: dict, p: Params, start, end, capital=10000, market=None) -> Portfolio:
+    return run_bars(build_bars(data, p, start, end), p, capital, market)
 
 
 # ---------------- Statistika ----------------
@@ -256,13 +281,18 @@ def buy_hold_pct(df: pd.DataFrame, start, end) -> float | None:
 GRID = dict(rsi_buy=[35, 40, 45], sl_atr=[1.5, 2.0, 2.5], tp_atr=[2.0, 3.0, 4.0], max_days=[10, 20, 30])
 
 
-def _score(st):
-    if st["n"] < 5:
+MIN_TRAIN_TRADES = 10   # o'rganish qismida kamida shuncha savdo bo'lmasa, natija tasodif
+MIN_TEST_TRADES = 10
+MIN_GAIN = 2.0          # tekshirishda kamida shuncha ball yaxshi bo'lsin (mayda farq — shovqin)
+
+
+def _score(st, min_n=MIN_TRAIN_TRADES):
+    if st["n"] < min_n:
         return -1e9
     return st["return_pct"] - 0.5 * abs(st["max_dd_pct"])   # foyda minus yarim tushish
 
 
-def optimize(data: dict, p: Params, start, end, capital=10000) -> dict:
+def optimize(data: dict, p: Params, start, end, capital=10000, market=None) -> dict:
     """Davrni 70% (o'rganish) va 30% (tekshirish) ga bo'ladi.
     Eng yaxshi sozlamani o'rganish qismida topadi va uni ko'rmagan tekshirish qismida sinaydi.
     Shunday qilib 'o'tmishga moslab qo'yish' xavfi kamayadi."""
@@ -279,20 +309,22 @@ def optimize(data: dict, p: Params, start, end, capital=10000) -> dict:
         q = Params.from_dict({**p.to_dict(), "rsi_buy": rb})
         bars_by_rsi[rb] = split(build_bars(data, q, start, end))
 
-    cur_train = stats(run_bars(bars_by_rsi[p.rsi_buy][0], p, capital))
-    cur_test = stats(run_bars(bars_by_rsi[p.rsi_buy][1], p, capital))
+    cur_train = stats(run_bars(bars_by_rsi[p.rsi_buy][0], p, capital, market))
+    cur_test = stats(run_bars(bars_by_rsi[p.rsi_buy][1], p, capital, market))
 
     results = []
     for rb, sl, tp, md in itertools.product(*GRID.values()):
         q = Params.from_dict({**p.to_dict(), "rsi_buy": rb, "sl_atr": sl, "tp_atr": tp, "max_days": md})
-        st = stats(run_bars(bars_by_rsi[rb][0], q, capital))
+        st = stats(run_bars(bars_by_rsi[rb][0], q, capital, market))
         results.append((_score(st), q, st))
     results.sort(key=lambda x: x[0], reverse=True)
     best_score, best_p, best_train = results[0]
-    best_test = stats(run_bars(bars_by_rsi[best_p.rsi_buy][1], best_p, capital))
+    best_test = stats(run_bars(bars_by_rsi[best_p.rsi_buy][1], best_p, capital, market))
 
     changed = {k: (getattr(p, k), getattr(best_p, k)) for k in GRID if getattr(p, k) != getattr(best_p, k)}
-    better = bool(changed) and _score(best_test) > _score(cur_test) and _score(best_train) > _score(cur_train)
+    better = (bool(changed) and best_test["n"] >= MIN_TEST_TRADES
+              and _score(best_test, MIN_TEST_TRADES) > _score(cur_test, MIN_TEST_TRADES) + MIN_GAIN
+              and _score(best_train) > _score(cur_train))
     return dict(ok=True, cut=cut.strftime("%Y-%m-%d"), current=p, best=best_p, changed=changed,
                 cur_train=cur_train, cur_test=cur_test, best_train=best_train, best_test=best_test,
                 recommend=better)

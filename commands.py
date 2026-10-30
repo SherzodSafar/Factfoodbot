@@ -3,15 +3,18 @@ import re
 
 import pandas as pd
 
-from engine import Params, backtest, stats, period_table, diagnose, buy_hold_pct, optimize, prepare
-from universe import TIERS, TIER_NAME, TIER_ICON, select
+from engine import (Params, backtest, stats, period_table, diagnose, buy_hold_pct, optimize, prepare,
+                    market_ok)
+from universe import TIERS, TIER_NAME, TIER_ICON, SLIPPAGE, select
 
-DEFAULT_CAPITAL = 10000.0
+DEFAULT_CAPITAL = 30000.0   # umumiy (guruhlarga teng bo'linadi)
+AUTO_COOLDOWN_DAYS = 28     # avtomatik sozlash o'zgarishlari orasidagi eng kam muddat
 PER_TIER = 6
 
 HELP = """📈 Demo savdo boti — buyruqlar
 
-/demo_boshlash 10000 — aksiyalarni o'zi tanlab, 3 narx guruhida (har biriga 10 000$ virtual) savdo boshlaydi
+/demo_boshlash 3000 — UMUMIY 3000$ virtual pul 3 guruhga teng bo'linadi (har biriga 1000$)
+   /demo_boshlash 2000 orta arzon — faqat tanlangan guruhlar (har biriga 1000$)
 /holat — har guruhdagi portfel va ochiq savdolar
 /hisobot kunlik | haftalik | oylik — guruhlarni taqqoslab
 /tanlash — aksiyalarni hozir qayta tanlash
@@ -20,9 +23,12 @@ HELP = """📈 Demo savdo boti — buyruqlar
 /qabul — taklifni qo'llash (/qabul arzon — faqat bitta guruhga)
 /avto on | off — haftalik yaxshilashni avtomatik qo'llash
 /sozlamalar — joriy sozlamalar
+/ulush 15 — har savdoga guruh kapitalining necha % i (standart 10)
+/kasr on | off — kasr aksiya (brokeringiz ruxsat bersa); off — faqat butun aksiya
+/baho — real pulga o'tishga tayyorlik mezonlari
 /test — o'tgan davrda sinash:
    /test → har guruh uchun hozir tanlangan aksiyalar, oxirgi 2 yil
-   /test AAPL,F 2024-01-01 2025-12-31 10000 → o'zingiz tanlagan aksiyalar
+   /test AAPL,F 2024-01-01 2025-12-31 3000 → o'zingiz tanlagan aksiyalar (3000$ umumiy)
 /tavsiya — strategiya qanday ishlaydi
 /yangilash — ma'lumotni hozir yangilash
 
@@ -40,10 +46,12 @@ Har guruhdan 6 tadan: kunlik savdo hajmi katta, ko'tarilish trendida va oxirgi 6
 • Kunlik (1D) grafik. Signal kun yopilganda, xarid ertasi kuni ochilishda.
 • Odatda 3–20 kun. Stop-loss (2 ATR) yoki take-profit (3 ATR) tegsa — oldinroq yopiladi.
 • 20 kunda natija bo'lmasa yoki trend buzilsa — chiqiladi.
+• Umumiy bozor (SPY) EMA200 dan pastda bo'lsa — yangi xarid qilinmaydi.
+• Hisobda komissiya, sirpanish (spred) va butun aksiya cheklovi bor — real savdoga yaqinroq.
 
 📋 Maqsad
-Har guruhga alohida virtual kapital beriladi — qaysi narx guruhida strategiya yaxshiroq ishlashini ko'rasiz.
-Kamida 2–3 oy demo. Faqat demo barqaror ijobiy bo'lsa — kichik real pul bilan."""
+Siz kiritgan umumiy virtual pul guruhlarga teng bo'linadi — qaysi narx guruhida strategiya yaxshiroq ishlashini ko'rasiz.
+Kamida 2–3 oy demo. Real pulga o'tishdan oldin /baho dagi barcha mezonlar bajarilsin."""
 
 
 def _money(x):
@@ -119,7 +127,7 @@ class Service:
         self.cutoff_fn = cutoff_fn  # oxirgi yopilgan savdo kuni
 
     def _need_demo(self):
-        return None if self.paper.active else ["Demo savdo hali boshlanmagan. /demo_boshlash 10000"]
+        return None if self.paper.active else ["Demo savdo hali boshlanmagan. Umumiy summani yozing: /demo_boshlash 3000"]
 
     # ---------- tanlash ----------
     def _select(self):
@@ -140,7 +148,7 @@ class Service:
         tickers, dates, nums, _ = parse_args(args)
         end = pd.Timestamp(dates[1]) if len(dates) > 1 else self.cutoff_fn()
         start = pd.Timestamp(dates[0]) if dates else end - pd.DateOffset(years=2)
-        capital = nums[0] if nums else DEFAULT_CAPITAL
+        total = nums[0] if nums else DEFAULT_CAPITAL
         if tickers:
             groups = {"tanlangan": tickers}
             note = ""
@@ -153,7 +161,10 @@ class Service:
                     "yaxshiroq ko'rinishi mumkin (bugun kuchli bo'lganlar o'tmishda ham o'sgan).")
         all_tk = sorted({t for v in groups.values() for t in v} | {"SPY"})
         data = self.loader(all_tk, start, end)
-        msgs = [f"🧪 Sinov: {start.date()} — {end.date()}, har guruhga {_money(capital)}" + note]
+        capital = total / len(groups)
+        market = market_ok(data["SPY"]) if "SPY" in data else None
+        msgs = [f"🧪 Sinov: {start.date()} — {end.date()}, umumiy {_money(total)}"
+                + (f" (har guruhga {_money(capital)})" if len(groups) > 1 else "") + note]
         bh = buy_hold_pct(data["SPY"], start, end) if "SPY" in data else None
         if bh is not None:
             msgs[0] += f"\n📌 Shu davrda SPY ni shunchaki ushlab tursangiz: {bh:+.2f}%"
@@ -163,8 +174,8 @@ class Service:
             if not td:
                 msgs.append(f"{name}: ma'lumot topilmadi.")
                 continue
-            p = self.paper.params(g) if self.paper.active and g in self.paper.tiers() else Params()
-            pf = backtest(td, p, start, end, capital)
+            p = self._params_for(g)
+            pf = backtest(td, p, start, end, capital, market)
             st, dg = stats(pf), diagnose(pf)
             months = period_table(pf, "M", 24)
             mline = " ".join(f"{r['label'][2:]}:{r['change_pct']:+.1f}%" for r in months if r["trades"] or r["change"])
@@ -173,18 +184,40 @@ class Service:
         return msgs
 
     # ---------- demo ----------
+    def _params_for(self, tier):
+        if self.paper.active and tier in self.paper.tiers():
+            return self.paper.params(tier)
+        return Params(slippage=SLIPPAGE.get(tier, Params.slippage))
+
     def cmd_demo_start(self, args):
-        _, _, nums, _ = parse_args(args)
-        capital = nums[0] if nums else DEFAULT_CAPITAL
+        _, _, nums, words = parse_args(args)
+        total = nums[0] if nums else DEFAULT_CAPITAL
+        if total < 100:
+            return ["Umumiy summa kamida 100$ bo'lsin. Masalan: /demo_boshlash 3000"]
+        want = [w for w in words if w in TIER_NAME]
         sel, notes = self._select()
         if not any(sel.values()):
             return ["⚠️ Aksiya ma'lumotlarini yuklab bo'lmadi. Keyinroq /demo_boshlash qiling."]
-        self.paper.start(sel, capital)
+        if want:
+            sel = {k: v for k, v in sel.items() if k in want}
+        self.paper.start(sel, total)
         res = self.paper.update(self.loader, self.cutoff_fn())
-        msg = (f"🚀 Demo savdo boshlandi — har guruhga {_money(capital)} virtual pul\n\n" + "\n".join(notes)
-               + "\n\nHar kuni AQSh birjasi yopilgandan keyin bot signallarni o'zi tekshiradi va savdo qiladi.")
+        per = total / len(sel)
+        msg = (f"🚀 Demo savdo boshlandi — umumiy {_money(total)} virtual pul, "
+               f"{len(sel)} guruhga {_money(per)} dan\n\n" + "\n".join(notes)
+               + "\n\nHar kuni AQSh birjasi yopilgandan keyin bot signallarni o'zi tekshiradi va savdo qiladi."
+               + self._small_capital_note(per))
         ev = self._events(res)
         return [msg] + ([ev] if ev else [])
+
+    def _small_capital_note(self, per):
+        p = self.paper.params(self.paper.tiers()[0]) if self.paper.tiers() else Params()
+        budget = per * p.pos_pct / 100
+        if not p.whole_shares or budget >= 300:
+            return ""
+        return (f"\n\n⚠️ Har savdoga ~{_money(budget)} ajratiladi va faqat butun aksiya olinadi — "
+                f"narxi {budget:.0f}$ dan qimmat aksiyalarni sotib ololmaydi. Yechim: kattaroq summa, "
+                f"/ulush 20 yoki brokeringiz kasr aksiyaga ruxsat bersa /kasr on.")
 
     def _events(self, res):
         lines = []
@@ -211,8 +244,46 @@ class Service:
             tot1 += st["end_val"]
             lines.append(f"{TIER_NAME[tier]}: {_money(st['end_val'])} ({st['return_pct']:+.2f}%) | "
                          f"savdo {st['n']}, yutuq {st['win_rate']}% | ochiq {st['open_positions']}")
-        lines.append(f"Jami: {_money(tot1)} ({(tot1 / tot0 - 1) * 100 if tot0 else 0:+.2f}%)")
+        lines.append(f"Jami: {_money(tot0)} → {_money(tot1)} ({(tot1 / tot0 - 1) * 100 if tot0 else 0:+.2f}%)")
+        bh = self._bench_pct()
+        if bh is not None:
+            lines.append(f"📌 Taqqoslash: shu davrda SPY ni shunchaki ushlab tursangiz {bh:+.2f}%")
         return "\n".join(lines)
+
+    def _bench_pct(self):
+        b = (self.paper.state or {}).get("bench") or {}
+        return round((b["last"] / b["start"] - 1) * 100, 2) if b.get("start") and b.get("last") else None
+
+    def cmd_grade(self):
+        """Real pulga o'tishdan oldin bajarilishi kerak bo'lgan mezonlar."""
+        if r := self._need_demo():
+            return r
+        pfs = [self.paper.portfolio(t) for t in self.paper.tiers()]
+        trades = [t for pf in pfs for t in pf.trades]
+        gw = sum(t["pnl"] for t in trades if t["pnl"] > 0)
+        gl = -sum(t["pnl"] for t in trades if t["pnl"] <= 0)
+        pfac = gw / gl if gl > 0 else (float("inf") if gw > 0 else 0.0)
+        tot0 = sum(pf.capital for pf in pfs)
+        tot1 = sum(pf.value() for pf in pfs)
+        ret = (tot1 / tot0 - 1) * 100 if tot0 else 0.0
+        dd = min(stats(pf)["max_dd_pct"] for pf in pfs)
+        days = (pd.Timestamp.now() - pd.Timestamp(self.paper.state.get("started"))).days
+        bh = self._bench_pct()
+        checks = [
+            (days >= 90, f"Kamida 3 oy demo: {days} kun"),
+            (len(trades) >= 30, f"Kamida 30 ta yopilgan savdo (kam savdo — tasodif): {len(trades)} ta"),
+            (pfac >= 1.3, f"Profit factor ≥ 1.3: {'∞' if pfac == float('inf') else round(pfac, 2)}"),
+            (ret > 0, f"Umumiy natija ijobiy: {ret:+.2f}%"),
+            (bh is not None and ret > bh, f"SPY ni ushlab turishdan yaxshi: {ret:+.2f}% vs "
+                                          f"{'—' if bh is None else f'{bh:+.2f}%'}"),
+            (dd > -10, f"Har guruhda eng katta tushish 10% dan kam: {dd:.1f}%"),
+        ]
+        ok = sum(c for c, _ in checks)
+        lines = ["🎓 Real pulga o'tishga tayyorlik"] + [("✅ " if c else "⬜ ") + t for c, t in checks]
+        lines.append("\n" + ("Barcha mezonlar bajarildi. Kichik summadan (yo'qotsangiz ham qiynalmaydigan) boshlash mumkin."
+                             if ok == len(checks) else
+                             f"{ok}/{len(checks)} bajarildi — hali real pul bilan boshlash erta."))
+        return ["\n".join(lines)]
 
     def cmd_status(self):
         if r := self._need_demo():
@@ -255,11 +326,16 @@ class Service:
             groups = {t: self.paper.book(t)["tickers"] for t in self.paper.tiers()}
         else:
             groups, _ = self._select()
-        data = self.loader(sorted({t for v in groups.values() for t in v}), cutoff, cutoff)
+        data = self.loader(sorted({t for v in groups.values() for t in v} | {"SPY"}), cutoff, cutoff)
         lines = [f"🌍 Bozor holati ({cutoff.date()})"]
+        if "SPY" in data:
+            m = market_ok(data["SPY"])
+            ok = m[max(m)] if m else None
+            lines.append("SPY (umumiy bozor): " + ("📈 EMA200 dan yuqori — xarid ruxsat" if ok else
+                                                   "📉 EMA200 dan past — yangi xarid to'xtatilgan"))
         for tier, tks in groups.items():
             lines.append(f"\n{TIER_NAME[tier]}")
-            p = self.paper.params(tier) if self.paper.active else Params()
+            p = self._params_for(tier)
             up = 0
             for tk in tks:
                 if tk not in data:
@@ -278,8 +354,9 @@ class Service:
             return r
         end = self.cutoff_fn()
         start = end - pd.DateOffset(years=2)
-        all_tk = sorted({t for tier in self.paper.tiers() for t in self.paper.book(tier)["tickers"]})
+        all_tk = sorted({t for tier in self.paper.tiers() for t in self.paper.book(tier)["tickers"]} | {"SPY"})
         data = self.loader(all_tk, start, end)
+        market = market_ok(data["SPY"]) if "SPY" in data else None
         msgs = []
         for tier in self.paper.tiers():
             b = self.paper.book(tier)
@@ -287,19 +364,26 @@ class Service:
             pf = self.paper.portfolio(tier)
             st, dg = stats(pf), diagnose(pf)
             t = fmt_stats(st, f"🧭 {TIER_NAME[tier]} — demo") + "\n" + fmt_diagnose(dg) + "\n" + insights(st, dg)
-            res = optimize({k: data[k] for k in b["tickers"] if k in data}, p, start, end)
+            res = optimize({k: data[k] for k in b["tickers"] if k in data}, p, start, end, market=market)
             if not res["ok"]:
                 msgs.append(t + "\n⚠️ " + res["why"])
                 continue
             t += (f"\n\n🛠 Oxirgi 2 yil sinovi (o'rganish → tekshirish {res['cut']} dan):\n"
-                  f"Joriy: {res['cur_train']['return_pct']:+.1f}% → {res['cur_test']['return_pct']:+.1f}%\n"
-                  f"Eng yaxshi: {res['best_train']['return_pct']:+.1f}% → {res['best_test']['return_pct']:+.1f}%")
+                  f"Joriy: {res['cur_train']['return_pct']:+.1f}% ({res['cur_train']['n']}s) → "
+                  f"{res['cur_test']['return_pct']:+.1f}% ({res['cur_test']['n']}s)\n"
+                  f"Eng yaxshi: {res['best_train']['return_pct']:+.1f}% ({res['best_train']['n']}s) → "
+                  f"{res['best_test']['return_pct']:+.1f}% ({res['best_test']['n']}s)")
             if res["changed"]:
                 t += "\nO'zgarish: " + ", ".join(f"{k} {a}→{b2}" for k, (a, b2) in res["changed"].items())
             if res["recommend"]:
                 b["suggested"] = res["best"].to_dict()
                 self.paper.save()
-                if auto and self.paper.state.get("auto_apply"):
+                hist = b.get("history") or []
+                recent = hist and (pd.Timestamp.now() - pd.Timestamp(hist[-1]["date"])).days < AUTO_COOLDOWN_DAYS
+                if auto and self.paper.state.get("auto_apply") and recent:
+                    t += (f"\n⏸ Yaxshiroq variant bor, lekin oxirgi o'zgarishdan {AUTO_COOLDOWN_DAYS} kun o'tmagan — "
+                          f"tez-tez o'zgartirish ham xato. Qo'lda: /qabul {tier}")
+                elif auto and self.paper.state.get("auto_apply"):
                     self.paper.set_params(tier, res["best"], "avtomatik haftalik yaxshilash")
                     t += "\n✅ Avtomatik qo'llandi."
                 else:
@@ -307,7 +391,8 @@ class Service:
             else:
                 t += "\n➖ Joriy sozlama qoladi."
             msgs.append(t)
-        msgs.append("ℹ️ Yangi sozlama faqat ko'rilmagan (tekshirish) davrida ham yaxshi bo'lsagina taklif qilinadi.")
+        msgs.append("ℹ️ Yangi sozlama faqat ko'rilmagan (tekshirish) davrida ham sezilarli yaxshi bo'lsa va "
+                    "savdolar soni yetarli bo'lsagina taklif qilinadi. (Ns) — savdolar soni.")
         return msgs
 
     def cmd_accept(self, args):
@@ -336,10 +421,33 @@ class Service:
         lines = ["⚙️ Sozlamalar"]
         for t in tiers:
             p = self.paper.params(t)
-            lines.append(f"{TIER_NAME.get(t, 'Standart')}: RSI chegara {p.rsi_buy}, stop {p.sl_atr} ATR, "
-                         f"take {p.tp_atr} ATR, max {p.max_days} kun, har savdoga {p.pos_pct}%")
+            cap = f", kapital {_money(self.paper.book(t)['portfolio']['capital'])}" if t else ""
+            lines.append(f"{TIER_NAME.get(t, 'Standart')}{cap}: RSI chegara {p.rsi_buy}, stop {p.sl_atr} ATR, "
+                         f"take {p.tp_atr} ATR, max {p.max_days} kun, har savdoga {p.pos_pct}%, "
+                         f"sirpanish {p.slippage * 100:.2f}%, {'kasr aksiya' if not p.whole_shares else 'butun aksiya'}, "
+                         f"bozor filtri {'yoqilgan' if p.market_filter else 'o‘chirilgan'}")
+        if self.paper.active:
+            lines.insert(1, f"Umumiy virtual kapital: {_money(self.paper.total_capital)}")
         lines.append(f"Avtomatik yaxshilash: {'yoqilgan' if (self.paper.state or {}).get('auto_apply') else 'o‘chirilgan'}")
         return ["\n".join(lines)]
+
+    def cmd_share(self, args):
+        if r := self._need_demo():
+            return r
+        _, _, nums, _ = parse_args(args)
+        if not nums or not 1 <= nums[0] <= 50:
+            return ["Masalan: /ulush 15 — har savdoga guruh kapitalining 15% i (1–50 oralig'ida)"]
+        self.paper.set_all_params("ulush o'zgartirildi", pos_pct=nums[0])
+        return [f"✅ Har savdoga endi guruh kapitalining {nums[0]:g}% i ajratiladi."]
+
+    def cmd_fractional(self, args):
+        if r := self._need_demo():
+            return r
+        if not args or args[0].lower() not in ("on", "off"):
+            return ["/kasr on — kasr aksiya ruxsat; /kasr off — faqat butun aksiya"]
+        on = args[0].lower() == "on"
+        self.paper.set_all_params("kasr aksiya sozlamasi", whole_shares=not on)
+        return ["✅ " + ("Kasr aksiya yoqildi." if on else "Endi faqat butun aksiya olinadi.")]
 
     # ---------- marshrutlash ----------
     LONG = ("/test", "/tahlil", "/demo_boshlash", "/yangilash", "/bozor", "/tanlash")
@@ -359,6 +467,8 @@ class Service:
             "/hisobot": lambda: self.cmd_report(args), "/bozor": self.cmd_market,
             "/tahlil": lambda: self.cmd_analyze(), "/qabul": lambda: self.cmd_accept(args),
             "/avto": lambda: self.cmd_auto(args), "/sozlamalar": self.cmd_settings,
+            "/ulush": lambda: self.cmd_share(args), "/kasr": lambda: self.cmd_fractional(args),
+            "/baho": self.cmd_grade,
         }
         fn = table.get(cmd)
         return fn() if fn else ["Noma'lum buyruq. /yordam"]

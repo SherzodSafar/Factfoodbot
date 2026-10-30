@@ -19,13 +19,15 @@ kunlik / haftalik / oylik hisobot yuboradi va har hafta xatolarni tahlil qilib, 
 2. Render → **New → Web Service** → repo'ni tanlang.
 3. Build command: `pip install -r requirements.txt`
 4. Start command: `python bot.py`
-5. Environment: `BOT_TOKEN` = BotFather bergan token.
-6. Deploy bo'lgach botga `/start` yozing — siz egasi bo'lasiz (boshqalar foydalana olmaydi).
+5. Environment: `BOT_TOKEN` = BotFather bergan token, `OWNER_CHAT_ID` = sizning Telegram ID'ingiz
+   (faqat shu ID egasi botdan foydalana oladi; ID'ni @userinfobot dan bilish mumkin).
+6. Deploy bo'lgach botga `/demo_boshlash 3000` yozing — 3000$ umumiy virtual pul 3 guruhga bo'linadi.
 
 ### Muhim (bepul Render tarifi)
-- Bepul web service 15 daqiqa so'rov bo'lmasa uxlaydi. Uni uyg'oq tutish uchun UptimeRobot kabi xizmat bilan servis manzilini har 5 daqiqada tekshirtiring.
-- Bepul tarifda disk doimiy emas: qayta deploy qilinganda `demo_state.json` o'chadi va demo savdo qaytadan boshlanadi.
-  Doimiy saqlash uchun pullik tarifda **Persistent Disk** qo'shing va `DATA_DIR=/var/data` qilib bering.
+- Bepul web service 15 daqiqa so'rov bo'lmasa uxlaydi. Bot o'zini har 10 daqiqada chaqiradi; ishonchlilik uchun
+  UptimeRobot bilan ham servis manzilini tekshirtirish mumkin. Uxlab qolsa, uyg'ongach o'tkazib yuborilgan hisobotni bajaradi.
+- Bepul tarifda disk doimiy emas. Shuning uchun bot holatni (`demo_state.json`) Telegram chatga fayl qilib yuborib
+  mahkamlaydi (pin) va qayta ishga tushganda shundan tiklaydi — bu xabarni o'chirmang va pin'dan olmang.
 - Muqobil: botni o'z kompyuteringizda ishga tushiring: `pip install -r requirements.txt`, so'ng `BOT_TOKEN=... python bot.py`.
 
 ## Buyruqlar

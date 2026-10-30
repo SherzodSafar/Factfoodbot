@@ -121,25 +121,32 @@ def run_and_send(chat_id, fn):
 
 # ---------------- Jadval ----------------
 def scheduler():
+    """03:00 (Toshkent) dan keyin bajariladi. Server shu paytda uxlab/qayta ishga tushayotgan bo'lsa,
+    uyg'ongach o'sha kunning o'zida bajaradi (o'tkazib yubormaydi)."""
     while True:
         try:
             now = datetime.now(TZ)
-            if paper.active and now.hour == 3:
+            if paper.active and now.hour >= 3:
                 sent = paper.state.setdefault("sent", {})
                 today = now.strftime("%Y-%m-%d")
-                # Seshanba–shanba 03:00 = AQShda dushanba–juma yopilgandan keyin
+                month = now.strftime("%Y-%m")
+                # Seshanba–shanba = AQShda dushanba–juma yopilgandan keyin
                 if now.weekday() in (1, 2, 3, 4, 5) and sent.get("daily") != today:
                     sent["daily"] = today
                     paper.save()
                     run_and_send(OWNER, lambda: service.cmd_update() + service.cmd_report(["kunlik"]))
-                if now.weekday() == 5 and now.minute >= 10 and sent.get("weekly") != today:
+                if now.weekday() == 5 and sent.get("weekly") != today:
                     sent["weekly"] = today
                     paper.save()
-                    run_and_send(OWNER, lambda: service.cmd_report(["haftalik"])[:1] + service.cmd_analyze(auto=True))
-                if now.day == 1 and now.minute >= 20 and sent.get("monthly") != today:
-                    sent["monthly"] = today
+                    run_and_send(OWNER, lambda: service.cmd_report(["haftalik"])[:1] + service.cmd_analyze(auto=True)
+                                 + service.cmd_grade())
+                # Yangi oy: oylik hisobot + aksiyalarni qayta tanlash (demo shu oy boshlangan bo'lsa — kerak emas)
+                if (sent.get("monthly") or "")[:7] != month:
+                    first = "monthly" not in sent and paper.state.get("selected_at", "")[:7] == month
+                    sent["monthly"] = month
                     paper.save()
-                    run_and_send(OWNER, lambda: service.cmd_report(["oylik"])[:1] + service.cmd_select())
+                    if not first:
+                        run_and_send(OWNER, lambda: service.cmd_report(["oylik"])[:1] + service.cmd_select())
         except Exception:
             traceback.print_exc()
         time.sleep(60)
@@ -174,8 +181,9 @@ class Health(BaseHTTPRequestHandler):
 
 COMMANDS = [("holat", "Portfel holati"), ("hisobot", "Hisobot: kunlik/haftalik/oylik"),
             ("bozor", "Bozor holati"), ("tahlil", "Tahlil va yaxshilash"), ("test", "O'tgan davrda sinash"),
-            ("tanlash", "Aksiyalarni qayta tanlash"), ("demo_boshlash", "Demo savdoni boshlash"),
-            ("sozlamalar", "Sozlamalar"), ("yordam", "Buyruqlar")]
+            ("tanlash", "Aksiyalarni qayta tanlash"), ("demo_boshlash", "Boshlash: umumiy summa, masalan 3000"),
+            ("baho", "Real pulga tayyorlik"), ("sozlamalar", "Sozlamalar"), ("ulush", "Har savdoga necha %"),
+            ("kasr", "Kasr aksiya on/off"), ("yordam", "Buyruqlar")]
 
 
 def main():

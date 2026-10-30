@@ -11,6 +11,8 @@ TIERS = [
     ("orta", "🔷 O'rtacha (10–50$)", 10, 50, 50e6),
     ("arzon", "🔹 Arzon (5–10$)", 5, 10, 15e6),
 ]
+# Har guruh uchun taxminiy sirpanish+spred (bir tomonga). Arzon aksiyalarda spred kengroq.
+SLIPPAGE = {"qimmat": 0.0005, "orta": 0.001, "arzon": 0.002}
 TIER_NAME = {k: n for k, n, *_ in TIERS}
 TIER_ICON = {k: n.split()[0] for k, n, *_ in TIERS}
 

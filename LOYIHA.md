@@ -25,26 +25,38 @@ Uch xil narxdagi aksiyalarda alohida sinab, qaysi biri yaxshiroq ishlashini soli
 ### Strategiya (`engine.py`) — kunlik grafik, faqat xarid (long)
 - **Kirish:** ko'tarilish trendida RSI(14) 40 ni pastdan yuqoriga kesib o'tsa → ertasi kuni ochilishda xarid.
 - **Chiqish:** stop-loss = 2×ATR(14) pastda; take-profit = 3×ATR yuqorida; narx EMA200 dan pastga tushsa; 20 kundan keyin.
-- Har savdoga guruh kapitalining 10%, komissiya 0.05%.
+- Har savdoga guruh kapitalining 10% (`/ulush` bilan o'zgaradi), komissiya 0.05%,
+  sirpanish/spred: qimmat 0.05%, o'rtacha 0.1%, arzon 0.2% (har tomonga).
+- Standart bo'yicha faqat butun aksiya olinadi (`/kasr on` — kasr aksiya). Pul yetmasa bot "pul yetmadi" deb yozadi.
+- Bozor filtri: SPY EMA200 dan past bo'lsa yangi xarid qilinmaydi.
+- Stop va take haqiqiy xarid narxidan (ertasi kungi ochilish) hisoblanadi.
 - Odatda savdo 3–20 kun davom etadi.
 
 ### Demo savdo (`paper.py`)
-- Har narx guruhiga alohida virtual kapital (masalan 10 000$).
+- Foydalanuvchi **umumiy** summani kiritadi: `/demo_boshlash 3000` → har guruhga 1000$.
+  `/demo_boshlash 2000 orta arzon` — faqat tanlangan guruhlar.
+- Hisobotlarda SPY ni shunchaki ushlab turish bilan taqqoslash ko'rsatiladi.
 - Holat `demo_state.json` faylida. Bepul Render'da disk doimiy emas, shuning uchun bot bu faylni Telegram chatga yuborib **mahkamlab (pin)** qo'yadi va qayta ishga tushganda shundan tiklaydi.
 
 ### Avtomatik ish (Toshkent vaqti)
-- Seshanba–shanba 03:00: AQSh birjasi yopilgandan keyin yangi kunlarni qayta ishlaydi → kunlik hisobot.
-- Shanba: haftalik hisobot + tahlil (xato/ustunliklar) + sozlamalarni yaxshilash.
-- Oyning 1-kuni: oylik hisobot + aksiyalarni qayta tanlash.
+- Seshanba–shanba 03:00 dan keyin: AQSh birjasi yopilgandan keyin yangi kunlarni qayta ishlaydi → kunlik hisobot.
+  (Server shu paytda uxlagan bo'lsa — uyg'ongach bajaradi.)
+- Shanba: haftalik hisobot + tahlil + sozlamalarni yaxshilash + `/baho` (real pulga tayyorlik).
+- Yangi oy: oylik hisobot + aksiyalarni qayta tanlash.
 
 ### Yaxshilash (walk-forward)
 - Oxirgi 2 yil 70% (o'rganish) va 30% (tekshirish) qismga bo'linadi.
 - RSI chegarasi, stop, take va muddat kombinatsiyalari o'rganish qismida sinaladi.
-- Eng yaxshisi ko'rilmagan tekshirish qismida ham joriydan yaxshi bo'lsagina taklif qilinadi (`/qabul`) yoki `/avto on` bo'lsa o'zi qo'llanadi.
+- Eng yaxshisi ko'rilmagan tekshirish qismida ham joriydan sezilarli yaxshi bo'lsa (o'rganishda ≥10, tekshirishda ≥10 savdo)
+  taklif qilinadi (`/qabul`) yoki `/avto on` bo'lsa o'zi qo'llanadi — lekin 28 kunda ko'pi bilan bir marta.
+
+### Real pulga o'tish mezonlari (`/baho`)
+≥3 oy demo, ≥30 yopilgan savdo, profit factor ≥1.3, umumiy natija ijobiy, SPY ni ushlab turishdan yaxshi,
+har guruhda eng katta tushish 10% dan kam. Hammasi bajarilmaguncha real pul tavsiya etilmaydi.
 
 ### Buyruqlar
-`/demo_boshlash 10000`, `/holat`, `/hisobot kunlik|haftalik|oylik`, `/bozor`, `/tahlil`, `/qabul [guruh]`,
-`/avto on|off`, `/tanlash`, `/sozlamalar`, `/test [AKSIYALAR] [BOSHLANISH] [TUGASH] [KAPITAL]`, `/tavsiya`, `/yangilash`.
+`/demo_boshlash 3000` (umumiy summa), `/holat`, `/hisobot kunlik|haftalik|oylik`, `/bozor`, `/tahlil`, `/qabul [guruh]`,
+`/avto on|off`, `/tanlash`, `/sozlamalar`, `/test [AKSIYALAR] [BOSHLANISH] [TUGASH] [KAPITAL]`, `/tavsiya`, `/yangilash`, `/ulush 15`, `/kasr on|off`, `/baho`.
 
 ### Fayllar
 `bot.py` (Telegram + jadval + zaxira), `commands.py` (buyruqlar), `engine.py` (strategiya, backtest, statistika, optimallash),
