@@ -1,0 +1,15 @@
+name: strategiya-lab
+on:
+  push:
+    branches: [ccr-8ce3381b-b2e2bz]
+    paths: ["research/**", ".github/workflows/lab.yml"]
+jobs:
+  lab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -q -r requirements.txt
+      - run: python research/lab.py
