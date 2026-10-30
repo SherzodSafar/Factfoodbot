@@ -81,13 +81,17 @@ def run_swing(I, pool, mkt, slip, cfg, capital=10000.0):
         sig = up & (I["rsi2"].values < cfg.get("rsi2", 10))
     elif kind == "breakout":
         sig = up & (C > I[cfg.get("hh", "hh50")].values) & (I["mom126"].values > 0)
-    elif kind == "momtop":
+    if kind in ("momtop", "combo"):
         sc = I["mom126"].where(pd.DataFrame(up & pool, index=I["C"].index, columns=I["C"].columns))
         rk = sc.rank(axis=1, ascending=False).values
         idx = I["C"].index
         wk = idx.isocalendar().week.values
         last_day = np.r_[wk[1:] != wk[:-1], True]
-        sig = (rk <= cfg.get("K", 5)) & last_day[:, None] & (np.nan_to_num(sc.values, nan=-1) > 0)
+        msig = (rk <= cfg.get("K", 5)) & last_day[:, None] & (np.nan_to_num(sc.values, nan=-1) > 0)
+        if kind == "combo":
+            sig = msig | (up & (C > I["hh50"].values) & (I["mom126"].values > 0))
+        else:
+            sig = msig
     rank = np.nan_to_num(I["mom126"].values, nan=-9)
     rsi2 = I["rsi2"].values
     cash = capital; pos = {}; pend = []; eq = np.empty(T); trades = []
@@ -261,22 +265,19 @@ def main():
     print(yline(metrics(spy_eq)))
     spy_f = (1 + spy.pct_change().fillna(0) * mkt.shift().fillna(False)).cumprod()
     print(line("SPY + 200 filtr", metrics(spy_f)))
+    print(f"SPY 3y: {metrics_part(spy_eq, '2023-11-01', '2026-12-31'):+.1f}%/y")
     B = dict(entry="breakout", sl=3, tp=None, trail=3, trend_exit=False, sizing="risk", risk=1, cap=20, max_pos=8)
     V = lambda **k: ("swing", "all", {**B, **k})
+    B = dict(entry="breakout", sl=4, tp=None, trail=4, trend_exit=False, sizing="risk", risk=1, cap=20, max_pos=8)
+    V = lambda **k: ("swing", "all", {**B, **k})
     strategies = {
-        "brk50 t3 r1 p8 (asos)": V(),
-        "brk50 filtrsiz": V(mfilter=False),
-        "brk100 t3": V(hh="hh100"),
-        "brk50 t4": V(sl=4, trail=4),
-        "brk50 t2.5": V(sl=2.5, trail=2.5),
-        "brk50 r0.5": V(risk=0.5),
-        "brk50 r1.5": V(risk=1.5),
-        "brk50 p12 r0.75": V(max_pos=12, risk=0.75, cap=15),
-        "brk50 p5 cap25": V(max_pos=5, cap=25),
-        "brk50 tormoz10": V(brake=0.10),
-        "brk50 +e200 chiqish": V(trend_exit=True),
-        "momtop K5 + trail3": V(entry="momtop", K=5),
-        "momtop K5 + trail4": V(entry="momtop", K=5, sl=4, trail=4),
+        "brk50 t4": V(),
+        "momtop K5 t4": V(entry="momtop", K=5),
+        "combo t4 r1": V(entry="combo", K=5),
+        "combo t4 r0.75": V(entry="combo", K=5, risk=0.75),
+        "combo t4 r1 p10": V(entry="combo", K=5, max_pos=10, cap=15),
+        "combo t4 r1.25": V(entry="combo", K=5, risk=1.25),
+        "combo t4 filtrsiz": V(entry="combo", K=5, mfilter=False),
     }
     for key, name, lo, hi, min_dv in TIERS:
         member = tier_membership(I, lo, hi, min_dv)
@@ -287,10 +288,11 @@ def main():
             curves[sname] = eq
             m = metrics(eq, tr)
             a, b = metrics_part(eq, "2014-01-01", "2019-12-31"), metrics_part(eq, "2020-01-01", "2026-12-31")
-            print(line(sname, m) + f"  | 14-19: {a:+.1f}%/y 20-26: {b:+.1f}%/y")
+            c3 = metrics_part(eq, "2023-11-01", "2026-12-31")
+            print(line(sname, m) + f"  | 14-19: {a:+.1f}%/y 20-26: {b:+.1f}%/y 3y: {c3:+.1f}%/y  savdo/yil {m['n'] / 12.8:.0f}")
             print(yline(m))
         # walk-forward: har 6 oyda oxirgi 2 yil Sharpe bo'yicha eng yaxshi sozlamani tanlash
-        R = pd.DataFrame({k: v.pct_change() for k, v in curves.items() if k.startswith("brk")}).fillna(0)
+        R = pd.DataFrame({k: v.pct_change() for k, v in curves.items()}).fillna(0)
         half = R.index.year * 2 + (R.index.month > 6)
         out = pd.Series(0.0, index=R.index)
         picks = []
@@ -299,7 +301,7 @@ def main():
             st = R.index[msk][0]
             hist = R[(R.index < st) & (R.index >= st - pd.DateOffset(years=2))]
             if len(hist) < 400:
-                out[msk] = R.loc[msk, "brk50 t3 r1 p8 (asos)"]; continue
+                out[msk] = R.loc[msk, "brk50 t4"]; continue
             sh = hist.mean() / hist.std()
             k = sh.idxmax(); picks.append(k)
             out[msk] = R.loc[msk, k]
