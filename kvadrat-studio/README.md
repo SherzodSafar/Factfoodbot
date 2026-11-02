@@ -14,5 +14,6 @@ Square League YouTube kanali uchun video zavodi: har kuni serverda 1 ta uzun vid
 | `GEMINI_API_KEY` | Sarlavha/tavsif va tarjimalar uchun (ixtiyoriy, bo'lmasa shablon) |
 | `LEAGUE_NAME` | Liga nomi (standart: `SQUARE LEAGUE`) |
 | `DAILY_UTC_HOUR` | Kunlik tayyorlash soati, UTC (standart: 1 = 06:00 Toshkent) |
-| `OWNER_CHAT_ID` | Egasi (bo'lmasa botga birinchi yozgan odam) |
+| `OWNER_CHAT_ID` | Egasi (bo'lmasa botga `/start CLAIM_CODE` yuborgan birinchi odam) |
+| `CLAIM_CODE` | Egasini tasdiqlash kodi |
 | `DATA_DIR` | Ma'lumotlar papkasi (doimiy disk ulansa, uning yo'li) |

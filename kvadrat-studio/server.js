@@ -85,7 +85,8 @@ function checkInit(init){try{const p=new URLSearchParams(init||''),hash=p.get('h
 /* ---------- Telegram bot ---------- */
 async function onUpdate(u){
   const m=u.message;if(!m||!m.text)return;const chat=m.chat.id,txt=m.text.trim();
-  if(!st.owner){st.owner=chat;save();}
+  // Egasi: OWNER_CHAT_ID yoki botga "/start CLAIM_CODE" yuborgan birinchi odam (CLAIM_CODE bo'lmasa birinchi yozgan odam).
+  if(!st.owner){const code=process.env.CLAIM_CODE;if(code&&!txt.includes(code))return tg.call('sendMessage',{chat_id:chat,text:'Bu shaxsiy studiya boti.'});st.owner=chat;save();}
   if(chat!==st.owner){await tg.call('sendMessage',{chat_id:chat,text:'Bu shaxsiy studiya boti.'});return;}
   await restore(chat);
   if(txt.startsWith('/new')){if(busy)return notify('⏳ Hozir tayyorlanmoqda, tugashini kuting.');notify('▶️ Boshladim. Har bir video tayyor bo\'lishi bilan shu yerga yuboraman.');enqueue('manual',makePackage);}
