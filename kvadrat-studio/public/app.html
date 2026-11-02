@@ -1,0 +1,45 @@
+<!doctype html><html lang="uz"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Kvadrat Studio</title><script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{--bg:#111318;--card:#1a1e26;--line:#2b313c;--fg:#eceef2;--mut:#9ca4b2;--acc:#ffb627;--ok:#62d897;color-scheme:dark}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;padding:14px max(14px,env(safe-area-inset-left)) 40px}
+h1{font-size:20px;margin:4px 0 2px}.mut{color:var(--mut);font-size:13px}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn{border:1px solid var(--line);background:#232833;color:var(--fg);border-radius:10px;padding:9px 13px;font:inherit;font-weight:600;cursor:pointer}
+.btn.pri{background:var(--acc);color:#1f1503;border-color:var(--acc)}.btn.sm{padding:6px 10px;font-size:13px}.btn:disabled{opacity:.5}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin:12px 0}
+.it{border-top:1px solid var(--line);padding-top:12px;margin-top:12px}.it:first-of-type{border-top:0;margin-top:4px;padding-top:4px}
+.badge{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:2px 9px;background:#2a3140;color:var(--acc)}
+.thumbs{display:flex;gap:6px;overflow-x:auto;margin:8px 0}.thumbs img{height:88px;border-radius:8px;border:1px solid var(--line)}
+.fld{margin:8px 0}.fld b{display:block;font-size:12px;color:var(--mut);margin-bottom:3px}.txt{white-space:pre-wrap;background:#12151b;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:14px;max-height:160px;overflow:auto}
+details summary{cursor:pointer;color:var(--acc);font-weight:600;margin:6px 0}table{width:100%;border-collapse:collapse;font-size:14px}td{padding:3px 0;border-bottom:1px solid var(--line)}td:last-child{text-align:right;font-variant-numeric:tabular-nums}
+</style></head><body>
+<h1>🎬 Kvadrat Studio</h1><div class="mut" id="sub">Yuklanmoqda…</div>
+<div class="row" style="margin-top:10px"><button class="btn pri" id="newBtn">▶ Hozir yangi videolar tayyorlash</button><button class="btn" id="refBtn">↻ Yangilash</button></div>
+<div class="card" id="league" hidden></div><div id="list"></div>
+<script>
+const W=window.Telegram&&Telegram.WebApp;if(W){W.ready();W.expand();}
+const $=id=>document.getElementById(id),init=W?W.initData:'';
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const LN={de:'Nemis',fr:'Fransuz',nl:'Golland',no:'Norveg',da:'Daniya',sv:'Shved',es:'Ispan'};
+async function api(p,opt){const r=await fetch('/api/'+p,{...opt,headers:{'x-init':init}});if(r.status===401)throw new Error('Studio faqat bot egasi uchun ochiladi (botni Telegram ichida oching).');return r.json();}
+function copy(t,btn){const ok=()=>{btn.textContent='✓ Nusxalandi';setTimeout(()=>btn.textContent='Nusxalash',1400);};
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).then(ok,()=>fallback());else fallback();
+  function fallback(){const a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();try{document.execCommand('copy');ok();}catch(e){}a.remove();}}
+function dl(url,name){if(W&&W.isVersionAtLeast&&W.isVersionAtLeast('8.0')&&W.downloadFile)W.downloadFile({url,file_name:name});else if(W)W.openLink(url);else location.href=url;}
+const fld=(label,text)=>`<div class="fld"><b>${label}</b><div class="txt">${esc(text)}</div><button class="btn sm" data-copy="${esc(text)}">Nusxalash</button></div>`;
+function render(d){
+  $('sub').textContent=d.busy?'⏳ Hozir videolar tayyorlanmoqda…':`Har kuni ${(d.daily+5)%24}:00 da (Toshkent) 1 ta uzun video + 2 ta Shorts.`;$('newBtn').disabled=!!d.busy;
+  const L=d.league;$('league').hidden=false;$('league').innerHTML=`<b>🏆 ${esc(L.name)}</b> · ${L.season}-mavsum · ${L.round} raund o'tdi`+(L.standings.length?`<table>${L.standings.map((s,i)=>`<tr><td>${i+1}. ${esc(s.name)}</td><td>${s.pts}</td></tr>`).join('')}</table>`:'<div class="mut">Hali raund o\'tmagan.</div>');
+  $('list').innerHTML=d.packages.length?d.packages.map(k=>`<div class="card"><b>📅 ${esc(k.date)}</b> <span class="mut">· ${k.items.length} video</span>${k.items.map(it=>`<div class="it">
+    <span class="badge">${it.fmt==='short'?'📱 SHORTS':'🎬 UZUN VIDEO'}</span> <span class="mut">${esc(it.map)} · ${Math.round(it.dur)} s · ${(it.size/1048576).toFixed(1)} MB</span>
+    ${it.thumbUrls.length?`<div class="thumbs">${it.thumbUrls.map(u=>`<img src="${u}" alt="Muqova">`).join('')}</div><div class="mut">3 ta muqovani YouTube Studio'dagi "Test & Compare" bilan sinang.</div>`:''}
+    <div class="row" style="margin:8px 0"><button class="btn pri sm" data-dl="${esc(it.download)}" data-name="${esc(it.id)}.mp4">⬇️ Videoni yuklab olish</button>${it.thumbUrls.map((u,i)=>`<button class="btn sm" data-dl="${esc(u)}&dl=1" data-name="${esc(it.id)}-thumb${i+1}.jpg">Muqova ${i+1}</button>`).join('')}</div>
+    ${fld('Sarlavha',it.meta.title)}${fld('Tavsif',it.meta.description)}${fld('Teglar',(it.meta.tags||[]).join(', '))}
+    ${Object.keys(it.meta.translations||{}).length?`<details><summary>🌍 Tarjimalar (Studio → Tillar)</summary>${Object.entries(it.meta.translations).map(([k,v])=>`<div class="card"><b>${LN[k]||k}</b>${fld('Sarlavha',v.title)}${fld('Tavsif',v.description)}</div>`).join('')}</details>`:''}
+  </div>`).join('')}</div>`).join(''):'<div class="card mut">Hali videolar yo\'q. "Hozir yangi videolar tayyorlash" ni bosing.</div>';
+}
+document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.copy!=null)copy(b.dataset.copy,b);if(b.dataset.dl)dl(b.dataset.dl,b.dataset.name);});
+async function load(){try{render(await api('packages'));}catch(e){$('sub').textContent=e.message;}}
+$('refBtn').onclick=load;$('newBtn').onclick=async()=>{$('newBtn').disabled=true;try{const r=await api('new',{method:'POST'});$('sub').textContent=r.ok?'▶️ Boshlandi. Har bir video tayyor bo\'lishi bilan botga keladi.':'⏳ Hozir band.';}catch(e){$('sub').textContent=e.message;}};
+load();setInterval(load,30000);
+</script></body></html>
