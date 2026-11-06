@@ -64,7 +64,7 @@
         <label>Sarlavha
           <textarea id="fTitle" rows="2"></textarea>
         </label>
-        <button id="autoTitleBtn" class="btn small" type="button">↻ Sarlavhani sozlamalardan yasash</button>
+        <button id="autoTitleBtn" class="btn small" type="button">↻ Sozlamalardagi namunani qo'yish</button>
         <details class="sub">
           <summary>Mezon nomlari</summary>
           <p class="muted small">Jadval va diagrammalarda shu nomlar chiqadi. Har bir mezonning maksimal bali: <b id="maxInfo"></b></p>
@@ -108,6 +108,17 @@
           <textarea id="fXulosa" rows="4"></textarea>
         </label>
         <button id="suggestBtn" class="btn small" type="button">💡 Natijaga qarab xulosa taklif qilish</button>
+        <details class="sub" open>
+          <summary>Xulosa shrifti</summary>
+          <div class="fontbar">
+            <select id="xfName"><option>Arial</option><option>Times New Roman</option><option>Calibri</option><option>Cambria</option><option>Georgia</option><option>Verdana</option><option>Tahoma</option><option>Courier New</option></select>
+            <select id="xfSize"><option>10</option><option>11</option><option>12</option><option>13</option><option>14</option></select>
+            <label class="chk"><input id="xfItalic" type="checkbox"> Qiya</label>
+            <label class="chk"><input id="xfBold" type="checkbox"> Qalin</label>
+          </div>
+          <p class="muted small">Namunalardan birini bosing — xulosa PDF va Excel'da shu shriftda chiqadi.</p>
+          <div id="fontSamples" class="fsamples"></div>
+        </details>
         <div class="grid2 signs">
           <label>1-imzo (lavozim)<input id="fSign1L"></label>
           <label>1-imzo (F.I.Sh.)<input id="fSign1N"></label>
@@ -131,10 +142,8 @@
       <div class="card">
         <h2>Sozlamalar</h2>
         <p class="muted small">Bu ma'lumotlar har bir yangi sinfga avtomatik qo'yiladi.</p>
+        <label>Sarlavha namunasi<textarea id="sTitle" rows="2"></textarea></label>
         <div class="grid2">
-          <label>Tuman<input id="sTuman" placeholder="Gurlan tumani"></label>
-          <label>Maktab<input id="sMaktab" placeholder="10-maktab"></label>
-          <label>O'quv yili<input id="sYil" placeholder="2026-2027"></label>
           <label>Metodbirlashma rahbari<input id="sRahbar" placeholder="G.Abduxalilboyeva"></label>
           <label>O'qituvchi<input id="sOqituvchi" placeholder="L.A.Beksugurova"></label>
         </div>
@@ -145,6 +154,8 @@
         <label>Gemini API kaliti (ixtiyoriy)<input id="sKey" type="password" autocomplete="off" placeholder="AIza..."></label>
         <p class="muted small">Kalit faqat shu qurilmada saqlanadi. Serverga kalit qo'yilgan bo'lsa, bu yerni bo'sh qoldiring.</p>
       </div>
+      <button id="sSaveBtn" class="btn primary" type="button">💾 Saqlash</button>
+      <div id="sSaved" class="small"></div>
       <button id="logoutBtn" class="btn danger small" type="button">Chiqish</button>
     </section>
   </main>

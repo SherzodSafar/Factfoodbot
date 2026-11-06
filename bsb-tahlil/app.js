@@ -8,26 +8,42 @@
   };
 
   /* ===== Saqlash ===== */
-  var KEY = "bsbTahlil.v1";
+  var KEY = "bsbTahlil.v1", SKEY = "bsbTahlil.settings";
+  var DEFAULT_TITLE = "Gurlan tumani 10-maktab 1-chorak 1-BSB bo'yicha tahlil (2026-2027)";
   var store = load();
+  function readLS(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
   function load() {
-    var d = null;
-    try { d = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
-    d = d || {};
-    d.settings = d.settings || { tuman: "", maktab: "", yil: "", rahbar: "", oqituvchi: "", key: "" };
-    d.classes = d.classes || [];
+    var d = readLS(KEY) || {}, st = readLS(SKEY);
+    d.settings = Object.assign({ title: DEFAULT_TITLE, rahbar: "", oqituvchi: "", key: "" }, d.settings || {}, st || {});
+    d.classes = d.classes || []; d.deleted = d.deleted || [];
     return d;
   }
+  function writeSettings() { try { localStorage.setItem(SKEY, JSON.stringify(store.settings)); return true; } catch (e) { return false; } }
+  // boshqa oynada ochilgan dastur ma'lumotni ustidan yozib yubormasligi uchun: saqlashdan oldin birlashtiramiz
+  function writeClasses() {
+    var disk = readLS(KEY) || {}, del = {}, byId = {};
+    (disk.deleted || []).concat(store.deleted).forEach(function (id) { del[id] = 1; });
+    (disk.classes || []).forEach(function (c) { byId[c.id] = c; });
+    store.classes.forEach(function (c) { if (!byId[c.id] || (byId[c.id].updated || 0) <= (c.updated || 0)) byId[c.id] = c; });
+    var merged = Object.keys(byId).map(function (k) { return byId[k]; }).filter(function (c) { return !del[c.id]; });
+    merged.forEach(function (c) { var i = store.classes.findIndex(function (x) { return x.id === c.id; }); if (i < 0) store.classes.push(c); else if (store.classes[i] !== c && store.classes[i] !== cur) store.classes[i] = c; });
+    store.classes = store.classes.filter(function (c) { return !del[c.id]; });
+    store.deleted = Object.keys(del);
+    localStorage.setItem(KEY, JSON.stringify({ classes: merged, deleted: store.deleted }));
+  }
+  window.addEventListener("storage", function (e) {
+    if (e.key === SKEY) { var st = readLS(SKEY); if (st) store.settings = Object.assign(store.settings, st); }
+  });
   var saveTimer = null;
   function save() {
     $("#saveState").textContent = "Saqlanmoqda…";
     clearTimeout(saveTimer);
     saveTimer = setTimeout(function () {
-      try { localStorage.setItem(KEY, JSON.stringify(store)); $("#saveState").textContent = "✓ Saqlandi"; }
+      try { writeClasses(); $("#saveState").textContent = "✓ Saqlandi"; }
       catch (e) { $("#saveState").textContent = "⚠️ Saqlab bo'lmadi"; }
     }, 300);
   }
-  function saveNow() { try { localStorage.setItem(KEY, JSON.stringify(store)); } catch (e) {} }
+  function saveNow() { try { writeClasses(); } catch (e) {} }
 
   /* ===== Yordamchilar ===== */
   function $(s) { return document.querySelector(s); }
@@ -108,8 +124,7 @@
   function tmpl(c) { return TEMPLATES[c.template] || TEMPLATES.BSB; }
   function maxes(c) { return tmpl(c).max; }
   function autoTitle(c) {
-    var s = store.settings, parts = [s.tuman, s.maktab, (c.chorak || 1) + "-chorak", (c.bsbNo || 1) + "-" + tmpl(c).label + " bo'yicha tahlil"].filter(Boolean).join(" ");
-    return parts + (s.yil ? " (" + s.yil + ")" : "");
+    return store.settings.title || DEFAULT_TITLE;
   }
   function newClass() {
     var s = store.settings, k = TEMPLATES.BSB.max.length;
@@ -148,6 +163,9 @@
     reviewData = []; $("#review").classList.add("hidden"); $("#ocrProgress").textContent = "";
     $("#fSinf").value = cur.sinf; $("#fFan").value = cur.fan; $("#fChorak").value = cur.chorak; $("#fBsbNo").value = cur.bsbNo;
     $("#fTitle").value = cur.title; $("#fXulosa").value = cur.xulosa;
+    cur.xfont = cur.xfont || { name: "Arial", italic: false, bold: false, size: 11 };
+    $("#xfName").value = cur.xfont.name; $("#xfItalic").checked = cur.xfont.italic; $("#xfBold").checked = cur.xfont.bold; $("#xfSize").value = cur.xfont.size;
+    renderFonts();
     $("#fSign1L").value = cur.signs[0].label; $("#fSign1N").value = cur.signs[0].name;
     $("#fSign2L").value = cur.signs[1].label; $("#fSign2N").value = cur.signs[1].name;
     $("#maxInfo").textContent = maxes(cur).join(", ");
@@ -215,7 +233,7 @@
     var k = c.criteria.length;
     return { title: c.title, sinf: c.sinf, fan: c.fan, criteria: c.criteria.slice(), max: tmpl(c).max.slice(0, k),
       students: c.students.map(function (s) { return { name: s.name, scores: s.scores.slice(0, k).concat(Array(Math.max(0, k - s.scores.length)).fill(null)) }; }),
-      xulosa: c.xulosa, signs: c.signs };
+      xulosa: c.xulosa, signs: c.signs, xulosaFont: c.xfont };
   }
   function reportTable(R, c) {
     var M = maxes(c), h = '<table><tr><th rowspan="2">№</th><th rowspan="2">Familiya, ism, sharifi</th><th colspan="' + R.k + '">Mezonlar bo\'yicha to\'plagan bali</th><th rowspan="2">Jami ball</th><th colspan="' + R.k + '">Mezonlar bo\'yicha foiz ko\'rsatkichi</th><th>Umumiy foiz</th></tr><tr>';
@@ -243,7 +261,8 @@
       b += '<div class="bar"><span>' + (v == null ? "" : pct(v, d)) + '</span><i style="height:' + (v == null ? 0 : Math.max(0, Math.min(1, v)) * 88) + '%"></i></div>';
       l += "<div>" + esc(labels[i]) + "</div>";
     });
-    return '<div class="chart ' + cls + '"><h4>' + esc(title) + '</h4><div class="chart-scroll"><div><div class="bars">' + b + '</div><div class="labels">' + l + "</div></div></div></div>";
+    var lh = cls.indexOf("rot") >= 0 ? ' style="height:' + Math.min(230, 12 + 6.2 * Math.max.apply(null, labels.map(function (x) { return String(x).length; }).concat([4]))) + 'px"' : "";
+    return '<div class="chart ' + cls + '"><h4>' + esc(title) + '</h4><div class="chart-scroll"><div><div class="bars">' + b + '</div><div class="labels"' + lh + '>' + l + "</div></div></div></div>";
   }
   function chartsHtml(R, c) {
     return barChart("Mezonlar bo'yicha o'rtacha foiz ko'rsatkichi", c.criteria.map(function (n) { return n + " %"; }).concat(["Umumiy %"]), R.avgPcts.concat([R.avgOverall]), "", 1) +
@@ -274,6 +293,24 @@
     cur.xulosa = t; $("#fXulosa").value = t; touch();
   }
 
+  /* --- xulosa shrifti --- */
+  var FONTS = ["Arial", "Times New Roman", "Calibri", "Cambria", "Georgia", "Verdana", "Tahoma", "Courier New"];
+  function fontCss(f) { return "font-family:'" + f.name + "',serif;font-style:" + (f.italic ? "italic" : "normal") + ";font-weight:" + (f.bold ? "700" : "400") + ";font-size:" + f.size + "pt"; }
+  function renderFonts() {
+    if (!cur) return;
+    var f = cur.xfont, box = $("#fontSamples"), txt = (cur.xulosa || "O'quvchilar Bilish va qo'llashda ko'proq xatoliklarga yo'l qo'ygan.").slice(0, 90);
+    $("#fXulosa").style.cssText = fontCss(f);
+    box.innerHTML = "";
+    FONTS.forEach(function (n) {
+      [false, true].forEach(function (it) {
+        var o = { name: n, italic: it, bold: f.bold, size: f.size }, on = n === f.name && it === f.italic;
+        box.appendChild(el("button", { type: "button", class: "fsample" + (on ? " on" : ""), style: fontCss(Object.assign({}, o, { size: 10.5 })),
+          onclick: function () { cur.xfont.name = n; cur.xfont.italic = it; $("#xfName").value = n; $("#xfItalic").checked = it; renderFonts(); touch(); } },
+          [el("small", { text: n + (it ? " (qiya)" : "") }), el("span", { text: txt })]));
+      });
+    });
+  }
+
   /* --- Excel va chop etish --- */
   function fileName(c) { return ("BSB_" + (c.sinf || "sinf") + "_" + (c.fan || "fan")).replace(/[\\/:*?"<>|\s]+/g, "_") + ".xlsx"; }
   function downloadExcel() {
@@ -286,10 +323,10 @@
   function doPrint(one) {
     var R = BSBXlsx.compute(xdata(cur)), pr = $("#print");
     pr.className = one ? "p1" : "";
-    pr.style.zoom = "";
+    pr.style.zoom = ""; pr.style.removeProperty("--rowpad");
     pr.innerHTML = '<p class="ptitle">' + esc(cur.title) + '</p><div class="pmeta">Sinf :<span>' + esc(cur.sinf) + '</span></div><div class="pmeta">Fan :<span>' + esc(cur.fan) + "</span></div>" +
       reportTable(R, cur) + (one ? "" : '<div class="pbreak"></div>') + chartsHtml(R, cur) +
-      '<div class="pxul">' + esc(cur.xulosa).replace(/\n/g, "<br>") + "</div>" +
+      '<div class="pxul" style="' + fontCss(cur.xfont || { name: "Arial", size: 11 }) + '">' + esc(cur.xulosa).replace(/\n/g, "<br>") + "</div>" +
       cur.signs.map(function (s) { return '<div class="psign"><div>' + esc(s.label) + "</div><div>" + esc(s.name) + "</div></div>"; }).join("");
     var ps = $("#pageStyle") || document.head.appendChild(el("style", { id: "pageStyle" }));
     ps.textContent = "@page{size:A4 " + (one ? "portrait;margin:7mm" : "landscape;margin:10mm") + "}";
@@ -301,6 +338,10 @@
       pr.style.cssText = "";
       var z = Math.min(1, (H * 0.97) / h, W / w);
       if (z < 1) pr.style.zoom = z.toFixed(3);
+      else { // bo'sh joy ko'p bo'lsa, qatorlarni kengaytiramiz
+        var extra = Math.floor((H * 0.96 - h) / Math.max(1, cur.students.length + 4));
+        if (extra > 0) pr.style.setProperty("--rowpad", Math.min(6, Math.floor(extra / 2)) + "px");
+      }
     }
     setTimeout(function () { window.print(); }, 50);
   }
@@ -480,14 +521,19 @@
   $("#newClassBtn").onclick = function () { openClass(newClass().id); };
   $("#settingsBtn").onclick = function () {
     var s = store.settings;
-    $("#sTuman").value = s.tuman; $("#sMaktab").value = s.maktab; $("#sYil").value = s.yil; $("#sRahbar").value = s.rahbar; $("#sOqituvchi").value = s.oqituvchi; $("#sKey").value = s.key || "";
+    $("#sTitle").value = s.title || DEFAULT_TITLE; $("#sRahbar").value = s.rahbar || ""; $("#sOqituvchi").value = s.oqituvchi || ""; $("#sKey").value = s.key || ""; $("#sSaved").textContent = "";
     $("#keyInfo").innerHTML = serverKey ? "✅ Serverda Gemini kaliti o'rnatilgan — bu yerda kiritish shart emas." : "⚠️ Serverda Gemini kaliti yo'q. Rasmdan o'qish uchun pastga kalitni kiriting.";
     show("#settingsView");
   };
   $("#settingsBack").onclick = function () { cur && !$("#classView").dataset.hidden ? renderHome() : renderHome(); };
-  [["#sTuman", "tuman"], ["#sMaktab", "maktab"], ["#sYil", "yil"], ["#sRahbar", "rahbar"], ["#sOqituvchi", "oqituvchi"], ["#sKey", "key"]].forEach(function (p) {
-    $(p[0]).addEventListener("input", function (e) { store.settings[p[1]] = e.target.value.trim(); save(); });
-  });
+  var SF = [["#sTitle", "title"], ["#sRahbar", "rahbar"], ["#sOqituvchi", "oqituvchi"], ["#sKey", "key"]];
+  function collectSettings() { SF.forEach(function (p) { store.settings[p[1]] = $(p[0]).value.trim(); }); if (!store.settings.title) store.settings.title = DEFAULT_TITLE; }
+  SF.forEach(function (p) { $(p[0]).addEventListener("input", function () { collectSettings(); writeSettings(); $("#sSaved").textContent = ""; }); });
+  $("#sSaveBtn").onclick = function () {
+    collectSettings();
+    var ok = writeSettings() && JSON.stringify(readLS(SKEY)) === JSON.stringify(store.settings);
+    $("#sSaved").textContent = ok ? "✓ Saqlandi. Bu ma'lumotlar shu brauzerda doimiy saqlanadi." : "⚠️ Saqlab bo'lmadi (brauzer xotirasi yopiq — yashirin rejimdan chiqing).";
+  };
   $("#logoutBtn").onclick = function () { try { localStorage.removeItem("bsbTahlil.pass"); } catch (e) {} location.reload(); };
 
   function bind(sel, fn) { $(sel).addEventListener("input", function (e) { if (cur) { fn(e.target.value); touch(); } }); }
@@ -496,7 +542,7 @@
   bind("#fChorak", function (v) { cur.chorak = v; });
   bind("#fBsbNo", function (v) { cur.bsbNo = v; });
   bind("#fTitle", function (v) { cur.title = v; });
-  bind("#fXulosa", function (v) { cur.xulosa = v; });
+  bind("#fXulosa", function (v) { cur.xulosa = v; clearTimeout(window.__ft); window.__ft = setTimeout(renderFonts, 400); });
   bind("#fSign1L", function (v) { cur.signs[0].label = v; });
   bind("#fSign1N", function (v) { cur.signs[0].name = v; });
   bind("#fSign2L", function (v) { cur.signs[1].label = v; });
@@ -552,13 +598,17 @@
     if (!bad.length) $("#bulkInput").value = "";
   };
   $("#photoInput").addEventListener("change", function (e) { var f = Array.from(e.target.files || []); e.target.value = ""; if (f.length) readPhotos(f); });
-  $("#suggestBtn").onclick = suggest;
+  $("#suggestBtn").onclick = function () { suggest(); renderFonts(); };
+  $("#xfName").onchange = function (e) { cur.xfont.name = e.target.value; renderFonts(); touch(); };
+  $("#xfItalic").onchange = function (e) { cur.xfont.italic = e.target.checked; renderFonts(); touch(); };
+  $("#xfBold").onchange = function (e) { cur.xfont.bold = e.target.checked; renderFonts(); touch(); };
+  $("#xfSize").onchange = function (e) { cur.xfont.size = Number(e.target.value); renderFonts(); touch(); };
   $("#excelBtn").onclick = downloadExcel;
   $("#printBtn").onclick = function () { doPrint(false); };
   $("#printBtn1").onclick = function () { doPrint(true); };
   $("#deleteClassBtn").onclick = function () {
     if (!confirm("\"" + (cur.sinf || "Nomsiz") + "\" sinfi butunlay o'chirilsinmi?")) return;
-    store.classes = store.classes.filter(function (c) { return c !== cur; }); cur = null; saveNow(); renderHome();
+    store.deleted.push(cur.id); store.classes = store.classes.filter(function (c) { return c !== cur; }); cur = null; saveNow(); renderHome();
   };
   $("#lightbox").onclick = function () { $("#lightbox").classList.add("hidden"); };
   $("#backupBtn").onclick = function () {

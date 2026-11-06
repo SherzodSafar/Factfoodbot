@@ -45,14 +45,17 @@
 
   /* uslublar (cellXfs indekslari) */
   var S = { title: 1, lblR: 2, box: 3, hdr: 4, maxLbl: 5, maxIn: 6, maxTxt: 7, no: 8, name: 9, score: 10, total: 11, pct: 12, avgLbl: 13, avgNum: 14, avgPct: 15, xul: 16, sign: 17, signName: 18, empty: 19 };
-  var STYLES = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+  function styles(xf5) {
+  xf5 = xf5 || {};
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
     '<numFmts count="2"><numFmt numFmtId="164" formatCode="0.0%"/><numFmt numFmtId="165" formatCode="0.0"/></numFmts>' +
-    '<fonts count="4">' +
+    '<fonts count="5">' +
     '<font><sz val="10"/><name val="Arial"/><family val="2"/></font>' +
     '<font><b/><sz val="10"/><name val="Arial"/><family val="2"/></font>' +
     '<font><sz val="13"/><name val="Arial"/><family val="2"/></font>' +
     '<font><b/><sz val="10"/><color rgb="FF0000FF"/><name val="Arial"/><family val="2"/></font>' +
+    '<font>' + (xf5.bold ? '<b/>' : '') + (xf5.italic ? '<i/>' : '') + '<sz val="' + (xf5.size || 11) + '"/><name val="' + esc(xf5.name || 'Arial') + '"/></font>' +
     '</fonts>' +
     '<fills count="6"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>' +
     ['D9E1F2', 'E2EFDA', 'FFF2CC', 'FCE4D6'].map(function (c) { return '<fill><patternFill patternType="solid"><fgColor rgb="FF' + c + '"/><bgColor indexed="64"/></patternFill></fill>'; }).join("") +
@@ -78,11 +81,12 @@
     xf(0, 1, 5, 1, "center") +                   // 13 avg label
     xf(165, 1, 5, 1, "center") +                 // 14 avg num
     xf(164, 1, 5, 1, "center") +                 // 15 avg pct
-    xf(0, 0, 0, 2, "center", true) +             // 16 xulosa
+    xf(0, 4, 0, 2, "center", true) +             // 16 xulosa
     xf(0, 1, 0, 0, "left") +                     // 17 sign
     xf(0, 1, 0, 0, "center") +                   // 18 sign name
     xf(0, 0, 5, 1, "center") +                   // 19 avg empty
     '</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
+  }
   function xf(fmt, font, fill, border, h, wrap) {
     var a = '<xf numFmtId="' + fmt + '" fontId="' + font + '" fillId="' + fill + '" borderId="' + border + '" xfId="0"' +
       (fmt ? ' applyNumberFormat="1"' : "") + (font ? ' applyFont="1"' : "") + (fill ? ' applyFill="1"' : "") + (border ? ' applyBorder="1"' : "");
@@ -268,7 +272,7 @@
       { name: "xl/_rels/workbook.xml.rels", data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
         '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
         '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>' },
-      { name: "xl/styles.xml", data: STYLES },
+      { name: "xl/styles.xml", data: styles(d.xulosaFont) },
       { name: "xl/worksheets/sheet1.xml", data: sheet },
       { name: "xl/worksheets/_rels/sheet1.xml.rels", data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/></Relationships>' },
       { name: "xl/drawings/drawing1.xml", data: drawing },
