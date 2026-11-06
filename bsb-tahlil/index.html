@@ -66,9 +66,9 @@
         </label>
         <button id="autoTitleBtn" class="btn small" type="button">↻ Sozlamalardagi namunani qo'yish</button>
         <details class="sub">
-          <summary>Mezon nomlari</summary>
-          <p class="muted small">Jadval va diagrammalarda shu nomlar chiqadi. Har bir mezonning maksimal bali: <b id="maxInfo"></b></p>
-          <div id="critNames" class="grid2"></div>
+          <summary>Mezonlar (soni, nomi va maksimal bali)</summary>
+          <p class="muted small">Mezon qo'shish yoki o'chirish, nomi va maksimal balini o'zgartirish mumkin. Jami maksimal ball: <b id="maxInfo"></b></p>
+          <div id="critNames"></div>
         </details>
       </details>
 
@@ -91,6 +91,8 @@
           <div id="ocrProgress" class="small"></div>
         </div>
         <div id="review" class="hidden"></div>
+        <p class="muted small">Qo'lda kiritish: bir xonali son yozilishi bilan keyingi katakka o'tadi. 10 kabi ikki xonali son uchun pastdagi tugmani yoqing.</p>
+        <button id="multiBtn" class="btn small" type="button">🔢 O'nlik son kiritish</button>
         <div class="table-wrap"><table id="scoreTable" class="scores"></table></div>
         <details class="sub" open>
           <summary>Ballarni matn ko'rinishida tashlash (Gemini javobidan)</summary>

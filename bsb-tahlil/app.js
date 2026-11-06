@@ -122,7 +122,10 @@
   var serverKey = false;
 
   function tmpl(c) { return TEMPLATES[c.template] || TEMPLATES.BSB; }
-  function maxes(c) { return tmpl(c).max; }
+  function maxes(c) {
+    if (!c.max || c.max.length !== c.criteria.length) c.max = c.criteria.map(function (_, i) { return (c.max && c.max[i]) || tmpl(c).max[i] || 10; });
+    return c.max;
+  }
   function autoTitle(c) {
     return syncTitle(store.settings.title || DEFAULT_TITLE, c);
   }
@@ -172,17 +175,37 @@
     renderFonts();
     $("#fSign1L").value = cur.signs[0].label; $("#fSign1N").value = cur.signs[0].name;
     $("#fSign2L").value = cur.signs[1].label; $("#fSign2N").value = cur.signs[1].name;
-    $("#maxInfo").textContent = maxes(cur).join(", ");
-    var cn = $("#critNames"); cn.innerHTML = "";
-    cur.criteria.forEach(function (n, i) {
-      cn.appendChild(el("label", { text: (i + 1) + "-mezon" }, [el("input", { value: n, oninput: function (e) { cur.criteria[i] = e.target.value || (i + 1) + "-mezon"; renderScores(); renderReport(); touch(); } })]));
-    });
+    renderCriteria();
     $("#namesInput").value = "";
     $("#step2").open = !cur.students.length;
     renderScores(); renderReport();
     show("#classView"); $("#saveState").textContent = "✓ Saqlandi";
   }
 
+  /* --- mezonlar (soni, nomi, maksimal bali) --- */
+  function renderCriteria() {
+    var cn = $("#critNames"), M = maxes(cur); cn.innerHTML = "";
+    cur.criteria.forEach(function (n, i) {
+      cn.appendChild(el("div", { class: "critrow" }, [
+        el("span", { class: "small muted", text: (i + 1) + "." }),
+        el("input", { value: n, placeholder: "Mezon nomi", oninput: function (e) { cur.criteria[i] = e.target.value || (i + 1) + "-mezon"; renderScores(); renderReport(); touch(); } }),
+        el("label", { class: "small", text: "maks." }, [el("input", { type: "number", min: "1", max: "100", value: M[i], class: "maxin", onchange: function (e) {
+          var v = Number(e.target.value); if (!(v > 0)) { e.target.value = M[i]; return; } cur.max[i] = v; renderScores(); renderReport(); touch(); } })]),
+        el("button", { class: "del", type: "button", title: "Mezonni o'chirish", text: "✕", onclick: function () {
+          if (cur.criteria.length <= 1) return alert("Kamida bitta mezon bo'lishi kerak.");
+          if (!confirm(n + " o'chirilsinmi? Shu mezon bo'yicha kiritilgan ballar ham o'chadi.")) return;
+          cur.criteria.splice(i, 1); cur.max.splice(i, 1); cur.students.forEach(function (s) { s.scores.splice(i, 1); });
+          renderCriteria(); renderScores(); renderReport(); touch(); } })
+      ]));
+    });
+    cn.appendChild(el("button", { class: "btn small", type: "button", text: "+ Mezon qo'shish", onclick: function () {
+      var k = cur.criteria.length; cur.criteria.push((k + 1) + "-mezon"); cur.max.push(10);
+      cur.students.forEach(function (s) { while (s.scores.length < k) s.scores.push(null); s.scores.push(null); });
+      renderCriteria(); renderScores(); renderReport(); touch(); } }));
+    $("#maxInfo").textContent = M.reduce(function (a, b) { return a + b; }, 0);
+  }
+
+  var multiDigit = false;
   /* --- ballar jadvali --- */
   function parseScore(v, max) {
     v = String(v).trim().replace(",", ".");
@@ -207,6 +230,7 @@
         var chk = function () {
           var p = parseScore(inp.value, M[i]); inp.classList.toggle("bad", !p.ok);
           s.scores[i] = p.ok ? p.val : null; updateRow(tr, s); renderReport(); touch();
+          if (!multiDigit && /^\d$/.test(inp.value) && p.ok) focusNext(r, i);
         };
         inp.addEventListener("input", chk);
         inp.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); focusNext(r, i); } });
@@ -235,7 +259,7 @@
   /* --- hisobot (jadval + diagramma) --- */
   function xdata(c) {
     var k = c.criteria.length;
-    return { title: c.title, sinf: c.sinf, fan: c.fan, criteria: c.criteria.slice(), max: tmpl(c).max.slice(0, k),
+    return { title: c.title, sinf: c.sinf, fan: c.fan, criteria: c.criteria.slice(), max: maxes(c).slice(0, k),
       students: c.students.map(function (s) { return { name: s.name, scores: s.scores.slice(0, k).concat(Array(Math.max(0, k - s.scores.length)).fill(null)) }; }),
       xulosa: c.xulosa, signs: c.signs, xulosaFont: c.xfont };
   }
@@ -387,6 +411,24 @@
             if (!c.isConnected || c.__busy) return; c.__busy = true; var n = card(custom, i); c.replaceWith(n); } })]));
         });
         kids.push(g);
+        var T = store.settings.pdfTemplates = store.settings.pdfTemplates || {};
+        var sel = el("select", {}, [el("option", { value: "", text: "— saqlangan shablonlar —" })].concat(Object.keys(T).map(function (k) { return el("option", { value: k, text: k }); })));
+        var nm = el("input", { placeholder: "Shablon nomi" });
+        kids.push(el("div", { class: "pvtpl" }, [
+          el("div", { class: "row2" }, [sel,
+            el("button", { class: "btn small", type: "button", text: "Qo'llash", onclick: function () {
+              var t = T[sel.value]; if (!t) return;
+              CUSTOM_FIELDS.forEach(function (f) { if (t[f[0]] != null) custom[f[0]] = t[f[0]]; });
+              if (t.xfont) { cur.xfont = Object.assign({}, t.xfont); renderFonts(); touch(); }
+              store.settings.pdfCustom = custom; writeSettings(); c.replaceWith(card(custom, i)); } }),
+            el("button", { class: "btn small danger", type: "button", text: "O'chirish", onclick: function () {
+              if (!sel.value || !confirm(sel.value + " shabloni o'chirilsinmi?")) return; delete T[sel.value]; writeSettings(); c.replaceWith(card(custom, i)); } })]),
+          el("div", { class: "row2" }, [nm, el("button", { class: "btn small primary", type: "button", text: "Shablon sifatida saqlash", onclick: function () {
+            var n = nm.value.trim(); if (!n) return alert("Shablon nomini yozing.");
+            if (T[n] && !confirm(n + " shabloni yangilansinmi?")) return;
+            var t = {}; CUSTOM_FIELDS.forEach(function (f) { t[f[0]] = custom[f[0]]; }); t.xfont = Object.assign({}, cur.xfont);
+            T[n] = t; writeSettings(); c.replaceWith(card(custom, i)); } })])
+        ]));
       }
       kids.push(page, el("button", { class: "btn primary", type: "button", text: "Shu variantda saqlash", onclick: function () { pv.remove(); printVariant(one, v, z); } }));
       var c = el("div", { class: "pvcard" + (i === rec ? " rec" : "") }, kids);
@@ -660,6 +702,12 @@
       (bad.length ? '<div class="err">Qo\'yilmagan qatorlar (' + bad.length + "):<br>" + bad.map(esc).join("<br>") + "</div>" : "") +
       (missing.length ? '<div class="muted">Bali yo\'q o\'quvchilar: ' + missing.map(esc).join(", ") + "</div>" : "");
     if (!bad.length) $("#bulkInput").value = "";
+  };
+  $("#multiBtn").addEventListener("mousedown", function (e) { e.preventDefault(); }); // kursor katakda qolsin
+  $("#multiBtn").onclick = function () {
+    multiDigit = !multiDigit;
+    this.classList.toggle("primary", multiDigit);
+    this.textContent = multiDigit ? "🔢 O'nlik son rejimi: YONIQ (Enter bilan keyingisiga)" : "🔢 O'nlik son kiritish";
   };
   $("#photoInput").addEventListener("change", function (e) { var f = Array.from(e.target.files || []); e.target.value = ""; if (f.length) readPhotos(f); });
   $("#suggestBtn").onclick = function () { suggest(); renderFonts(); };
