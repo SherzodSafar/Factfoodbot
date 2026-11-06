@@ -46,12 +46,17 @@ const schema = {
   required: ["notebooks"]
 };
 
-async function callGemini(model, key, body) {
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-goog-api-key": key },
-    body: JSON.stringify(body)
-  });
+async function callGemini(model, key, body, ms) {
+  const ac = new AbortController(), t = setTimeout(() => ac.abort(), ms);
+  let r;
+  try {
+    r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: "POST", signal: ac.signal,
+      headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+      body: JSON.stringify(body)
+    });
+  } catch (e) { clearTimeout(t); return { status: 599, json: null, text: "timeout" }; }
+  clearTimeout(t);
   const text = await r.text();
   let j = null; try { j = JSON.parse(text); } catch (e) {}
   return { status: r.status, json: j, text };
@@ -78,25 +83,23 @@ module.exports = async (req, res) => {
     generationConfig: { temperature: 0, responseMimeType: "application/json", responseSchema: schema }
   };
 
-  const models = [process.env.GEMINI_MODEL, "gemini-flash-latest", "gemini-2.5-flash"].filter(Boolean);
-  let last = null;
+  const models = [process.env.GEMINI_MODEL, "gemini-flash-latest", "gemini-2.5-flash", "gemini-2.5-pro"].filter(Boolean);
+  const started = Date.now(), errors = [];
   for (const m of models) {
-    const r = await callGemini(m, key, body);
-    if (r.status === 404 || (r.status === 400 && /not found|not supported/i.test(r.text))) { last = r; continue; }
-    if (r.status !== 200) {
-      const msg = (r.json && r.json.error && r.json.error.message) || r.text.slice(0, 300);
-      const human = r.status === 429 ? "Gemini limiti tugadi, birozdan keyin qayta urinib ko'ring." :
-        (r.status === 400 || r.status === 403) && /api key/i.test(msg) ? "Gemini API kaliti noto'g'ri." : "Gemini xatosi: " + msg;
-      return res.status(502).json({ error: human });
+    const left = 280000 - (Date.now() - started);
+    if (left < 20000) break;
+    const r = await callGemini(m, key, body, Math.min(150000, left));
+    if (r.status === 200) {
+      try {
+        const txt = r.json.candidates[0].content.parts.map(p => p.text || "").join("");
+        const data = JSON.parse(txt);
+        return res.status(200).json({ model: m, notebooks: data.notebooks || [] });
+      } catch (e) { errors.push(m + ": javob o'qilmadi"); continue; }
     }
-    try {
-      const parts = r.json.candidates[0].content.parts;
-      const txt = parts.map(p => p.text || "").join("");
-      const data = JSON.parse(txt);
-      return res.status(200).json({ model: m, notebooks: data.notebooks || [] });
-    } catch (e) {
-      return res.status(502).json({ error: "Gemini javobini o'qib bo'lmadi. Qayta urinib ko'ring." });
-    }
+    const msg = (r.json && r.json.error && r.json.error.message) || r.text.slice(0, 200);
+    if ((r.status === 400 || r.status === 403) && /api key/i.test(msg)) return res.status(400).json({ error: "Gemini API kaliti noto'g'ri." });
+    errors.push(m + ": " + (r.status === 599 ? "javob kelmadi (vaqt tugadi)" : r.status === 429 ? "limit tugadi" : r.status === 503 ? "server band" : msg));
+    // 404 (model yo'q), 429, 5xx, vaqt tugashi — keyingi modelga o'tamiz
   }
-  res.status(502).json({ error: "Gemini modeli topilmadi: " + (last ? last.text.slice(0, 200) : "") });
+  return res.status(502).json({ error: "Gemini hozir javob bermadi. Birozdan keyin \"Qayta urinish\" tugmasini bosing. (" + errors.join("; ") + ")" });
 };

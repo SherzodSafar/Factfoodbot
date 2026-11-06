@@ -92,11 +92,12 @@
         </div>
         <div id="review" class="hidden"></div>
         <div class="table-wrap"><table id="scoreTable" class="scores"></table></div>
-        <details class="sub">
-          <summary>Ballarni matn ko'rinishida tashlash</summary>
-          <p class="muted small">Har bir qatorda bitta o'quvchining ballari, ro'yxat tartibida. Masalan: <code>9 10 9 9 9</code></p>
+        <details class="sub" open>
+          <summary>Ballarni matn ko'rinishida tashlash (Gemini javobidan)</summary>
+          <p class="muted small">Gemini bergan blokni shu yerga to'liq qo'ying. Har bir qator ism bo'yicha o'z o'quvchisiga tushadi, masalan: <code>5. Berdimurotova Asaloy: 9 9 10 8 9</code>. Faqat raqamlar bo'lsa (<code>9 10 9 9 9</code>), ro'yxat tartibida qo'yiladi.</p>
           <textarea id="bulkInput" rows="5"></textarea>
-          <button id="bulkBtn" class="btn" type="button">Ballarni joylash</button>
+          <button id="bulkBtn" class="btn primary" type="button">Ballarni joylash</button>
+          <div id="bulkResult" class="small"></div>
         </details>
       </details>
 

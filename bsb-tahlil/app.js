@@ -307,26 +307,30 @@
       img.src = url;
     });
   }
+  async function readOne(p) {
+    var roster = cur.students.map(function (s) { return s.name; }), M = maxes(cur);
+    p.error = null; p.loading = true; renderReview();
+    try {
+      if (!p.b64) { var im = await compress(p.file); p.img = im.url; p.b64 = im.b64; }
+      var r = await fetch("/api/read", { method: "POST",
+        headers: { "Content-Type": "application/json", "x-app-password": pass(), "x-gemini-key": store.settings.key || "" },
+        body: JSON.stringify({ image: p.b64, mime: "image/jpeg", students: roster, max: M }) });
+      var j = await r.json().catch(function () { return { error: r.status === 504 ? "Gemini javobi juda uzoq kutildi (504)" : "Server javobi noto'g'ri (" + r.status + ")" }; });
+      if (!r.ok) throw new Error(j.error || "Xato " + r.status);
+      p.items = j.notebooks.map(function (nb) { return prepItem(nb, roster, M); });
+    } catch (e) { p.error = e.message; p.items = []; }
+    p.loading = false; renderReview();
+  }
   async function readPhotos(files) {
     if (!cur.students.length) return alert("Avval o'quvchilar ro'yxatini joylang.");
-    var roster = cur.students.map(function (s) { return s.name; }), M = maxes(cur);
-    var prog = $("#ocrProgress");
-    for (var f = 0; f < files.length; f++) {
-      prog.textContent = "⏳ " + (f + 1) + "/" + files.length + "-rasm o'qilmoqda… (20–40 soniya)";
-      try {
-        var im = await compress(files[f]);
-        var r = await fetch("/api/read", { method: "POST",
-          headers: { "Content-Type": "application/json", "x-app-password": pass(), "x-gemini-key": store.settings.key || "" },
-          body: JSON.stringify({ image: im.b64, mime: "image/jpeg", students: roster, max: M }) });
-        var j = await r.json().catch(function () { return { error: "Server javobi noto'g'ri (" + r.status + ")" }; });
-        if (!r.ok) throw new Error(j.error || "Xato " + r.status);
-        reviewData.push({ img: im.url, name: files[f].name, items: j.notebooks.map(function (nb) { return prepItem(nb, roster, M); }) });
-      } catch (e) {
-        reviewData.push({ img: null, name: files[f].name, error: e.message, items: [] });
-      }
-      renderReview();
+    var prog = $("#ocrProgress"), list = files.map(function (f) { return { file: f, name: f.name, items: [] }; });
+    reviewData = reviewData.concat(list);
+    for (var f = 0; f < list.length; f++) {
+      prog.textContent = "⏳ " + (f + 1) + "/" + list.length + "-rasm o'qilmoqda… (1–3 daqiqa ketishi mumkin)";
+      await readOne(list[f]);
     }
-    prog.textContent = "✓ Tayyor. Pastdagi natijalarni tekshirib, \"Jadvalga qo'yish\" tugmasini bosing.";
+    var bad = reviewData.filter(function (p) { return p.error; }).length;
+    prog.textContent = bad ? "⚠️ " + bad + " ta rasm o'qilmadi — \"Qayta urinish\" tugmasini bosing." : "✓ Tayyor. Pastdagi natijalarni tekshirib, \"Jadvalga qo'yish\" tugmasini bosing.";
   }
   function prepItem(nb, roster, M) {
     var k = M.length, sc = (nb.scores || []).slice(0, k);
@@ -389,7 +393,8 @@
       var wrap = el("div", { class: "rv-photo" });
       wrap.appendChild(el("div", { class: "ph" }, [
         p.img ? el("img", { class: "thumb", src: p.img, alt: "", onclick: function () { openLightbox(p.img); } }) : null,
-        el("div", { class: "small" }, [el("b", { text: p.name }), el("div", { class: p.error ? "err" : "muted", text: p.error ? "❌ " + p.error : p.items.length + " ta daftar · rasmni kattalashtirish uchun bosing" })])
+        el("div", { class: "small" }, [el("b", { text: p.name }), el("div", { class: p.error ? "err" : "muted", text: p.loading ? "⏳ o'qilmoqda…" : p.error ? "❌ " + p.error : p.items.length + " ta daftar · rasmni kattalashtirish uchun bosing" }),
+          p.error && !p.loading ? el("button", { class: "btn small", type: "button", text: "↻ Qayta urinish", onclick: function () { readOne(p); } }) : null])
       ]));
       p.items.forEach(function (it) {
         var row = el("div", { class: "rv-item " + it.level });
@@ -500,15 +505,38 @@
   $("#namesReplaceBtn").onclick = function () { addNames(true); };
   $("#namesAppendBtn").onclick = function () { addNames(false); };
   $("#bulkBtn").onclick = function () {
-    var lines = $("#bulkInput").value.split(/\r?\n/).map(function (l) { return l.trim(); }).filter(Boolean), M = maxes(cur), bad = 0;
-    if (!lines.length) return;
-    lines.forEach(function (l, r) {
-      if (!cur.students[r]) return;
-      var nums = l.replace(/^\s*\d+\s*[.)]\s+/, "").match(/\d+(?:[.,]\d+)?/g) || [];
-      nums.slice(-M.length).forEach(function (v, i) { var p = parseScore(v, M[i]); if (p.ok) cur.students[r].scores[i] = p.val; else bad++; });
+    var M = maxes(cur), k = M.length, roster = cur.students.map(function (x) { return x.name; });
+    var lines = $("#bulkInput").value.split(/\r?\n/).map(function (l) { return l.replace(/[*`|]/g, " ").trim(); }).filter(Boolean);
+    var done = 0, bad = [], used = {};
+    var fullIdx = {}; roster.forEach(function (n, i) { fullIdx[norm(n).split(/\s+/).slice(0, 2).join(" ")] = i; });
+    var scoreLines = lines.filter(function (l) { return /[A-Za-zЀ-ӿ]/.test(l) && /(\d+\s+){2,}\d+|:\s*[-–]/.test(l.replace(/^\s*\d+\s*[.)]\s*/, "")); });
+    var numbered = scoreLines.filter(function (l) { return /^\s*\d+\s*[.)]/.test(l); });
+    if (numbered.length) scoreLines = numbered;   // Gemini blokidagi raqamlangan qatorlar ustun
+    var byOrder = !scoreLines.length;   // faqat raqamlar bo'lsa — tartib bo'yicha
+    (byOrder ? lines : scoreLines).forEach(function (l, r) {
+      var m = l.match(/^\s*(\d+)\s*[.)]\s*/), no = m ? Number(m[1]) : null, rest = m ? l.slice(m[0].length) : l;
+      var cut = rest.search(/[:\d]/), namePart = cut >= 0 ? rest.slice(0, cut) : rest;
+      var nums = (rest.slice(Math.max(0, cut)).match(/\d+(?:[.,]\d+)?/g) || []).slice(0, k);
+      var idx = -1;
+      if (byOrder) idx = r;
+      else {
+        var key = norm(namePart).split(/\s+/).slice(0, 2).join(" ");
+        if (fullIdx.hasOwnProperty(key)) idx = fullIdx[key];
+        else { var c = candidates(namePart, roster); if (c.length === 1) idx = c[0]; else if (no && no <= roster.length) idx = no - 1; }
+      }
+      if (!nums.length) return;
+      if (idx < 0 || idx >= roster.length || used[idx]) { bad.push(l); return; }
+      if (nums.length < k) { bad.push(l); return; }
+      var vals = nums.map(function (v, i) { return parseScore(v, M[i]); });
+      if (vals.some(function (v) { return !v.ok; })) { bad.push(l); return; }
+      cur.students[idx].scores = vals.map(function (v) { return v.val; }); used[idx] = 1; done++;
     });
-    $("#bulkInput").value = ""; renderScores(); renderReport(); touch();
-    if (bad) alert(bad + " ta ball noto'g'ri bo'lgani uchun qo'yilmadi.");
+    renderScores(); renderReport(); touch();
+    var missing = roster.filter(function (_, i) { return !used[i] && !cur.students[i].scores.some(function (v) { return v != null; }); });
+    $("#bulkResult").innerHTML = "✓ " + done + " ta o'quvchining ballari qo'yildi." +
+      (bad.length ? '<div class="err">Qo\'yilmagan qatorlar (' + bad.length + "):<br>" + bad.map(esc).join("<br>") + "</div>" : "") +
+      (missing.length ? '<div class="muted">Bali yo\'q o\'quvchilar: ' + missing.map(esc).join(", ") + "</div>" : "");
+    if (!bad.length) $("#bulkInput").value = "";
   };
   $("#photoInput").addEventListener("change", function (e) { var f = Array.from(e.target.files || []); e.target.value = ""; if (f.length) readPhotos(f); });
   $("#suggestBtn").onclick = suggest;
