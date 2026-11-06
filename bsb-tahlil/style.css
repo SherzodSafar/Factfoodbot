@@ -141,3 +141,11 @@ tr.avg td{background:var(--avg);font-weight:700}
 .pvcard.rec{border-color:var(--pri);box-shadow:0 0 0 2px var(--pri2)}
 .pvpage{position:relative;overflow:hidden;border:1px solid #bbb;background:#fff;margin:8px auto}
 .pvpage>.psheet{position:absolute;left:0;top:0;transform-origin:0 0}
+.psheet .ptitle{font-size:var(--titlefont,14px)}
+.psheet .chart h4{font-size:var(--chfont,11px)}
+.psheet .psign,.psheet .pmeta{font-size:var(--signfont,11px)}
+.psheet .bar span,.psheet .labels div{font-size:calc(var(--tfont,10px) * .9)}
+.pvfields{display:grid;grid-template-columns:1fr 1fr;gap:0 8px}
+.pvfields input{padding:5px 6px}
+.labels{font-size:10px}.labels div{font-size:inherit!important}
+.psheet .labels{font-size:calc(var(--tfont,10px) * .9)}

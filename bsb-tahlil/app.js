@@ -265,7 +265,7 @@
       b += '<div class="bar"><span>' + (v == null ? "" : pct(v, d)) + '</span><i style="height:' + (v == null ? 0 : Math.max(0, Math.min(1, v)) * 88) + '%"></i></div>';
       l += "<div>" + esc(labels[i]) + "</div>";
     });
-    var lh = cls.indexOf("rot") >= 0 ? ' style="height:' + Math.min(150, 10 + 5.3 * Math.max.apply(null, labels.map(function (x) { return String(x).length; }).concat([4]))) + 'px"' : "";
+    var lh = cls.indexOf("rot") >= 0 ? ' style="height:' + (1 + 0.58 * Math.max.apply(null, labels.map(function (x) { return String(x).length; }).concat([4]))).toFixed(1) + 'em"' : "";
     return '<div class="chart ' + cls + '"><h4>' + esc(title) + '</h4><div class="chart-scroll"><div><div class="bars">' + b + '</div><div class="labels"' + lh + '>' + l + "</div></div></div></div>";
   }
   function chartsHtml(R, c) {
@@ -325,10 +325,11 @@
     document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
   }
   var VARIANTS = [
-    { label: "Ixcham", pad: 2, font: 10, bars: 115 },
-    { label: "O'rtacha", pad: 4, font: 11, bars: 125 },
-    { label: "Keng", pad: 6, font: 12, bars: 135 }
+    { label: "Ixcham", pad: 2, font: 10, title: 14, ch: 11, sign: 11, bars: 115 },
+    { label: "O'rtacha", pad: 4, font: 11.5, title: 16, ch: 12.5, sign: 12.5, bars: 125 },
+    { label: "Keng", pad: 6, font: 13, title: 18, ch: 14, sign: 14, bars: 135 }
   ];
+  var CUSTOM_FIELDS = [["title", "Sarlavha"], ["font", "Jadval matni"], ["pad", "Qator oralig'i"], ["ch", "Diagramma sarlavhasi"], ["sign", "Imzolar, Sinf/Fan"]];
   var MM = 3.7795;
   function sheetHtml(one) {
     var R = BSBXlsx.compute(xdata(cur));
@@ -341,7 +342,8 @@
   function makeSheet(one, v) {
     var d = el("div", { class: "psheet" + (one ? " p1" : "") });
     d.innerHTML = sheetHtml(one);
-    d.style.setProperty("--rowpad", v.pad + "px"); d.style.setProperty("--tfont", v.font + "px"); d.style.setProperty("--bars", v.bars + "px");
+    d.style.setProperty("--rowpad", v.pad + "px"); d.style.setProperty("--tfont", v.font + "px"); d.style.setProperty("--bars", (v.bars || 125) + "px");
+    d.style.setProperty("--titlefont", v.title + "px"); d.style.setProperty("--chfont", v.ch + "px"); d.style.setProperty("--signfont", v.sign + "px");
     return d;
   }
   function fitZoom(one, v) {
@@ -363,20 +365,31 @@
   }
   function doPrint(one) {
     var box = el("div", { class: "pvbox" }), cards = el("div", { class: "pvcards" }), P = pageSize(one), CW = 240;
+    var custom = Object.assign({ label: "O'zim sozlayman", pad: 4, font: 11, title: 16, ch: 12, sign: 12, bars: 125 }, store.settings.pdfCustom || {});
+    var list = VARIANTS.concat([custom]);
     var zs = VARIANTS.map(function (v) { return fitZoom(one, v); });
     var rec = 0; zs.forEach(function (z, i) { if (z >= 0.999) rec = i; });
-    VARIANTS.forEach(function (v, i) {
-      var z = zs[i], sc = CW / P.W, sh = makeSheet(one, v);
+    function card(v, i) {
+      var z = fitZoom(one, v), sc = CW / P.W, sh = makeSheet(one, v);
       sh.style.width = (P.W / z) + "px"; if (z < 1) sh.style.zoom = z.toFixed(3);
       sh.style.transform = "scale(" + sc + ")";
       var page = el("div", { class: "pvpage", style: "width:" + CW + "px;height:" + Math.round(P.H * sc) + "px" }, [sh]);
-      cards.appendChild(el("div", { class: "pvcard" + (i === rec ? " rec" : "") }, [
-        el("b", { text: v.label + (i === rec ? " — tavsiya" : "") }),
-        el("div", { class: "small muted", text: z >= 0.999 ? (one ? "Bitta varoqqa to'liq sig'adi" : "Jadval 1-varoqqa sig'adi") : "Sig'ishi uchun " + Math.round(z * 100) + "% gacha kichraytiriladi" }),
-        page,
-        el("button", { class: "btn primary", type: "button", text: "Shu variantda saqlash", onclick: function () { pv.remove(); printVariant(one, v, z); } })
-      ]));
-    });
+      var kids = [el("b", { text: v.label + (i === rec ? " — tavsiya" : "") }),
+        el("div", { class: "small muted", text: z >= 0.999 ? (one ? "Bitta varoqqa to'liq sig'adi" : "Jadval 1-varoqqa sig'adi") : "Sig'ishi uchun " + Math.round(z * 100) + "% gacha kichraytiriladi" })];
+      if (v === custom) {
+        var g = el("div", { class: "pvfields" });
+        CUSTOM_FIELDS.forEach(function (f) {
+          g.appendChild(el("label", { text: f[1] + " (px)" }, [el("input", { type: "number", step: "0.5", min: "0", max: "40", value: v[f[0]], onchange: function (e) {
+            custom[f[0]] = Number(e.target.value) || 0; store.settings.pdfCustom = custom; writeSettings();
+            if (!c.isConnected || c.__busy) return; c.__busy = true; var n = card(custom, i); c.replaceWith(n); } })]));
+        });
+        kids.push(g);
+      }
+      kids.push(page, el("button", { class: "btn primary", type: "button", text: "Shu variantda saqlash", onclick: function () { pv.remove(); printVariant(one, v, z); } }));
+      var c = el("div", { class: "pvcard" + (i === rec ? " rec" : "") }, kids);
+      return c;
+    }
+    list.forEach(function (v, i) { cards.appendChild(card(v, i)); });
     box.appendChild(el("div", { class: "row-between" }, [el("h3", { text: (one ? "1 varoq (vertikal)" : "2 varoq (gorizontal)") + " — variantni tanlang" }),
       el("button", { class: "btn", type: "button", text: "Yopish", onclick: function () { pv.remove(); } })]));
     box.appendChild(el("p", { class: "muted small", text: "Fayl nomi: " + docName(cur) + ".pdf" }));
