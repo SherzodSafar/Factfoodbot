@@ -124,7 +124,10 @@
   function tmpl(c) { return TEMPLATES[c.template] || TEMPLATES.BSB; }
   function maxes(c) { return tmpl(c).max; }
   function autoTitle(c) {
-    return store.settings.title || DEFAULT_TITLE;
+    return syncTitle(store.settings.title || DEFAULT_TITLE, c);
+  }
+  function syncTitle(t, c) {
+    return String(t).replace(/\d+\s*-\s*chorak/i, (c.chorak || 1) + "-chorak").replace(/\d+\s*-\s*BSB/, (c.bsbNo || 1) + "-" + tmpl(c).label);
   }
   function newClass() {
     var s = store.settings, k = TEMPLATES.BSB.max.length;
@@ -161,6 +164,7 @@
     cur = store.classes.find(function (c) { return c.id === id; });
     if (!cur) return renderHome();
     reviewData = []; $("#review").classList.add("hidden"); $("#ocrProgress").textContent = "";
+    if (/^\s*\d+-chorak \d+-BSB bo'yicha tahlil\s*$/.test(cur.title || "") || !cur.title) cur.title = autoTitle(cur);
     $("#fSinf").value = cur.sinf; $("#fFan").value = cur.fan; $("#fChorak").value = cur.chorak; $("#fBsbNo").value = cur.bsbNo;
     $("#fTitle").value = cur.title; $("#fXulosa").value = cur.xulosa;
     cur.xfont = cur.xfont || { name: "Arial", italic: false, bold: false, size: 11 };
@@ -261,7 +265,7 @@
       b += '<div class="bar"><span>' + (v == null ? "" : pct(v, d)) + '</span><i style="height:' + (v == null ? 0 : Math.max(0, Math.min(1, v)) * 88) + '%"></i></div>';
       l += "<div>" + esc(labels[i]) + "</div>";
     });
-    var lh = cls.indexOf("rot") >= 0 ? ' style="height:' + Math.min(230, 12 + 6.2 * Math.max.apply(null, labels.map(function (x) { return String(x).length; }).concat([4]))) + 'px"' : "";
+    var lh = cls.indexOf("rot") >= 0 ? ' style="height:' + Math.min(150, 10 + 5.3 * Math.max.apply(null, labels.map(function (x) { return String(x).length; }).concat([4]))) + 'px"' : "";
     return '<div class="chart ' + cls + '"><h4>' + esc(title) + '</h4><div class="chart-scroll"><div><div class="bars">' + b + '</div><div class="labels"' + lh + '>' + l + "</div></div></div></div>";
   }
   function chartsHtml(R, c) {
@@ -312,7 +316,7 @@
   }
 
   /* --- Excel va chop etish --- */
-  function fileName(c) { return ("BSB_" + (c.sinf || "sinf") + "_" + (c.fan || "fan")).replace(/[\\/:*?"<>|\s]+/g, "_") + ".xlsx"; }
+  function fileName(c) { return docName(c) + ".xlsx"; }
   function downloadExcel() {
     if (!cur.students.length) return alert("Ro'yxat bo'sh.");
     var bytes = BSBXlsx.build(xdata(cur));
@@ -320,30 +324,74 @@
     var a = el("a", { href: URL.createObjectURL(blob), download: fileName(cur) });
     document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
   }
-  function doPrint(one) {
-    var R = BSBXlsx.compute(xdata(cur)), pr = $("#print");
-    pr.className = one ? "p1" : "";
-    pr.style.zoom = ""; pr.style.removeProperty("--rowpad");
-    pr.innerHTML = '<p class="ptitle">' + esc(cur.title) + '</p><div class="pmeta">Sinf :<span>' + esc(cur.sinf) + '</span></div><div class="pmeta">Fan :<span>' + esc(cur.fan) + "</span></div>" +
+  var VARIANTS = [
+    { label: "Ixcham", pad: 2, font: 10, bars: 115 },
+    { label: "O'rtacha", pad: 4, font: 11, bars: 125 },
+    { label: "Keng", pad: 6, font: 12, bars: 135 }
+  ];
+  var MM = 3.7795;
+  function sheetHtml(one) {
+    var R = BSBXlsx.compute(xdata(cur));
+    return '<p class="ptitle">' + esc(cur.title) + '</p><div class="pmeta">Sinf :<span>' + esc(cur.sinf) + '</span></div><div class="pmeta">Fan :<span>' + esc(cur.fan) + "</span></div>" +
       reportTable(R, cur) + (one ? "" : '<div class="pbreak"></div>') + chartsHtml(R, cur) +
       '<div class="pxul" style="' + fontCss(cur.xfont || { name: "Arial", size: 11 }) + '">' + esc(cur.xulosa).replace(/\n/g, "<br>") + "</div>" +
       cur.signs.map(function (s) { return '<div class="psign"><div>' + esc(s.label) + "</div><div>" + esc(s.name) + "</div></div>"; }).join("");
+  }
+  function pageSize(one) { return one ? { W: 196 * MM, H: 283 * MM } : { W: 277 * MM, H: 190 * MM }; }
+  function makeSheet(one, v) {
+    var d = el("div", { class: "psheet" + (one ? " p1" : "") });
+    d.innerHTML = sheetHtml(one);
+    d.style.setProperty("--rowpad", v.pad + "px"); d.style.setProperty("--tfont", v.font + "px"); d.style.setProperty("--bars", v.bars + "px");
+    return d;
+  }
+  function fitZoom(one, v) {
+    var P = pageSize(one), d = makeSheet(one, v);
+    d.style.cssText += ";position:absolute;left:-10000px;top:0;width:" + P.W + "px";
+    document.body.appendChild(d);
+    var br = d.querySelector(".pbreak"), h = br ? br.offsetTop : d.scrollHeight, w = d.scrollWidth;
+    d.remove();
+    return Math.min(1, (P.H * 0.97) / h, P.W / w);
+  }
+  function docName(c) {
+    var t = (c.signs[1] && c.signs[1].name) || store.settings.oqituvchi || "";
+    var parts = t.split(".").map(function (x) { return x.trim(); }).filter(Boolean);
+    var teacher = parts.length > 1 ? parts[parts.length - 1] + "_" + parts.slice(0, -1).join("") : t;
+    var yil = ((c.title || "").match(/\d{4}\s*-\s*\d{4}/) || [""])[0].replace(/\s/g, "");
+    var n = [(c.sinf || "sinf").replace(/[-\s]/g, ""), c.fan || "fan", (c.chorak || 1) + "-chorak", (c.bsbNo || 1) + "-" + tmpl(c).label,
+      teacher ? "(" + teacher + ")" : "", yil].filter(Boolean).join("_");
+    return n.replace(/[\\/:*?"<>|]+/g, "").replace(/\s+/g, "_");
+  }
+  function doPrint(one) {
+    var box = el("div", { class: "pvbox" }), cards = el("div", { class: "pvcards" }), P = pageSize(one), CW = 240;
+    var zs = VARIANTS.map(function (v) { return fitZoom(one, v); });
+    var rec = 0; zs.forEach(function (z, i) { if (z >= 0.999) rec = i; });
+    VARIANTS.forEach(function (v, i) {
+      var z = zs[i], sc = CW / P.W, sh = makeSheet(one, v);
+      sh.style.width = (P.W / z) + "px"; if (z < 1) sh.style.zoom = z.toFixed(3);
+      sh.style.transform = "scale(" + sc + ")";
+      var page = el("div", { class: "pvpage", style: "width:" + CW + "px;height:" + Math.round(P.H * sc) + "px" }, [sh]);
+      cards.appendChild(el("div", { class: "pvcard" + (i === rec ? " rec" : "") }, [
+        el("b", { text: v.label + (i === rec ? " — tavsiya" : "") }),
+        el("div", { class: "small muted", text: z >= 0.999 ? (one ? "Bitta varoqqa to'liq sig'adi" : "Jadval 1-varoqqa sig'adi") : "Sig'ishi uchun " + Math.round(z * 100) + "% gacha kichraytiriladi" }),
+        page,
+        el("button", { class: "btn primary", type: "button", text: "Shu variantda saqlash", onclick: function () { pv.remove(); printVariant(one, v, z); } })
+      ]));
+    });
+    box.appendChild(el("div", { class: "row-between" }, [el("h3", { text: (one ? "1 varoq (vertikal)" : "2 varoq (gorizontal)") + " — variantni tanlang" }),
+      el("button", { class: "btn", type: "button", text: "Yopish", onclick: function () { pv.remove(); } })]));
+    box.appendChild(el("p", { class: "muted small", text: "Fayl nomi: " + docName(cur) + ".pdf" }));
+    box.appendChild(cards);
+    var pv = el("div", { id: "pv" }, [box]);
+    document.body.appendChild(pv);
+  }
+  function printVariant(one, v, z) {
+    var pr = $("#print"); pr.innerHTML = ""; var sh = makeSheet(one, v); if (z < 1) sh.style.zoom = z.toFixed(3); pr.appendChild(sh);
     var ps = $("#pageStyle") || document.head.appendChild(el("style", { id: "pageStyle" }));
     ps.textContent = "@page{size:A4 " + (one ? "portrait;margin:7mm" : "landscape;margin:10mm") + "}";
-    if (one) {
-      // bitta varoqqa sig'dirish: o'lchab, kichraytiramiz
-      var MM = 3.7795, W = 196 * MM, H = 283 * MM;
-      pr.style.cssText = "display:block;position:absolute;left:-10000px;top:0;width:" + W + "px";
-      var h = pr.scrollHeight, w = pr.scrollWidth;
-      pr.style.cssText = "";
-      var z = Math.min(1, (H * 0.97) / h, W / w);
-      if (z < 1) pr.style.zoom = z.toFixed(3);
-      else { // bo'sh joy ko'p bo'lsa, qatorlarni kengaytiramiz
-        var extra = Math.floor((H * 0.96 - h) / Math.max(1, cur.students.length + 4));
-        if (extra > 0) pr.style.setProperty("--rowpad", Math.min(6, Math.floor(extra / 2)) + "px");
-      }
-    }
-    setTimeout(function () { window.print(); }, 50);
+    var old = document.title; document.title = docName(cur);
+    var restore = function () { document.title = old; window.removeEventListener("afterprint", restore); };
+    window.addEventListener("afterprint", restore);
+    setTimeout(function () { window.print(); setTimeout(restore, 1500); }, 60);
   }
 
   /* ===== Gemini: rasmdan o'qish ===== */
@@ -539,8 +587,8 @@
   function bind(sel, fn) { $(sel).addEventListener("input", function (e) { if (cur) { fn(e.target.value); touch(); } }); }
   bind("#fSinf", function (v) { cur.sinf = v.trim(); });
   bind("#fFan", function (v) { cur.fan = v.trim(); });
-  bind("#fChorak", function (v) { cur.chorak = v; });
-  bind("#fBsbNo", function (v) { cur.bsbNo = v; });
+  bind("#fChorak", function (v) { cur.chorak = v; cur.title = syncTitle(cur.title, cur); $("#fTitle").value = cur.title; });
+  bind("#fBsbNo", function (v) { cur.bsbNo = v; cur.title = syncTitle(cur.title, cur); $("#fTitle").value = cur.title; });
   bind("#fTitle", function (v) { cur.title = v; });
   bind("#fXulosa", function (v) { cur.xulosa = v; clearTimeout(window.__ft); window.__ft = setTimeout(renderFonts, 400); });
   bind("#fSign1L", function (v) { cur.signs[0].label = v; });
