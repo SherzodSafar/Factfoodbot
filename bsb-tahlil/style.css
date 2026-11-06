@@ -81,9 +81,17 @@ tr.avg td{background:var(--avg);font-weight:700}
 .chart.rot .labels div{writing-mode:vertical-rl;transform:rotate(180deg);text-align:left;white-space:nowrap}
 .chart-scroll{overflow-x:auto}
 .chart-scroll>div{min-width:520px}
-#print{display:none}
+#print{display:none;font-family:Arial,sans-serif;font-size:10px;color:#000}
+#print.p1 table{font-size:8.5px}
+#print.p1 th,#print.p1 td{padding:1px 3px}
+#print.p1 td.name{min-width:0}
+#print.p1 .bars{height:120px}
+#print.p1 .chart{padding:4px;margin:6px 0}
+#print.p1 .chart.rot .labels{height:85px}
+#print.p1 .chart h4{font-size:11px;margin:0 0 4px}
+#print.p1 .pxul{margin:8px 2%;padding:6px 10px}
+#print.p1 .psign{margin-top:10px}
 @media print{
-  @page{size:A4 landscape;margin:10mm}
   body{background:#fff}
   #app,#login,#lightbox{display:none!important}
   #print{display:block;font-family:Arial,sans-serif;font-size:10px;color:#000}

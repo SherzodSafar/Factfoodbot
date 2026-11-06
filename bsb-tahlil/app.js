@@ -283,13 +283,26 @@
     var a = el("a", { href: URL.createObjectURL(blob), download: fileName(cur) });
     document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
   }
-  function doPrint() {
-    var R = BSBXlsx.compute(xdata(cur));
-    $("#print").innerHTML = '<p class="ptitle">' + esc(cur.title) + '</p><div class="pmeta">Sinf :<span>' + esc(cur.sinf) + '</span></div><div class="pmeta">Fan :<span>' + esc(cur.fan) + "</span></div>" +
-      reportTable(R, cur) + '<div class="pbreak"></div>' + chartsHtml(R, cur) +
+  function doPrint(one) {
+    var R = BSBXlsx.compute(xdata(cur)), pr = $("#print");
+    pr.className = one ? "p1" : "";
+    pr.style.zoom = "";
+    pr.innerHTML = '<p class="ptitle">' + esc(cur.title) + '</p><div class="pmeta">Sinf :<span>' + esc(cur.sinf) + '</span></div><div class="pmeta">Fan :<span>' + esc(cur.fan) + "</span></div>" +
+      reportTable(R, cur) + (one ? "" : '<div class="pbreak"></div>') + chartsHtml(R, cur) +
       '<div class="pxul">' + esc(cur.xulosa).replace(/\n/g, "<br>") + "</div>" +
       cur.signs.map(function (s) { return '<div class="psign"><div>' + esc(s.label) + "</div><div>" + esc(s.name) + "</div></div>"; }).join("");
-    window.print();
+    var ps = $("#pageStyle") || document.head.appendChild(el("style", { id: "pageStyle" }));
+    ps.textContent = "@page{size:A4 " + (one ? "portrait;margin:7mm" : "landscape;margin:10mm") + "}";
+    if (one) {
+      // bitta varoqqa sig'dirish: o'lchab, kichraytiramiz
+      var MM = 3.7795, W = 196 * MM, H = 283 * MM;
+      pr.style.cssText = "display:block;position:absolute;left:-10000px;top:0;width:" + W + "px";
+      var h = pr.scrollHeight, w = pr.scrollWidth;
+      pr.style.cssText = "";
+      var z = Math.min(1, (H * 0.97) / h, W / w);
+      if (z < 1) pr.style.zoom = z.toFixed(3);
+    }
+    setTimeout(function () { window.print(); }, 50);
   }
 
   /* ===== Gemini: rasmdan o'qish ===== */
@@ -541,7 +554,8 @@
   $("#photoInput").addEventListener("change", function (e) { var f = Array.from(e.target.files || []); e.target.value = ""; if (f.length) readPhotos(f); });
   $("#suggestBtn").onclick = suggest;
   $("#excelBtn").onclick = downloadExcel;
-  $("#printBtn").onclick = doPrint;
+  $("#printBtn").onclick = function () { doPrint(false); };
+  $("#printBtn1").onclick = function () { doPrint(true); };
   $("#deleteClassBtn").onclick = function () {
     if (!confirm("\"" + (cur.sinf || "Nomsiz") + "\" sinfi butunlay o'chirilsinmi?")) return;
     store.classes = store.classes.filter(function (c) { return c !== cur; }); cur = null; saveNow(); renderHome();
