@@ -269,8 +269,8 @@
     return '<div class="chart ' + cls + '"><h4>' + esc(title) + '</h4><div class="chart-scroll"><div><div class="bars">' + b + '</div><div class="labels"' + lh + '>' + l + "</div></div></div></div>";
   }
   function chartsHtml(R, c) {
-    return barChart("Mezonlar bo'yicha o'rtacha foiz ko'rsatkichi", c.criteria.map(function (n) { return n + " %"; }).concat(["Umumiy %"]), R.avgPcts.concat([R.avgOverall]), "", 1) +
-      barChart("O'quvchilarning umumiy foiz ko'rsatkichi", R.rows.map(function (r) { return r.name; }), R.rows.map(function (r) { return r.overall; }), "green rot", 0);
+    return barChart("Mezonlar bo'yicha o'rtacha foiz ko'rsatkichi", c.criteria.map(function (n) { return n + " %"; }).concat(["Umumiy %"]), R.avgPcts.concat([R.avgOverall]), "c1", 1) +
+      barChart("O'quvchilarning umumiy foiz ko'rsatkichi", R.rows.map(function (r) { return r.name; }), R.rows.map(function (r) { return r.overall; }), "green rot c2", 0);
   }
   var repTimer = null;
   function renderReport() {
@@ -329,7 +329,8 @@
     { label: "O'rtacha", pad: 4, font: 11.5, title: 16, ch: 12.5, sign: 12.5, bars: 125 },
     { label: "Keng", pad: 6, font: 13, title: 18, ch: 14, sign: 14, bars: 135 }
   ];
-  var CUSTOM_FIELDS = [["title", "Sarlavha"], ["font", "Jadval matni"], ["pad", "Qator oralig'i"], ["ch", "Diagramma sarlavhasi"], ["sign", "Imzolar, Sinf/Fan"]];
+  var CUSTOM_FIELDS = [["title", "Sarlavha"], ["font", "Jadval matni"], ["pad", "Qator oralig'i"], ["sign", "Imzolar, Sinf/Fan"],
+    ["ch1", "1-diagramma sarlavhasi"], ["ch2", "2-diagramma sarlavhasi"], ["gap", "Sarlavha va ustun oralig'i"], ["names", "Diagrammadagi ismlar"]];
   var MM = 3.7795;
   function sheetHtml(one) {
     var R = BSBXlsx.compute(xdata(cur));
@@ -344,6 +345,8 @@
     d.innerHTML = sheetHtml(one);
     d.style.setProperty("--rowpad", v.pad + "px"); d.style.setProperty("--tfont", v.font + "px"); d.style.setProperty("--bars", (v.bars || 125) + "px");
     d.style.setProperty("--titlefont", v.title + "px"); d.style.setProperty("--chfont", v.ch + "px"); d.style.setProperty("--signfont", v.sign + "px");
+    d.style.setProperty("--ch1font", (v.ch1 || v.ch) + "px"); d.style.setProperty("--ch2font", (v.ch2 || v.ch) + "px");
+    d.style.setProperty("--chgap", (v.gap == null ? 4 : v.gap) + "px"); d.style.setProperty("--namefont", (v.names || v.font * 0.9) + "px");
     return d;
   }
   function fitZoom(one, v) {
@@ -365,7 +368,7 @@
   }
   function doPrint(one) {
     var box = el("div", { class: "pvbox" }), cards = el("div", { class: "pvcards" }), P = pageSize(one), CW = 240;
-    var custom = Object.assign({ label: "O'zim sozlayman", pad: 4, font: 11, title: 16, ch: 12, sign: 12, bars: 125 }, store.settings.pdfCustom || {});
+    var custom = Object.assign({ label: "O'zim sozlayman", pad: 4, font: 11, title: 16, ch: 12, sign: 12, bars: 125, ch1: 12, ch2: 12, gap: 6, names: 10 }, store.settings.pdfCustom || {});
     var list = VARIANTS.concat([custom]);
     var zs = VARIANTS.map(function (v) { return fitZoom(one, v); });
     var rec = 0; zs.forEach(function (z, i) { if (z >= 0.999) rec = i; });

@@ -149,3 +149,6 @@ tr.avg td{background:var(--avg);font-weight:700}
 .pvfields input{padding:5px 6px}
 .labels{font-size:10px}.labels div{font-size:inherit!important}
 .psheet .labels{font-size:calc(var(--tfont,10px) * .9)}
+.psheet .chart.c1 h4{font-size:var(--ch1font,var(--chfont,11px));margin-bottom:var(--chgap,4px)}
+.psheet .chart.c2 h4{font-size:var(--ch2font,var(--chfont,11px));margin-bottom:var(--chgap,4px)}
+.psheet .chart.rot .labels{font-size:var(--namefont,calc(var(--tfont,10px) * .9))}
