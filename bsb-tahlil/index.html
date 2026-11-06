@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BSB tahlil</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- Kirish -->
+<div id="login" class="login hidden">
+  <form id="loginForm" class="card login-card">
+    <h1>📊 BSB tahlil</h1>
+    <p class="muted">Davom etish uchun parolni kiriting</p>
+    <input id="loginPass" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Parol" required>
+    <button class="btn primary" type="submit">Kirish</button>
+    <p id="loginErr" class="err"></p>
+  </form>
+</div>
+
+<div id="app" class="hidden">
+  <header class="top">
+    <button id="homeBtn" class="brand" type="button">📊 BSB tahlil</button>
+    <div class="top-actions">
+      <button id="settingsBtn" class="btn ghost" type="button">⚙️ Sozlamalar</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Sinflar ro'yxati -->
+    <section id="homeView">
+      <div class="row-between">
+        <h2>Sinflar</h2>
+        <button id="newClassBtn" class="btn primary" type="button">+ Yangi sinf</button>
+      </div>
+      <div id="classList" class="class-list"></div>
+      <div class="card backup">
+        <h3>Zaxira nusxa</h3>
+        <p class="muted">Barcha sinflar shu brauzerda saqlanadi. Boshqa qurilmaga ko'chirish yoki xavfsizlik uchun zaxira nusxa oling.</p>
+        <div class="btns">
+          <button id="backupBtn" class="btn" type="button">⬇️ Zaxirani yuklab olish</button>
+          <label class="btn">⬆️ Zaxiradan tiklash<input id="restoreInput" type="file" accept=".json,application/json" hidden></label>
+        </div>
+      </div>
+    </section>
+
+    <!-- Sinf -->
+    <section id="classView" class="hidden">
+      <div class="row-between">
+        <button id="backBtn" class="btn ghost" type="button">← Sinflar</button>
+        <span id="saveState" class="muted small">Saqlandi</span>
+      </div>
+
+      <details class="card step" id="step1" open>
+        <summary><span class="num">1</span> Sinf ma'lumotlari</summary>
+        <div class="grid2">
+          <label>Sinf<input id="fSinf" placeholder="11-B"></label>
+          <label>Fan<input id="fFan" placeholder="Adabiyot"></label>
+          <label>Chorak<select id="fChorak"><option>1</option><option>2</option><option>3</option><option>4</option></select></label>
+          <label>BSB raqami<input id="fBsbNo" type="number" min="1" max="9" placeholder="1"></label>
+        </div>
+        <label>Sarlavha
+          <textarea id="fTitle" rows="2"></textarea>
+        </label>
+        <button id="autoTitleBtn" class="btn small" type="button">↻ Sarlavhani sozlamalardan yasash</button>
+        <details class="sub">
+          <summary>Mezon nomlari</summary>
+          <p class="muted small">Jadval va diagrammalarda shu nomlar chiqadi. Har bir mezonning maksimal bali: <b id="maxInfo"></b></p>
+          <div id="critNames" class="grid2"></div>
+        </details>
+      </details>
+
+      <details class="card step" id="step2" open>
+        <summary><span class="num">2</span> O'quvchilar ro'yxati <span id="stuCount" class="pill"></span></summary>
+        <p class="muted small">Ro'yxatni nusxalab shu yerga tashlang. Har bir qatorda bitta o'quvchi. Oldidagi raqamlar o'zi olib tashlanadi, kirill yozuvi lotinga o'giriladi.</p>
+        <textarea id="namesInput" rows="6" placeholder="1. Шамуратов Тимурбек&#10;2. Абдибаев Нуржан&#10;..."></textarea>
+        <div class="btns">
+          <button id="namesReplaceBtn" class="btn primary" type="button">Ro'yxatni joylash</button>
+          <button id="namesAppendBtn" class="btn" type="button">Oxiriga qo'shish</button>
+        </div>
+      </details>
+
+      <details class="card step" id="step3" open>
+        <summary><span class="num">3</span> Ballar</summary>
+        <div class="gemini card inner">
+          <b>📷 Daftar rasmlaridan o'qish (Gemini)</b>
+          <p class="muted small">Bir yoki bir nechta rasm tanlang. Bitta rasmda bir nechta daftar bo'lishi mumkin. Natijani tekshirib, keyin jadvalga qo'yasiz.</p>
+          <label class="btn primary">Rasmlarni tanlash<input id="photoInput" type="file" accept="image/*" multiple hidden></label>
+          <div id="ocrProgress" class="small"></div>
+        </div>
+        <div id="review" class="hidden"></div>
+        <div class="table-wrap"><table id="scoreTable" class="scores"></table></div>
+        <details class="sub">
+          <summary>Ballarni matn ko'rinishida tashlash</summary>
+          <p class="muted small">Har bir qatorda bitta o'quvchining ballari, ro'yxat tartibida. Masalan: <code>9 10 9 9 9</code></p>
+          <textarea id="bulkInput" rows="5"></textarea>
+          <button id="bulkBtn" class="btn" type="button">Ballarni joylash</button>
+        </details>
+      </details>
+
+      <details class="card step" id="step4" open>
+        <summary><span class="num">4</span> Natija, xulosa va yuklab olish</summary>
+        <div id="report"></div>
+        <label>Xulosa
+          <textarea id="fXulosa" rows="4"></textarea>
+        </label>
+        <button id="suggestBtn" class="btn small" type="button">💡 Natijaga qarab xulosa taklif qilish</button>
+        <div class="grid2 signs">
+          <label>1-imzo (lavozim)<input id="fSign1L"></label>
+          <label>1-imzo (F.I.Sh.)<input id="fSign1N"></label>
+          <label>2-imzo (lavozim)<input id="fSign2L"></label>
+          <label>2-imzo (F.I.Sh.)<input id="fSign2N"></label>
+        </div>
+        <div class="btns sticky-actions">
+          <button id="excelBtn" class="btn primary" type="button">⬇️ Excel yuklab olish</button>
+          <button id="printBtn" class="btn" type="button">🖨️ Chop etish / PDF</button>
+        </div>
+      </details>
+      <button id="deleteClassBtn" class="btn danger small" type="button">Sinfni o'chirish</button>
+    </section>
+
+    <!-- Sozlamalar -->
+    <section id="settingsView" class="hidden">
+      <div class="row-between">
+        <button id="settingsBack" class="btn ghost" type="button">← Orqaga</button>
+      </div>
+      <div class="card">
+        <h2>Sozlamalar</h2>
+        <p class="muted small">Bu ma'lumotlar har bir yangi sinfga avtomatik qo'yiladi.</p>
+        <div class="grid2">
+          <label>Tuman<input id="sTuman" placeholder="Gurlan tumani"></label>
+          <label>Maktab<input id="sMaktab" placeholder="10-maktab"></label>
+          <label>O'quv yili<input id="sYil" placeholder="2026-2027"></label>
+          <label>Metodbirlashma rahbari<input id="sRahbar" placeholder="G.Abduxalilboyeva"></label>
+          <label>O'qituvchi<input id="sOqituvchi" placeholder="L.A.Beksugurova"></label>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Gemini</h3>
+        <p id="keyInfo" class="small"></p>
+        <label>Gemini API kaliti (ixtiyoriy)<input id="sKey" type="password" autocomplete="off" placeholder="AIza..."></label>
+        <p class="muted small">Kalit faqat shu qurilmada saqlanadi. Serverga kalit qo'yilgan bo'lsa, bu yerni bo'sh qoldiring.</p>
+      </div>
+      <button id="logoutBtn" class="btn danger small" type="button">Chiqish</button>
+    </section>
+  </main>
+</div>
+
+<!-- Rasmni kattalashtirish -->
+<div id="lightbox" class="lightbox hidden"><img alt=""></div>
+
+<!-- Chop etish uchun -->
+<div id="print"></div>
+
+<script src="xlsx.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,544 @@
+/* BSB tahlil — asosiy dastur */
+(function () {
+  "use strict";
+
+  /* ===== Shablonlar (keyin ChSB qo'shiladi) ===== */
+  var TEMPLATES = {
+    BSB: { label: "BSB", max: [10, 10, 10, 10, 10] }
+  };
+
+  /* ===== Saqlash ===== */
+  var KEY = "bsbTahlil.v1";
+  var store = load();
+  function load() {
+    var d = null;
+    try { d = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
+    d = d || {};
+    d.settings = d.settings || { tuman: "", maktab: "", yil: "", rahbar: "", oqituvchi: "", key: "" };
+    d.classes = d.classes || [];
+    return d;
+  }
+  var saveTimer = null;
+  function save() {
+    $("#saveState").textContent = "Saqlanmoqda…";
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () {
+      try { localStorage.setItem(KEY, JSON.stringify(store)); $("#saveState").textContent = "✓ Saqlandi"; }
+      catch (e) { $("#saveState").textContent = "⚠️ Saqlab bo'lmadi"; }
+    }, 300);
+  }
+  function saveNow() { try { localStorage.setItem(KEY, JSON.stringify(store)); } catch (e) {} }
+
+  /* ===== Yordamchilar ===== */
+  function $(s) { return document.querySelector(s); }
+  function el(tag, attrs, kids) {
+    var e = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function (k) {
+      if (k === "text") e.textContent = attrs[k];
+      else if (k === "html") e.innerHTML = attrs[k];
+      else if (k.slice(0, 2) === "on") e.addEventListener(k.slice(2), attrs[k]);
+      else if (attrs[k] != null && attrs[k] !== false) e.setAttribute(k, attrs[k]);
+    });
+    (kids || []).forEach(function (c) { if (c != null) e.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
+    return e;
+  }
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function pct(v, d) { return v == null ? "" : (v * 100).toFixed(d == null ? 1 : d) + "%"; }
+  function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+
+  /* ===== Kirill -> lotin ===== */
+  var CYR = { "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "ё": "yo", "ж": "j", "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m",
+    "н": "n", "о": "o", "п": "p", "р": "r", "с": "s", "т": "t", "у": "u", "ф": "f", "х": "x", "ц": "s", "ч": "ch", "ш": "sh", "щ": "sh", "ъ": "'",
+    "ы": "i", "ь": "", "э": "e", "ю": "yu", "я": "ya", "ў": "o'", "қ": "q", "ғ": "g'", "ҳ": "h", "і": "i" };
+  var VOW = "аеёиоуўэюяaeiou";
+  function translit(s) {
+    if (!/[Ѐ-ӿ]/.test(s)) return s;
+    var out = "";
+    for (var i = 0; i < s.length; i++) {
+      var ch = s[i], lo = ch.toLowerCase(), up = ch !== lo, r;
+      if (lo === "е") {
+        var prev = i ? s[i - 1].toLowerCase() : "";
+        r = (!prev || !/[Ѐ-ӿa-z']/.test(prev) || VOW.indexOf(prev) >= 0 || prev === "ъ" || prev === "ь") ? "ye" : "e";
+      } else if (CYR.hasOwnProperty(lo)) r = CYR[lo];
+      else { out += ch; continue; }
+      if (up && r) {
+        var next = s[i + 1] || "", allCaps = next && next !== next.toLowerCase();
+        r = allCaps ? r.toUpperCase() : r.charAt(0).toUpperCase() + r.slice(1);
+      }
+      out += r;
+    }
+    return out;
+  }
+  function parseNames(text) {
+    return text.split(/\r?\n/).map(function (l) {
+      l = l.replace(/^\s*\d+\s*[.)\-:]*\s*/, "").replace(/\t+/g, " ").replace(/\s+/g, " ").trim();
+      return translit(l);
+    }).filter(function (l) { return l && /[A-Za-zЀ-ӿ]/.test(l); });
+  }
+
+  /* ===== Ism moslashtirish ===== */
+  function norm(s) { return translit(String(s || "")).toLowerCase().replace(/[ʻʼ'`’‘´]/g, "").replace(/[^a-z\s.]/g, "").trim(); }
+  function lev(a, b) {
+    var m = a.length, n = b.length, d = [], i, j;
+    for (i = 0; i <= m; i++) { d[i] = [i]; }
+    for (j = 0; j <= n; j++) d[0][j] = j;
+    for (i = 1; i <= m; i++) for (j = 1; j <= n; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    return d[m][n];
+  }
+  function candidates(raw, roster) {
+    var r = norm(raw); if (!r) return [];
+    var m = r.match(/^([a-z]{1,3})\s*\.\s*([a-z]+)/), ini = "", first;
+    if (m) { ini = m[1]; first = m[2]; } else { var p = r.split(/[\s.]+/).filter(Boolean); first = p[p.length - 1]; ini = p.length > 1 ? p[0] : ""; }
+    if (!first) return [];
+    var out = [];
+    roster.forEach(function (name, i) {
+      var parts = norm(name).split(/\s+/), sur = parts[0] || "", fn = parts[1] || "";
+      var okFirst = fn === first || (first.length >= 4 && lev(fn, first) <= 1) || (first.length >= 5 && fn.indexOf(first) === 0);
+      var okIni = !ini || sur.indexOf(ini) === 0 || sur.charAt(0) === ini.charAt(0);
+      if (okFirst && okIni) out.push(i);
+    });
+    return out;
+  }
+
+  /* ===== Holat ===== */
+  var cur = null;          // joriy sinf
+  var reviewData = [];     // Gemini natijalari
+  var serverKey = false;
+
+  function tmpl(c) { return TEMPLATES[c.template] || TEMPLATES.BSB; }
+  function maxes(c) { return tmpl(c).max; }
+  function autoTitle(c) {
+    var s = store.settings, parts = [s.tuman, s.maktab, (c.chorak || 1) + "-chorak", (c.bsbNo || 1) + "-" + tmpl(c).label + " bo'yicha tahlil"].filter(Boolean).join(" ");
+    return parts + (s.yil ? " (" + s.yil + ")" : "");
+  }
+  function newClass() {
+    var s = store.settings, k = TEMPLATES.BSB.max.length;
+    var c = { id: uid(), template: "BSB", sinf: "", fan: "", chorak: "1", bsbNo: 1,
+      criteria: Array.from({ length: k }, function (_, i) { return (i + 1) + "-mezon"; }),
+      students: [], xulosa: "",
+      signs: [{ label: "Metodbirlashma rahbari:", name: s.rahbar || "" }, { label: "O'qituvchi:", name: s.oqituvchi || "" }],
+      updated: Date.now() };
+    c.title = autoTitle(c);
+    store.classes.unshift(c); saveNow();
+    return c;
+  }
+  function touch() { if (cur) cur.updated = Date.now(); save(); }
+
+  /* ===== Ko'rinishlar ===== */
+  function show(id) {
+    ["#homeView", "#classView", "#settingsView"].forEach(function (v) { $(v).classList.toggle("hidden", v !== id); });
+    window.scrollTo(0, 0);
+  }
+  function renderHome() {
+    var list = $("#classList"); list.innerHTML = "";
+    if (!store.classes.length) list.appendChild(el("p", { class: "muted", text: "Hali sinf yo'q. \"+ Yangi sinf\" tugmasini bosing." }));
+    store.classes.slice().sort(function (a, b) { return b.updated - a.updated; }).forEach(function (c) {
+      var R = BSBXlsx.compute(xdata(c)), filled = R.rows.filter(function (r) { return r.total != null; }).length;
+      list.appendChild(el("div", { class: "card class-card", onclick: function () { openClass(c.id); } }, [
+        el("b", { text: (c.sinf || "Nomsiz sinf") + (c.fan ? " — " + c.fan : "") }),
+        el("div", { class: "muted small", text: c.chorak + "-chorak, " + (c.bsbNo || 1) + "-" + tmpl(c).label }),
+        el("div", { class: "small", text: c.students.length + " o'quvchi, " + filled + " tasi baholangan" + (R.avgOverall != null ? " · o'rtacha " + pct(R.avgOverall) : "") })
+      ]));
+    });
+    show("#homeView");
+  }
+  function openClass(id) {
+    cur = store.classes.find(function (c) { return c.id === id; });
+    if (!cur) return renderHome();
+    reviewData = []; $("#review").classList.add("hidden"); $("#ocrProgress").textContent = "";
+    $("#fSinf").value = cur.sinf; $("#fFan").value = cur.fan; $("#fChorak").value = cur.chorak; $("#fBsbNo").value = cur.bsbNo;
+    $("#fTitle").value = cur.title; $("#fXulosa").value = cur.xulosa;
+    $("#fSign1L").value = cur.signs[0].label; $("#fSign1N").value = cur.signs[0].name;
+    $("#fSign2L").value = cur.signs[1].label; $("#fSign2N").value = cur.signs[1].name;
+    $("#maxInfo").textContent = maxes(cur).join(", ");
+    var cn = $("#critNames"); cn.innerHTML = "";
+    cur.criteria.forEach(function (n, i) {
+      cn.appendChild(el("label", { text: (i + 1) + "-mezon" }, [el("input", { value: n, oninput: function (e) { cur.criteria[i] = e.target.value || (i + 1) + "-mezon"; renderScores(); renderReport(); touch(); } })]));
+    });
+    $("#namesInput").value = "";
+    $("#step2").open = !cur.students.length;
+    renderScores(); renderReport();
+    show("#classView"); $("#saveState").textContent = "✓ Saqlandi";
+  }
+
+  /* --- ballar jadvali --- */
+  function parseScore(v, max) {
+    v = String(v).trim().replace(",", ".");
+    if (v === "") return { val: null, ok: true };
+    var n = Number(v);
+    return { val: Number.isFinite(n) ? n : null, ok: Number.isFinite(n) && n >= 0 && n <= max };
+  }
+  function renderScores() {
+    var t = $("#scoreTable"), c = cur, k = c.criteria.length, M = maxes(c);
+    $("#stuCount").textContent = c.students.length ? c.students.length + " ta" : "";
+    t.innerHTML = "";
+    if (!c.students.length) { t.appendChild(el("tr", {}, [el("td", { class: "muted", text: "Avval o'quvchilar ro'yxatini joylang (2-qadam)." })])); return; }
+    var head = el("tr", {}, [el("th", { text: "№" }), el("th", { text: "Familiya, ism" })]);
+    c.criteria.forEach(function (n, i) { head.appendChild(el("th", { text: n + " (" + M[i] + ")" })); });
+    head.appendChild(el("th", { text: "Jami" })); head.appendChild(el("th", { text: "%" })); head.appendChild(el("th", { text: "" }));
+    t.appendChild(head);
+    c.students.forEach(function (s, r) {
+      var tr = el("tr", {}, [el("td", { text: r + 1 })]);
+      tr.appendChild(el("td", { class: "name" }, [el("input", { value: s.name, onchange: function (e) { s.name = e.target.value.trim(); renderReport(); touch(); } })]));
+      for (var i = 0; i < k; i++) (function (i) {
+        var inp = el("input", { inputmode: "decimal", enterkeyhint: "next", value: s.scores[i] == null ? "" : s.scores[i], "data-r": r, "data-i": i });
+        var chk = function () {
+          var p = parseScore(inp.value, M[i]); inp.classList.toggle("bad", !p.ok);
+          s.scores[i] = p.ok ? p.val : null; updateRow(tr, s); renderReport(); touch();
+        };
+        inp.addEventListener("input", chk);
+        inp.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); focusNext(r, i); } });
+        inp.addEventListener("focus", function () { inp.select(); });
+        tr.appendChild(el("td", {}, [inp]));
+      })(i);
+      tr.appendChild(el("td", { class: "tot" })); tr.appendChild(el("td", { class: "pct" }));
+      tr.appendChild(el("td", {}, [el("button", { class: "del", title: "O'chirish", text: "✕", onclick: function () {
+        if (confirm(s.name + " ro'yxatdan o'chirilsinmi?")) { c.students.splice(r, 1); renderScores(); renderReport(); touch(); } } })]));
+      updateRow(tr, s); t.appendChild(tr);
+    });
+  }
+  function updateRow(tr, s) {
+    var M = maxes(cur), has = s.scores.some(function (v) { return v != null; });
+    var tot = has ? s.scores.reduce(function (a, v) { return a + (v || 0); }, 0) : null, mt = M.reduce(function (a, b) { return a + b; }, 0);
+    tr.querySelector(".tot").textContent = tot == null ? "" : tot;
+    tr.querySelector(".pct").textContent = tot == null ? "" : pct(tot / mt);
+  }
+  function focusNext(r, i) {
+    var k = cur.criteria.length, nr = r, ni = i + 1;
+    if (ni >= k) { ni = 0; nr++; }
+    var n = document.querySelector('#scoreTable input[data-r="' + nr + '"][data-i="' + ni + '"]');
+    if (n) n.focus(); else document.activeElement.blur();
+  }
+
+  /* --- hisobot (jadval + diagramma) --- */
+  function xdata(c) {
+    var k = c.criteria.length;
+    return { title: c.title, sinf: c.sinf, fan: c.fan, criteria: c.criteria.slice(), max: tmpl(c).max.slice(0, k),
+      students: c.students.map(function (s) { return { name: s.name, scores: s.scores.slice(0, k).concat(Array(Math.max(0, k - s.scores.length)).fill(null)) }; }),
+      xulosa: c.xulosa, signs: c.signs };
+  }
+  function reportTable(R, c) {
+    var M = maxes(c), h = '<table><tr><th rowspan="2">№</th><th rowspan="2">Familiya, ism, sharifi</th><th colspan="' + R.k + '">Mezonlar bo\'yicha to\'plagan bali</th><th rowspan="2">Jami ball</th><th colspan="' + R.k + '">Mezonlar bo\'yicha foiz ko\'rsatkichi</th><th>Umumiy foiz</th></tr><tr>';
+    c.criteria.forEach(function (n) { h += "<th>" + esc(n) + "</th>"; });
+    c.criteria.forEach(function (n) { h += "<th>" + esc(n) + " %</th>"; });
+    h += "<th>Umumiy %</th></tr><tr><td></td><td><b>Maksimal ball</b></td>";
+    M.forEach(function (m) { h += "<td><b>" + m + "</b></td>"; });
+    h += "<td><b>" + R.maxTot + "</b></td>" + Array(R.k + 2).join("<td><b>100%</b></td>") + "</tr>";
+    R.rows.forEach(function (r, i) {
+      h += "<tr><td>" + (i + 1) + '</td><td class="name">' + esc(r.name) + "</td>";
+      r.scores.forEach(function (v) { h += "<td>" + (v == null ? "" : v) + "</td>"; });
+      h += "<td>" + (r.total == null ? "" : r.total) + "</td>";
+      r.pcts.forEach(function (v) { h += '<td class="pct">' + pct(v) + "</td>"; });
+      h += '<td class="pct">' + pct(r.overall) + "</td></tr>";
+    });
+    h += '<tr class="avg"><td colspan="2">O\'rtacha ko\'rsatkich</td>';
+    R.avgScores.forEach(function (v) { h += "<td>" + (v == null ? "" : v.toFixed(1)) + "</td>"; });
+    h += "<td>" + (R.avgTotal == null ? "" : R.avgTotal.toFixed(1)) + "</td>";
+    R.avgPcts.forEach(function (v) { h += "<td>" + pct(v) + "</td>"; });
+    return h + "<td>" + pct(R.avgOverall) + "</td></tr></table>";
+  }
+  function barChart(title, labels, vals, cls, d) {
+    var b = "", l = "";
+    vals.forEach(function (v, i) {
+      b += '<div class="bar"><span>' + (v == null ? "" : pct(v, d)) + '</span><i style="height:' + (v == null ? 0 : Math.max(0, Math.min(1, v)) * 88) + '%"></i></div>';
+      l += "<div>" + esc(labels[i]) + "</div>";
+    });
+    return '<div class="chart ' + cls + '"><h4>' + esc(title) + '</h4><div class="chart-scroll"><div><div class="bars">' + b + '</div><div class="labels">' + l + "</div></div></div></div>";
+  }
+  function chartsHtml(R, c) {
+    return barChart("Mezonlar bo'yicha o'rtacha foiz ko'rsatkichi", c.criteria.map(function (n) { return n + " %"; }).concat(["Umumiy %"]), R.avgPcts.concat([R.avgOverall]), "", 1) +
+      barChart("O'quvchilarning umumiy foiz ko'rsatkichi", R.rows.map(function (r) { return r.name; }), R.rows.map(function (r) { return r.overall; }), "green rot", 0);
+  }
+  var repTimer = null;
+  function renderReport() {
+    clearTimeout(repTimer);
+    repTimer = setTimeout(function () {
+      if (!cur) return;
+      var R = BSBXlsx.compute(xdata(cur));
+      $("#report").innerHTML = cur.students.length ? '<div class="table-wrap">' + reportTable(R, cur) + "</div>" + chartsHtml(R, cur) : '<p class="muted">Natija o\'quvchilar va ballar kiritilgach chiqadi.</p>';
+    }, 120);
+  }
+
+  /* --- xulosa taklifi --- */
+  function suggest() {
+    var R = BSBXlsx.compute(xdata(cur));
+    if (R.avgOverall == null) return alert("Avval ballarni kiriting.");
+    var idx = R.avgPcts.map(function (v, i) { return [v, i]; }).filter(function (x) { return x[0] != null; }).sort(function (a, b) { return a[0] - b[0]; });
+    var lo = idx[0], hi = idx[idx.length - 1];
+    var weak = R.rows.filter(function (r) { return r.overall != null && r.overall < 0.6; }).length;
+    var t = "O'quvchilarning umumiy o'zlashtirish ko'rsatkichi " + pct(R.avgOverall) + " ni tashkil etdi. " +
+      "Eng yuqori natija " + cur.criteria[hi[1]] + " bo'yicha (" + pct(hi[0]) + "), eng past natija " + cur.criteria[lo[1]] + " bo'yicha (" + pct(lo[0]) + ") qayd etildi. " +
+      "Bu bo'shliqni bartaraf etish uchun ko'proq amaliy mashqlar ishlashni kuchaytiramiz." +
+      (weak ? " Natijasi 60% dan past bo'lgan " + weak + " nafar o'quvchi bilan qo'shimcha to'garak va bo'sh soatlarda alohida ishlash rejalashtirildi." : "");
+    if (cur.xulosa && !confirm("Mavjud xulosa matni almashtirilsinmi?")) return;
+    cur.xulosa = t; $("#fXulosa").value = t; touch();
+  }
+
+  /* --- Excel va chop etish --- */
+  function fileName(c) { return ("BSB_" + (c.sinf || "sinf") + "_" + (c.fan || "fan")).replace(/[\\/:*?"<>|\s]+/g, "_") + ".xlsx"; }
+  function downloadExcel() {
+    if (!cur.students.length) return alert("Ro'yxat bo'sh.");
+    var bytes = BSBXlsx.build(xdata(cur));
+    var blob = new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    var a = el("a", { href: URL.createObjectURL(blob), download: fileName(cur) });
+    document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+  }
+  function doPrint() {
+    var R = BSBXlsx.compute(xdata(cur));
+    $("#print").innerHTML = '<p class="ptitle">' + esc(cur.title) + '</p><div class="pmeta">Sinf :<span>' + esc(cur.sinf) + '</span></div><div class="pmeta">Fan :<span>' + esc(cur.fan) + "</span></div>" +
+      reportTable(R, cur) + '<div class="pbreak"></div>' + chartsHtml(R, cur) +
+      '<div class="pxul">' + esc(cur.xulosa).replace(/\n/g, "<br>") + "</div>" +
+      cur.signs.map(function (s) { return '<div class="psign"><div>' + esc(s.label) + "</div><div>" + esc(s.name) + "</div></div>"; }).join("");
+    window.print();
+  }
+
+  /* ===== Gemini: rasmdan o'qish ===== */
+  function compress(file) {
+    return new Promise(function (res, rej) {
+      var url = URL.createObjectURL(file), img = new Image();
+      img.onload = function () {
+        var MAX = 2400, w = img.naturalWidth, h = img.naturalHeight, s = Math.min(1, MAX / Math.max(w, h));
+        var cv = document.createElement("canvas"); cv.width = Math.round(w * s); cv.height = Math.round(h * s);
+        cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+        var data = cv.toDataURL("image/jpeg", 0.88); URL.revokeObjectURL(url);
+        res({ url: data, b64: data.split(",")[1] });
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); rej(new Error("Rasmni ochib bo'lmadi")); };
+      img.src = url;
+    });
+  }
+  async function readPhotos(files) {
+    if (!cur.students.length) return alert("Avval o'quvchilar ro'yxatini joylang.");
+    var roster = cur.students.map(function (s) { return s.name; }), M = maxes(cur);
+    var prog = $("#ocrProgress");
+    for (var f = 0; f < files.length; f++) {
+      prog.textContent = "⏳ " + (f + 1) + "/" + files.length + "-rasm o'qilmoqda… (20–40 soniya)";
+      try {
+        var im = await compress(files[f]);
+        var r = await fetch("/api/read", { method: "POST",
+          headers: { "Content-Type": "application/json", "x-app-password": pass(), "x-gemini-key": store.settings.key || "" },
+          body: JSON.stringify({ image: im.b64, mime: "image/jpeg", students: roster, max: M }) });
+        var j = await r.json().catch(function () { return { error: "Server javobi noto'g'ri (" + r.status + ")" }; });
+        if (!r.ok) throw new Error(j.error || "Xato " + r.status);
+        reviewData.push({ img: im.url, name: files[f].name, items: j.notebooks.map(function (nb) { return prepItem(nb, roster, M); }) });
+      } catch (e) {
+        reviewData.push({ img: null, name: files[f].name, error: e.message, items: [] });
+      }
+      renderReview();
+    }
+    prog.textContent = "✓ Tayyor. Pastdagi natijalarni tekshirib, \"Jadvalga qo'yish\" tugmasini bosing.";
+  }
+  function prepItem(nb, roster, M) {
+    var k = M.length, sc = (nb.scores || []).slice(0, k);
+    while (sc.length < k) sc.push(null);
+    sc = sc.map(function (v) { return v == null || !Number.isFinite(Number(v)) ? null : Number(v); });
+    var it = { raw: nb.raw_name || "", gem: nb.student_number, total: nb.written_total, unclear: nb.unclear || [], note: nb.note || "", scores: sc, filled: [] };
+    // bitta ball yo'q bo'lsa, umumiy balldan taklif
+    var nulls = sc.map(function (v, i) { return v == null ? i : -1; }).filter(function (i) { return i >= 0; });
+    if (nulls.length === 1 && it.total != null) {
+      var rest = sc.reduce(function (a, v) { return a + (v || 0); }, 0), g = it.total - rest;
+      if (g >= 0 && g <= M[nulls[0]]) { sc[nulls[0]] = g; it.filled.push(nulls[0]); }
+    }
+    // ism
+    var cands = candidates(it.raw, roster), gi = Number.isInteger(nb.student_number) ? nb.student_number - 1 : -1;
+    if (gi < 0 || gi >= roster.length) gi = -1;
+    it.nameNote = "";
+    if (gi >= 0 && (cands.indexOf(gi) >= 0 || !cands.length && !it.raw)) it.idx = gi;
+    else if (cands.length === 1) { it.idx = cands[0]; if (gi >= 0 && gi !== cands[0]) it.nameNote = "Gemini boshqa o'quvchini taklif qildi: " + roster[gi]; }
+    else if (cands.length > 1) { it.idx = gi >= 0 && cands.indexOf(gi) >= 0 ? gi : -1; it.nameNote = "Bir nechta o'quvchiga mos keladi"; }
+    else { it.idx = gi; it.nameNote = gi >= 0 ? "Ism ro'yxatdagiga to'liq mos emas" : "O'quvchi aniqlanmadi"; }
+    it.issues = issues(it, M); it.accept = it.level === "ok";
+    return it;
+  }
+  function issues(it, M) {
+    var out = [], lvl = "ok";
+    function add(t, l) { out.push({ t: t, l: l }); if (l === "b") lvl = "bad"; else if (lvl === "ok") lvl = "warn"; }
+    if (it.idx == null || it.idx < 0) add("O'quvchini tanlang", "b");
+    else if (it.nameNote) add(it.nameNote, "w");
+    it.scores.forEach(function (v, i) {
+      if (v == null) add((i + 1) + "-mezon o'qilmadi", "b");
+      else if (v < 0 || v > M[i]) add((i + 1) + "-mezon " + M[i] + " dan katta", "b");
+    });
+    it.filled.forEach(function (i) { add((i + 1) + "-mezon ko'rinmadi, umumiy balldan hisoblandi", "w"); });
+    it.unclear.forEach(function (i) { if (i >= 1 && i <= M.length) add(i + "-mezon raqami noaniq", "w"); });
+    var sum = it.scores.reduce(function (a, v) { return a + (v || 0); }, 0);
+    if (it.total == null) add("Daftardagi umumiy ball ko'rinmadi", "w");
+    else if (sum !== it.total) add("Mezonlar yig'indisi " + sum + ", daftarda " + it.total, "b");
+    if (it.dup) add("Bu o'quvchi boshqa daftarda ham bor", "b");
+    if (it.note) add("Izoh: " + it.note, "w");
+    it.level = lvl;
+    return out;
+  }
+  function markDups() {
+    var seen = {};
+    reviewData.forEach(function (p) { p.items.forEach(function (it) { it.dup = false; if (it.idx >= 0) (seen[it.idx] = seen[it.idx] || []).push(it); }); });
+    Object.keys(seen).forEach(function (k) { if (seen[k].length > 1) seen[k].forEach(function (it) { it.dup = true; }); });
+  }
+  function renderReview() {
+    var box = $("#review"), roster = cur.students.map(function (s) { return s.name; }), M = maxes(cur);
+    markDups();
+    reviewData.forEach(function (p) { p.items.forEach(function (it) { var was = it.level; it.issues = issues(it, M); if (was && was !== "ok" && it.level === "ok" && !it.userTouched) {} }); });
+    box.innerHTML = ""; box.classList.remove("hidden");
+    var all = [], found = {};
+    reviewData.forEach(function (p) { p.items.forEach(function (it) { all.push(it); if (it.idx >= 0) found[it.idx] = 1; }); });
+    var missing = roster.filter(function (_, i) { return !found[i]; });
+    var nOk = all.filter(function (i) { return i.level === "ok"; }).length;
+    box.appendChild(el("div", { class: "rv-summary", html: "<b>Rasmdan topildi: " + all.length + " ta daftar.</b> ✅ " + nOk + " ta muammosiz, ⚠️ " + (all.length - nOk) + " ta tekshirish kerak." +
+      (missing.length ? "<br>Topilmagan o'quvchilar (" + missing.length + "): " + missing.map(esc).join(", ") : "<br>Ro'yxatdagi hamma o'quvchi topildi.") }));
+    reviewData.forEach(function (p) {
+      var wrap = el("div", { class: "rv-photo" });
+      wrap.appendChild(el("div", { class: "ph" }, [
+        p.img ? el("img", { class: "thumb", src: p.img, alt: "", onclick: function () { openLightbox(p.img); } }) : null,
+        el("div", { class: "small" }, [el("b", { text: p.name }), el("div", { class: p.error ? "err" : "muted", text: p.error ? "❌ " + p.error : p.items.length + " ta daftar · rasmni kattalashtirish uchun bosing" })])
+      ]));
+      p.items.forEach(function (it) {
+        var row = el("div", { class: "rv-item " + it.level });
+        var sel = el("select", { onchange: function (e) { it.idx = Number(e.target.value); it.nameNote = ""; it.userTouched = true; renderReview(); } });
+        sel.appendChild(el("option", { value: -1, text: "— o'quvchini tanlang —" }));
+        roster.forEach(function (n, i) { var o = el("option", { value: i, text: (i + 1) + ". " + n }); if (i === it.idx) o.selected = true; sel.appendChild(o); });
+        row.appendChild(el("div", { class: "rv-top" }, [el("span", { class: "rv-raw", text: it.raw ? "✏️ " + it.raw : "✏️ (ism ko'rinmadi)" }), sel]));
+        var sc = el("div", { class: "rv-scores" });
+        it.scores.forEach(function (v, i) {
+          var flag = it.unclear.indexOf(i + 1) >= 0 || it.filled.indexOf(i) >= 0 || v == null;
+          sc.appendChild(el("span", { class: "small muted", text: (i + 1) + ":" }));
+          sc.appendChild(el("input", { inputmode: "decimal", value: v == null ? "" : v, class: flag ? "flag" : null, onchange: function (e) {
+            var x = parseScore(e.target.value, M[i]); it.scores[i] = x.val; it.filled = it.filled.filter(function (f) { return f !== i; });
+            it.unclear = it.unclear.filter(function (u) { return u !== i + 1; }); it.userTouched = true; renderReview(); } }));
+        });
+        var sum = it.scores.reduce(function (a, v) { return a + (v || 0); }, 0);
+        sc.appendChild(el("span", { class: "small", html: "&nbsp;Jami: <b>" + sum + "</b> · daftarda: <b>" + (it.total == null ? "?" : it.total) + "</b>" }));
+        row.appendChild(sc);
+        if (it.issues.length) row.appendChild(el("div", { class: "rv-issues", html: it.issues.map(function (x) { return '<div class="' + x.l + '">' + (x.l === "b" ? "❗ " : "⚠️ ") + esc(x.t) + "</div>"; }).join("") }));
+        var cb = el("input", { type: "checkbox", onchange: function (e) { it.accept = e.target.checked; } }); cb.checked = !!it.accept;
+        row.appendChild(el("label", { class: "rv-accept" }, [cb, it.level === "ok" ? "Jadvalga qo'yish" : "Tekshirdim, jadvalga qo'yish"]));
+        wrap.appendChild(row);
+      });
+      box.appendChild(wrap);
+    });
+    box.appendChild(el("div", { class: "btns" }, [
+      el("button", { class: "btn primary", type: "button", text: "✅ Belgilanganlarni jadvalga qo'yish", onclick: applyReview }),
+      el("button", { class: "btn", type: "button", text: "Bekor qilish", onclick: function () { reviewData = []; box.classList.add("hidden"); $("#ocrProgress").textContent = ""; } })
+    ]));
+  }
+  function applyReview() {
+    var n = 0, skipped = 0;
+    reviewData.forEach(function (p) { p.items.forEach(function (it) {
+      if (!it.accept) { skipped++; return; }
+      if (it.idx == null || it.idx < 0) { skipped++; return; }
+      cur.students[it.idx].scores = it.scores.slice(); n++;
+    }); });
+    reviewData = []; $("#review").classList.add("hidden");
+    $("#ocrProgress").textContent = "✓ " + n + " ta o'quvchining ballari jadvalga qo'yildi" + (skipped ? ", " + skipped + " tasi belgilanmagani uchun qo'yilmadi." : ".");
+    renderScores(); renderReport(); touch();
+  }
+  function openLightbox(src) { var lb = $("#lightbox"); lb.querySelector("img").src = src; lb.classList.remove("hidden"); }
+
+  /* ===== Kirish ===== */
+  function pass() { try { return localStorage.getItem("bsbTahlil.pass") || ""; } catch (e) { return ""; } }
+  async function checkAuth(p) {
+    try {
+      var r = await fetch("/api/auth", { headers: { "x-app-password": p } });
+      var j = await r.json().catch(function () { return {}; });
+      if (r.ok) { serverKey = !!j.serverKey; return { ok: true }; }
+      return { ok: false, error: j.error || "Xato" };
+    } catch (e) { return { ok: !!p && p === pass(), offline: true, error: "Internet yo'q" }; }
+  }
+  async function start() {
+    var p = pass();
+    if (p && (await checkAuth(p)).ok) return enter();
+    $("#login").classList.remove("hidden");
+  }
+  function enter() { $("#login").classList.add("hidden"); $("#app").classList.remove("hidden"); renderHome(); }
+
+  /* ===== Hodisalar ===== */
+  $("#loginForm").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    var p = $("#loginPass").value.trim(), r = await checkAuth(p);
+    if (r.ok) { try { localStorage.setItem("bsbTahlil.pass", p); } catch (x) {} enter(); }
+    else $("#loginErr").textContent = r.error || "Parol noto'g'ri";
+  });
+  $("#homeBtn").onclick = function () { saveNow(); renderHome(); };
+  $("#backBtn").onclick = function () { saveNow(); renderHome(); };
+  $("#newClassBtn").onclick = function () { openClass(newClass().id); };
+  $("#settingsBtn").onclick = function () {
+    var s = store.settings;
+    $("#sTuman").value = s.tuman; $("#sMaktab").value = s.maktab; $("#sYil").value = s.yil; $("#sRahbar").value = s.rahbar; $("#sOqituvchi").value = s.oqituvchi; $("#sKey").value = s.key || "";
+    $("#keyInfo").innerHTML = serverKey ? "✅ Serverda Gemini kaliti o'rnatilgan — bu yerda kiritish shart emas." : "⚠️ Serverda Gemini kaliti yo'q. Rasmdan o'qish uchun pastga kalitni kiriting.";
+    show("#settingsView");
+  };
+  $("#settingsBack").onclick = function () { cur && !$("#classView").dataset.hidden ? renderHome() : renderHome(); };
+  [["#sTuman", "tuman"], ["#sMaktab", "maktab"], ["#sYil", "yil"], ["#sRahbar", "rahbar"], ["#sOqituvchi", "oqituvchi"], ["#sKey", "key"]].forEach(function (p) {
+    $(p[0]).addEventListener("input", function (e) { store.settings[p[1]] = e.target.value.trim(); save(); });
+  });
+  $("#logoutBtn").onclick = function () { try { localStorage.removeItem("bsbTahlil.pass"); } catch (e) {} location.reload(); };
+
+  function bind(sel, fn) { $(sel).addEventListener("input", function (e) { if (cur) { fn(e.target.value); touch(); } }); }
+  bind("#fSinf", function (v) { cur.sinf = v.trim(); });
+  bind("#fFan", function (v) { cur.fan = v.trim(); });
+  bind("#fChorak", function (v) { cur.chorak = v; });
+  bind("#fBsbNo", function (v) { cur.bsbNo = v; });
+  bind("#fTitle", function (v) { cur.title = v; });
+  bind("#fXulosa", function (v) { cur.xulosa = v; });
+  bind("#fSign1L", function (v) { cur.signs[0].label = v; });
+  bind("#fSign1N", function (v) { cur.signs[0].name = v; });
+  bind("#fSign2L", function (v) { cur.signs[1].label = v; });
+  bind("#fSign2N", function (v) { cur.signs[1].name = v; });
+  $("#autoTitleBtn").onclick = function () { cur.title = autoTitle(cur); $("#fTitle").value = cur.title; touch(); };
+
+  function addNames(replace) {
+    var names = parseNames($("#namesInput").value);
+    if (!names.length) return alert("Ro'yxat bo'sh.");
+    var k = cur.criteria.length;
+    var mk = function (n) { return { name: n, scores: Array(k).fill(null) }; };
+    if (replace) {
+      if (cur.students.some(function (s) { return s.scores.some(function (v) { return v != null; }); }) && !confirm("Joriy ro'yxat va ballar almashtiriladi. Davom etilsinmi?")) return;
+      cur.students = names.map(mk);
+    } else cur.students = cur.students.concat(names.map(mk));
+    $("#namesInput").value = ""; renderScores(); renderReport(); touch();
+    $("#step3").scrollIntoView({ behavior: "smooth" });
+  }
+  $("#namesReplaceBtn").onclick = function () { addNames(true); };
+  $("#namesAppendBtn").onclick = function () { addNames(false); };
+  $("#bulkBtn").onclick = function () {
+    var lines = $("#bulkInput").value.split(/\r?\n/).map(function (l) { return l.trim(); }).filter(Boolean), M = maxes(cur), bad = 0;
+    if (!lines.length) return;
+    lines.forEach(function (l, r) {
+      if (!cur.students[r]) return;
+      var nums = l.replace(/^\s*\d+\s*[.)]\s+/, "").match(/\d+(?:[.,]\d+)?/g) || [];
+      nums.slice(-M.length).forEach(function (v, i) { var p = parseScore(v, M[i]); if (p.ok) cur.students[r].scores[i] = p.val; else bad++; });
+    });
+    $("#bulkInput").value = ""; renderScores(); renderReport(); touch();
+    if (bad) alert(bad + " ta ball noto'g'ri bo'lgani uchun qo'yilmadi.");
+  };
+  $("#photoInput").addEventListener("change", function (e) { var f = Array.from(e.target.files || []); e.target.value = ""; if (f.length) readPhotos(f); });
+  $("#suggestBtn").onclick = suggest;
+  $("#excelBtn").onclick = downloadExcel;
+  $("#printBtn").onclick = doPrint;
+  $("#deleteClassBtn").onclick = function () {
+    if (!confirm("\"" + (cur.sinf || "Nomsiz") + "\" sinfi butunlay o'chirilsinmi?")) return;
+    store.classes = store.classes.filter(function (c) { return c !== cur; }); cur = null; saveNow(); renderHome();
+  };
+  $("#lightbox").onclick = function () { $("#lightbox").classList.add("hidden"); };
+  $("#backupBtn").onclick = function () {
+    var data = JSON.stringify({ app: "bsb-tahlil", version: 1, date: new Date().toISOString(), settings: Object.assign({}, store.settings, { key: "" }), classes: store.classes }, null, 1);
+    var a = el("a", { href: URL.createObjectURL(new Blob([data], { type: "application/json" })), download: "BSB_zaxira_" + new Date().toISOString().slice(0, 10) + ".json" });
+    document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); }, 1000);
+  };
+  $("#restoreInput").addEventListener("change", function (e) {
+    var f = e.target.files[0]; e.target.value = ""; if (!f) return;
+    f.text().then(function (t) {
+      var d = JSON.parse(t);
+      if (!d || !Array.isArray(d.classes)) throw new Error();
+      var ids = {}; store.classes.forEach(function (c) { ids[c.id] = c; });
+      var added = 0, upd = 0;
+      d.classes.forEach(function (c) { if (ids[c.id]) { Object.assign(ids[c.id], c); upd++; } else { store.classes.push(c); added++; } });
+      if (d.settings) Object.keys(d.settings).forEach(function (k) { if (k !== "key" && d.settings[k] && !store.settings[k]) store.settings[k] = d.settings[k]; });
+      saveNow(); renderHome(); alert("Tiklandi: " + added + " ta yangi, " + upd + " ta yangilangan sinf.");
+    }).catch(function () { alert("Bu fayl zaxira nusxa emas."); });
+  });
+  window.addEventListener("beforeunload", saveNow);
+
+  // test uchun
+  window.__bsb = { translit: translit, parseNames: parseNames, candidates: candidates, prepItem: prepItem };
+  start();
+})();
