@@ -220,11 +220,11 @@ class Service:
         data = self.loader(all_tk, start, end)
         capital = total / len(groups)
         market = market_ok(data["SPY"]) if "SPY" in data else None
-        msgs = [f"🧪 Sinov: {start.date()} — {end.date()}, umumiy {_money(total)}"
+        msgs = [f"🧪 Tarixda sinash: {sana(start)} {start.year} — {sana(end)} {end.year}, umumiy {_money(total)}"
                 + (f" (har guruhga {_money(capital)})" if len(groups) > 1 else "") + note]
         bh = buy_hold_pct(data["SPY"], start, end) if "SPY" in data else None
         if bh is not None:
-            msgs[0] += f"\n📌 Shu davrda SPY ni shunchaki ushlab tursangiz: {bh:+.2f}%"
+            msgs[0] += f"\n📌 Taqqoslash: shu davrda S&P 500 indeksi (SPY) {foiz(bh)}"
         for g, tks in groups.items():
             td = {k: data[k] for k in tks if k in data}
             name = TIER_NAME.get(g, "Tanlangan aksiyalar")
@@ -235,9 +235,10 @@ class Service:
             pf = backtest(td, p, start, end, capital, market)
             st, dg = stats(pf), diagnose(pf)
             months = period_table(pf, "M", 24)
-            mline = " ".join(f"{r['label'][2:]}:{r['change_pct']:+.1f}%" for r in months if r["trades"] or r["change"])
+            mline = ", ".join(f"{OY[pd.Timestamp(r['date']).month - 1][:3]} {pd.Timestamp(r['date']).year % 100:02d}: "
+                              f"{foiz(r['change_pct'])}" for r in months if r["trades"] or r["change"])
             msgs.append(fmt_stats(st, f"{name}\nAksiyalar: " + (', '.join(td) if len(td) <= 10 else f"{len(td)} ta")) + "\n" + fmt_diagnose(dg)
-                        + "\n" + insights(st, dg) + (f"\n📅 Oylar: {mline}" if mline else ""))
+                        + "\n" + insights(st, dg) + (f"\n📅 Oylar bo'yicha: {mline}" if mline else ""))
         return msgs
 
     # ---------- demo ----------
@@ -507,7 +508,7 @@ class Service:
                 continue
             t += (f"\n\n🛠 Sozlamani tekshirish (oxirgi 2 yil tarixida):\n"
                   f"   Joriy sozlama: {foiz(res['cur_test']['return_pct'])}\n"
-                  f"   Eng yaxshi muqobil: {foiz(res['best_test']['return_pct'])}"
+                  f"   Muqobil sozlama: {foiz(res['best_test']['return_pct'])}"
                   + (" (" + ", ".join(f"{PARAM_NAMES.get(k, k)} {a}→{b2}" for k, (a, b2) in res["changed"].items()) + ")"
                      if res["changed"] else ""))
             if res["recommend"]:
