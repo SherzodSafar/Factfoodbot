@@ -198,6 +198,7 @@ class Portfolio:
             allow_new = False
         # 1) kecha signal bo'lganlar — bugun ochilishda xarid (kuchliroq o'sganlari birinchi)
         order = sorted(self.pending, key=lambda t: -(self.pending[t].get("mom", 0) if isinstance(self.pending[t], dict) else 0))
+        poor = []   # pul yetmagani uchun o'tkazib yuborilganlar (bitta qatorga yig'iladi)
         for tk in order:
             pend = self.pending.pop(tk)
             r = rows.get(tk)
@@ -219,7 +220,11 @@ class Portfolio:
                 events.append(f"🟢 XARID {tk} {qty:g} dona @ {buy:.2f} (stop {stop:.2f}"
                               + (f", take {take:.2f})" if take else ", trailing)"))
             elif buy > 0:
-                events.append(f"⚠️ {tk}: pul yetmadi (1 dona {buy:.2f}$, ajratilgan {budget:.0f}$)")
+                poor.append((f"{tk} {buy:.0f}$", budget))
+        if poor:
+            events.append(f"⚠️ Pul yetmadi ({len(poor)} ta signal, bitta savdoga ~{max(b for _, b in poor):.0f}$ "
+                          f"ajratiladi): " + ", ".join(n for n, _ in poor)
+                          + ". Yechim: Sozlamalar → Kasr aksiya, yoki kattaroq summa.")
         cands = []
         top = set()
         if allow_new and p.strategy in ("combo", "momentum") and pd.Timestamp(d).weekday() == 4:
@@ -355,7 +360,7 @@ GRIDS = {
 
 MIN_TRAIN_TRADES = 10   # o'rganish qismida kamida shuncha savdo bo'lmasa, natija tasodif
 MIN_TEST_TRADES = 10
-MIN_GAIN = 2.0          # tekshirishda kamida shuncha ball yaxshi bo'lsin (mayda farq — shovqin)
+MIN_GAIN = 5.0          # tekshirishda kamida shuncha ball yaxshi bo'lsin (2 yillik mayda farq — ko'pincha shovqin)
 
 
 def _score(st, min_n=MIN_TRAIN_TRADES):

@@ -433,7 +433,8 @@ class Service:
                     self.paper.set_params(tier, res["best"], "avtomatik haftalik yaxshilash")
                     t += "\n✅ Avtomatik qo'llandi."
                 else:
-                    t += f"\n✅ Yaxshiroq variant. Qo'llash: /qabul {tier}"
+                    t += (f"\n🔎 Oxirgi 2 yilda yaxshiroq ko'rindi. Eslatma: 12 yillik sinovda joriy sozlama barqarorroq "
+                          f"chiqqan, qisqa davrdagi ustunlik ko'pincha tasodif. Baribir sinab ko'rmoqchi bo'lsangiz: /qabul {tier}")
             else:
                 t += "\n➖ Joriy sozlama qoladi."
             msgs.append(t)
