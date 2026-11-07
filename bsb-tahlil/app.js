@@ -354,7 +354,7 @@
     { label: "Keng", pad: 6, font: 13, title: 18, ch: 14, sign: 14, bars: 135 }
   ];
   var CUSTOM_FIELDS = [["title", "Sarlavha"], ["font", "Jadval matni"], ["pad", "Qator oralig'i"], ["sign", "Imzolar, Sinf/Fan"],
-    ["ch1", "1-diagramma sarlavhasi"], ["ch2", "2-diagramma sarlavhasi"], ["gap", "Sarlavha va ustun oralig'i"], ["names", "Diagrammadagi ismlar"]];
+    ["ch1", "1-diagramma sarlavhasi"], ["ch2", "2-diagramma sarlavhasi"], ["gap", "Sarlavha va ustun oralig'i"], ["names", "Diagrammadagi ismlar"], ["bars", "Diagramma balandligi"]];
   var MM = 3.7795;
   function sheetHtml(one) {
     var R = BSBXlsx.compute(xdata(cur));
@@ -402,7 +402,7 @@
       sh.style.transform = "scale(" + sc + ")";
       var page = el("div", { class: "pvpage", style: "width:" + CW + "px;height:" + Math.round(P.H * sc) + "px" }, [sh]);
       var kids = [el("b", { text: v.label + (i === rec ? " — tavsiya" : "") }),
-        el("div", { class: "small muted", text: z >= 0.999 ? (one ? "Bitta varoqqa to'liq sig'adi" : "Jadval 1-varoqqa sig'adi") : "Sig'ishi uchun " + Math.round(z * 100) + "% gacha kichraytiriladi" })];
+        el("div", { class: "small muted", text: z >= 0.999 ? (one ? "Bitta varoqqa to'liq sig'adi" : "Jadval 1-varoqqa sig'adi") : "Sig'ishi uchun " + Math.round(z * 100) + "% gacha kichraytiriladi" + (v === custom ? " — o'lchamlarni oshirsangiz, varoqqa sig'ishi uchun hammasi birga kichrayadi; avval qator oralig'i yoki diagramma balandligini kamaytiring" : "") })];
       if (v === custom) {
         var g = el("div", { class: "pvfields" });
         CUSTOM_FIELDS.forEach(function (f) {

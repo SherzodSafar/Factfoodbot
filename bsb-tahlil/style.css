@@ -159,3 +159,4 @@ tr.avg td{background:var(--avg);font-weight:700}
 .pvtpl{border-top:1px solid var(--line);margin-top:8px;padding-top:6px}
 .row2{display:flex;gap:6px;align-items:center;margin:4px 0}
 .row2 select,.row2 input{flex:1;margin:0;min-width:0}
+.psheet th{white-space:normal}
