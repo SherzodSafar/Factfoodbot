@@ -53,7 +53,8 @@ def main():
     for d in pd.bdate_range(START + pd.Timedelta(days=1), last):
         CUT[0] = d
         run(svc, "/yangilash", 1500)
-    for cmd in ("/holat", "/hisobot kunlik", "/hisobot haftalik", "/bozor", "/sozlamalar", "/baho", "/tahlil",
+    run(svc, "/kasr on")
+    for cmd in ("/aksiyalar", "/savdolar", "/hisobot kunlik", "/hisobot haftalik", "/bozor", "/sozlamalar", "/baho", "/tahlil",
                 f"/test {CAPITAL}"):
         run(svc, cmd)
     # holat faylida mantiqiy tekshiruvlar

@@ -159,7 +159,7 @@ def scheduler():
                 if now.weekday() in (1, 2, 3, 4, 5) and sent.get("daily") != today:
                     sent["daily"] = today
                     paper.save()
-                    run_and_send(OWNER, lambda: service.cmd_update() + service.cmd_report(["kunlik"]))
+                    run_and_send(OWNER, service.cmd_daily, True)
                 if now.weekday() == 5 and sent.get("weekly") != today:
                     sent["weekly"] = today
                     paper.save()
@@ -204,7 +204,8 @@ class Health(BaseHTTPRequestHandler):
         pass
 
 
-COMMANDS = [("menyu", "Menyu va sozlamalar (tugmalar)"), ("holat", "Portfel holati"), ("hisobot", "Hisobot: kunlik/haftalik/oylik"),
+COMMANDS = [("menyu", "Menyu va sozlamalar (tugmalar)"), ("aksiyalar", "Aksiyalarim"),
+            ("savdolar", "Savdolar tarixi"), ("holat", "Portfel holati"), ("hisobot", "Hisobot: kunlik/haftalik/oylik"),
             ("bozor", "Bozor holati"), ("tahlil", "Tahlil va yaxshilash"), ("test", "O'tgan davrda sinash"),
             ("tanlash", "Aksiyalarni qayta tanlash"), ("demo_boshlash", "Boshlash: umumiy summa, masalan 3000"),
             ("baho", "Real pulga tayyorlik"), ("sozlamalar", "Sozlamalar"), ("yordam", "Yordam")]

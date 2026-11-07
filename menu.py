@@ -3,6 +3,7 @@
 Telegram'ga bog'liq emas: har bir tugma bosilganda nima qilishni qaytaradi,
 bot.py esa uni Telegram'ga yuboradi (xabarni tahrirlash yoki yangi xabar)."""
 from commands import HELP_SECTIONS, STRATEGY_NAMES
+from fmt import sana
 from universe import TIER_NAME
 
 
@@ -29,21 +30,23 @@ class Menu:
     # ---------- sahifalar ----------
     def main(self):
         if self.paper.active:
-            head = "📈 Demo savdo boti\n\n" + self.svc._summary()
+            started = self.paper.state.get("started")
+            head = ("📈 Demo savdo boti" + (f" — {sana(started)}dan beri" if started else "")
+                    + "\n\n" + self.svc._summary())
         else:
             head = ("📈 Demo savdo boti\n\nDemo hali boshlanmagan. «🚀 Yangi demo» ni bosib, "
-                    "umumiy virtual summani tanlang.")
+                    "virtual summani tanlang.")
         return head, kb([
-            [("📊 Holat", "c:holat"), ("📅 Hisobot", "m:rep")],
-            [("🌍 Bozor", "c:bozor"), ("🧭 Tahlil", "c:tahlil")],
-            [("🎓 Real pulga tayyorlikmi?", "c:baho")],
+            [("💼 Aksiyalarim", "c:aksiyalar"), ("📜 Savdolar tarixi", "c:savdolar")],
+            [("📅 Natijalar", "m:rep"), ("🌍 Bozor", "c:bozor")],
+            [("🧭 Tahlil", "c:tahlil"), ("🎓 Real pulga tayyormi?", "c:baho")],
             [("⚙️ Sozlamalar", "m:set"), ("❓ Yordam", "m:help")],
             [("🚀 Yangi demo", "m:cap"), ("🧪 Tarixda sinash", "c:test")],
         ])
 
     def report(self):
-        return "📅 Qaysi hisobot?", kb([
-            [("Kunlik", "r:kunlik"), ("Haftalik", "r:haftalik"), ("Oylik", "r:oylik")], [BACK]])
+        return "📅 Natijalarni qanday ko'rsatay?", kb([
+            [("Kunlar", "r:kunlik"), ("Haftalar", "r:haftalik"), ("Oylar", "r:oylik")], [BACK]])
 
     def settings(self):
         text = self.svc.cmd_settings()[0]

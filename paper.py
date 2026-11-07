@@ -6,6 +6,7 @@ import threading
 
 import pandas as pd
 
+from fmt import sana
 from engine import Params, Portfolio, build_bars, market_ok
 from universe import TIERS, SLIPPAGE
 
@@ -118,7 +119,10 @@ class Paper:
                 keys = list(bars)[-1:] if last is None else [d for d in bars if d > last]
                 events = []
                 for d in keys:
-                    events += [f"{d.strftime('%m-%d')} {e}" for e in pf.step(d, bars[d], market=market.get(d))]
+                    ev = pf.step(d, bars[d], market=market.get(d))
+                    if ev and len(keys) > 1:
+                        events.append(f"📆 {sana(d, kun=True)}")
+                    events += ev
                 b["portfolio"] = pf.to_dict()
                 out[tier] = (len(keys), events)
             self.save()

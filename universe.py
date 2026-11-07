@@ -15,6 +15,7 @@ TIERS = [
 SLIPPAGE = {"qimmat": 0.0005, "orta": 0.001, "arzon": 0.002}
 TIER_NAME = {k: n for k, n, *_ in TIERS}
 TIER_ICON = {k: n.split()[0] for k, n, *_ in TIERS}
+TIER_SHORT = {k: " ".join(n.split()[:2]) for k, n, *_ in TIERS}   # "💎 Qimmat"
 
 # Birjadan chiqib ketgan (Yahoo'da ma'lumoti yo'q): CTRA BITF DO MRO LC SQ(→XYZ) SWN X — olib tashlangan.
 UNIVERSE = sorted(set("""

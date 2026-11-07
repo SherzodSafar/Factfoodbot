@@ -19,6 +19,8 @@ from dataclasses import dataclass, asdict
 import numpy as np
 import pandas as pd
 
+from fmt import SABAB, dona, natija, pul
+
 _TREND = dict(sl_atr=4.0, tp_atr=0.0, trail_atr=4.0, max_days=0, trend_exit=False,
               sizing="risk", risk_pct=1.0, pos_pct=20.0, max_pos=8)
 STRATEGIES = ("momentum", "breakout", "combo", "pullback")
@@ -205,7 +207,7 @@ class Portfolio:
             if r is None or tk in self.positions:
                 continue
             if len(self.positions) >= p.max_pos:
-                events.append(f"⏭ {tk}: bo'sh joy yo'q ({p.max_pos} ta ochiq savdo)")
+                events.append(f"⏭ {tk} olinmadi: allaqachon {p.max_pos} ta aksiya bor (chegara)")
                 continue
             buy = r["Open"] * (1 + p.slippage)
             if isinstance(pend, dict):   # stop/take haqiqiy xarid narxidan hisoblanadi
@@ -217,14 +219,14 @@ class Portfolio:
             if qty > 0 and qty * buy > 1:
                 self.cash -= qty * buy * (1 + p.commission)
                 self.positions[tk] = dict(qty=qty, entry=buy, stop=stop, take=take, entry_date=ds, bars=0)
-                events.append(f"🟢 XARID {tk} {qty:g} dona @ {buy:.2f} (stop {stop:.2f}"
-                              + (f", take {take:.2f})" if take else ", trailing)"))
+                events.append(f"🟢 Sotib olindi: {tk} — {dona(qty)} dona × {buy:.2f}$ = {pul(qty * buy, 2)}\n"
+                              f"     🛡 Himoya narxi {stop:.2f}$ (narx shundan tushsa, bot sotadi)")
             elif buy > 0:
                 poor.append((f"{tk} {buy:.0f}$", budget))
         if poor:
-            events.append(f"⚠️ Pul yetmadi ({len(poor)} ta signal, bitta savdoga ~{max(b for _, b in poor):.0f}$ "
-                          f"ajratiladi): " + ", ".join(n for n, _ in poor)
-                          + ". Yechim: Sozlamalar → Kasr aksiya, yoki kattaroq summa.")
+            events.append(f"⚠️ Pul yetmadi: {', '.join(n for n, _ in poor)} — bitta xaridga "
+                          f"~{max(b for _, b in poor):.0f}$ ajratiladi, 1 dona qimmatroq.\n"
+                          f"     Yechim: Sozlamalar → Kasr aksiya, yoki kattaroq summa.")
         cands = []
         top = set()
         if allow_new and p.strategy in ("combo", "momentum") and pd.Timestamp(d).weekday() == 4:
@@ -250,8 +252,9 @@ class Portfolio:
                 if px is not None:
                     self._close(tk, px, ds, reason)
                     t = self.trades[-1]
-                    events.append(f"{'✅' if t['pnl'] > 0 else '🔴'} SOTUV {tk} @ {t['exit']:.2f} ({reason}) "
-                                  f"{t['pnl_pct']:+.2f}% / {t['pnl']:+.2f}$")
+                    events.append(f"{'💰' if t['pnl'] > 0 else '🔻'} Sotildi: {tk} — {t['entry']:.2f}$ → {t['exit']:.2f}$, "
+                                  f"{natija(t['pnl'], t['pnl_pct'])}, {t['days']} kun ushlandi\n"
+                                  f"     Sabab: {SABAB.get(reason, reason)}")
                 elif p.trail_atr > 0 and not math.isnan(r["atr"]):
                     pos["stop"] = max(pos["stop"], c - p.trail_atr * r["atr"])
             # 3) yangi signal nomzodlari
@@ -260,9 +263,12 @@ class Portfolio:
                 cands.append((r.get("mom", 0.0), tk, r))
             self.last_close[tk] = c
         free = p.max_pos - len(self.positions)
+        new = []
         for mom, tk, r in sorted(cands, key=lambda x: -x[0])[:max(free, 0)]:
             self.pending[tk] = {"atr": float(r["atr"]), "mom": float(mom)}
-            events.append(f"🔔 SIGNAL {tk} (yopilish {r['Close']:.2f}) - ertaga ochilishda xarid")
+            new.append(f"{tk} ({r['Close']:.2f}$)")
+        if new:
+            events.append("🔔 Keyingi savdo kuni sotib olinadi: " + ", ".join(new))
         self.equity.append([ds, round(self.value(), 2)])
         self.last_date = ds
         return events
@@ -326,7 +332,7 @@ def period_table(pf: Portfolio, freq: str, last_n=12) -> list:
             label = d.strftime("%Y-%m")
             mask = lambda x: pd.Timestamp(x).strftime("%Y-%m") == label
         pt = tdf[tdf["exit_date"].map(mask)] if len(tdf) else tdf
-        rows.append(dict(label=label, value=round(v, 2), change=round(v - pv, 2),
+        rows.append(dict(label=label, date=d.strftime("%Y-%m-%d"), value=round(v, 2), change=round(v - pv, 2),
                          change_pct=round((v / pv - 1) * 100, 2) if pv else 0.0,
                          trades=len(pt), wins=int((pt["pnl"] > 0).sum()) if len(pt) else 0))
     return rows[-last_n:]
