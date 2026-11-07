@@ -15,6 +15,7 @@ import os
 import threading
 import time
 import traceback
+import warnings
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from zoneinfo import ZoneInfo
@@ -25,6 +26,10 @@ import data
 from commands import HELP, Service
 from menu import Menu
 from paper import Paper
+
+# yfinance/pandas eskirish ogohlantirishlari loglarni to'ldirib, haqiqiy xatolarni yashiradi
+warnings.filterwarnings("ignore", message=".*inplace keyword.*")
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 TOKEN = os.environ["BOT_TOKEN"]
 OWNER = int(os.environ["OWNER_CHAT_ID"])
