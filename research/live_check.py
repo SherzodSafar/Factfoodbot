@@ -50,10 +50,10 @@ def main():
     svc = Service(Paper(os.path.join(tempfile.mkdtemp(), "st.json")), loader, lambda: CUT[0])
     last = data.last_complete_us_day()
     run(svc, f"/demo_boshlash {CAPITAL}")
+    run(svc, "/kasr on")
     for d in pd.bdate_range(START + pd.Timedelta(days=1), last):
         CUT[0] = d
         run(svc, "/yangilash", 1500)
-    run(svc, "/kasr on")
     for cmd in ("/aksiyalar", "/savdolar", "/hisobot kunlik", "/hisobot haftalik", "/bozor", "/sozlamalar", "/baho", "/tahlil",
                 f"/test {CAPITAL}"):
         run(svc, cmd)
