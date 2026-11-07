@@ -33,7 +33,7 @@
     <section id="homeView">
       <div class="row-between">
         <h2>Sinflar</h2>
-        <button id="newClassBtn" class="btn primary" type="button">+ Yangi sinf</button>
+        <div class="row2"><select id="newType"><option value="BSB">BSB</option><option value="ChSB">ChSB</option></select><button id="newClassBtn" class="btn primary" type="button">+ Yangi sinf</button></div>
       </div>
       <div id="classList" class="class-list"></div>
       <div class="card backup">
@@ -59,7 +59,8 @@
           <label>Sinf<input id="fSinf" placeholder="11-B"></label>
           <label>Fan<input id="fFan" placeholder="Adabiyot"></label>
           <label>Chorak<select id="fChorak"><option>1</option><option>2</option><option>3</option><option>4</option></select></label>
-          <label>BSB raqami<input id="fBsbNo" type="number" min="1" max="9" placeholder="1"></label>
+          <label>Baholash turi<select id="fType"><option value="BSB">BSB (bob bo'yicha)</option><option value="ChSB">ChSB (chorak bo'yicha)</option></select></label>
+          <label id="bsbNoWrap">BSB raqami<input id="fBsbNo" type="number" min="1" max="9" placeholder="1"></label>
         </div>
         <label>Sarlavha
           <textarea id="fTitle" rows="2"></textarea>

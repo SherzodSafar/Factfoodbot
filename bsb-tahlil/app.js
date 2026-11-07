@@ -4,8 +4,10 @@
 
   /* ===== Shablonlar (keyin ChSB qo'shiladi) ===== */
   var TEMPLATES = {
-    BSB: { label: "BSB", max: [10, 10, 10, 10, 10] }
+    BSB: { label: "BSB", numbered: true, max: [10, 10, 10, 10, 10] },
+    ChSB: { label: "ChSB", numbered: false, max: [6, 24, 10], criteria: ["Bilish", "Qo'llash", "Mulohaza"] }
   };
+  function typeLabel(c) { var t = tmpl(c); return t.numbered ? (c.bsbNo || 1) + "-" + t.label : t.label; }
 
   /* ===== Saqlash ===== */
   var KEY = "bsbTahlil.v1", SKEY = "bsbTahlil.settings";
@@ -130,12 +132,14 @@
     return syncTitle(store.settings.title || DEFAULT_TITLE, c);
   }
   function syncTitle(t, c) {
-    return String(t).replace(/\d+\s*-\s*chorak/i, (c.chorak || 1) + "-chorak").replace(/\d+\s*-\s*BSB/, (c.bsbNo || 1) + "-" + tmpl(c).label);
+    return String(t).replace(/\d+\s*-\s*chorak/i, (c.chorak || 1) + "-chorak").replace(/(\d+\s*-\s*)?(BSB|ChSB|CHSB)/, typeLabel(c));
   }
-  function newClass() {
-    var s = store.settings, k = TEMPLATES.BSB.max.length;
-    var c = { id: uid(), template: "BSB", sinf: "", fan: "", chorak: "1", bsbNo: 1,
-      criteria: Array.from({ length: k }, function (_, i) { return (i + 1) + "-mezon"; }),
+  function critFor(type) { var t = TEMPLATES[type]; return t.criteria ? t.criteria.slice() : t.max.map(function (_, i) { return (i + 1) + "-mezon"; }); }
+  function newClass(type) {
+    type = type || "BSB";
+    var s = store.settings;
+    var c = { id: uid(), template: type, sinf: "", fan: "", chorak: "1", bsbNo: 1,
+      criteria: critFor(type), max: TEMPLATES[type].max.slice(),
       students: [], xulosa: "",
       signs: [{ label: "Metodbirlashma rahbari:", name: s.rahbar || "" }, { label: "O'qituvchi:", name: s.oqituvchi || "" }],
       updated: Date.now() };
@@ -157,7 +161,7 @@
       var R = BSBXlsx.compute(xdata(c)), filled = R.rows.filter(function (r) { return r.total != null; }).length;
       list.appendChild(el("div", { class: "card class-card", onclick: function () { openClass(c.id); } }, [
         el("b", { text: (c.sinf || "Nomsiz sinf") + (c.fan ? " — " + c.fan : "") }),
-        el("div", { class: "muted small", text: c.chorak + "-chorak, " + (c.bsbNo || 1) + "-" + tmpl(c).label }),
+        el("div", { class: "muted small", text: c.chorak + "-chorak, " + typeLabel(c) }),
         el("div", { class: "small", text: c.students.length + " o'quvchi, " + filled + " tasi baholangan" + (R.avgOverall != null ? " · o'rtacha " + pct(R.avgOverall) : "") })
       ]));
     });
@@ -168,7 +172,7 @@
     if (!cur) return renderHome();
     reviewData = []; $("#review").classList.add("hidden"); $("#ocrProgress").textContent = "";
     if (/^\s*\d+-chorak \d+-BSB bo'yicha tahlil\s*$/.test(cur.title || "") || !cur.title) cur.title = autoTitle(cur);
-    $("#fSinf").value = cur.sinf; $("#fFan").value = cur.fan; $("#fChorak").value = cur.chorak; $("#fBsbNo").value = cur.bsbNo;
+    $("#fSinf").value = cur.sinf; $("#fFan").value = cur.fan; $("#fChorak").value = cur.chorak; $("#fBsbNo").value = cur.bsbNo; $("#fType").value = cur.template || "BSB"; $("#bsbNoWrap").classList.toggle("hidden", !tmpl(cur).numbered);
     $("#fTitle").value = cur.title; $("#fXulosa").value = cur.xulosa;
     cur.xfont = cur.xfont || { name: "Arial", italic: false, bold: false, size: 11 };
     $("#xfName").value = cur.xfont.name; $("#xfItalic").checked = cur.xfont.italic; $("#xfBold").checked = cur.xfont.bold; $("#xfSize").value = cur.xfont.size;
@@ -386,7 +390,7 @@
     var parts = t.split(".").map(function (x) { return x.trim(); }).filter(Boolean);
     var teacher = parts.length > 1 ? parts[parts.length - 1] + "_" + parts.slice(0, -1).join("") : t;
     var yil = ((c.title || "").match(/\d{4}\s*-\s*\d{4}/) || [""])[0].replace(/\s/g, "");
-    var n = [(c.sinf || "sinf").replace(/[-\s]/g, ""), c.fan || "fan", (c.chorak || 1) + "-chorak", (c.bsbNo || 1) + "-" + tmpl(c).label,
+    var n = [(c.sinf || "sinf").replace(/[-\s]/g, ""), c.fan || "fan", (c.chorak || 1) + "-chorak", typeLabel(c),
       teacher ? "(" + teacher + ")" : "", yil].filter(Boolean).join("_");
     return n.replace(/[\\/:*?"<>|]+/g, "").replace(/\s+/g, "_");
   }
@@ -624,7 +628,15 @@
   });
   $("#homeBtn").onclick = function () { saveNow(); renderHome(); };
   $("#backBtn").onclick = function () { saveNow(); renderHome(); };
-  $("#newClassBtn").onclick = function () { openClass(newClass().id); };
+  $("#newClassBtn").onclick = function () { openClass(newClass($("#newType").value).id); };
+  $("#fType").onchange = function (e) {
+    var t = e.target.value; if (t === cur.template) return;
+    var has = cur.students.some(function (s) { return s.scores.some(function (v) { return v != null; }); });
+    if (has && !confirm("Baholash turi o'zgarsa, mezonlar va kiritilgan ballar o'chadi. Davom etilsinmi?")) { e.target.value = cur.template; return; }
+    cur.template = t; cur.criteria = critFor(t); cur.max = TEMPLATES[t].max.slice();
+    cur.students.forEach(function (s) { s.scores = cur.criteria.map(function () { return null; }); });
+    cur.title = syncTitle(cur.title, cur); touch(); openClass(cur.id);
+  };
   $("#settingsBtn").onclick = function () {
     var s = store.settings;
     $("#sTitle").value = s.title || DEFAULT_TITLE; $("#sRahbar").value = s.rahbar || ""; $("#sOqituvchi").value = s.oqituvchi || ""; $("#sKey").value = s.key || ""; $("#sSaved").textContent = "";
