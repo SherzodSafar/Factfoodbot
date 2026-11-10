@@ -48,72 +48,72 @@ img{max-width:100%;display:block}
 
 /* ============ 2. SAHNA + PARDA ============ */
 .hero{position:relative;height:100svh;min-height:600px;overflow:hidden;overflow:clip;contain:paint;isolation:isolate;
-  background:radial-gradient(120% 70% at 50% 100%,#3a0610 0%,#14030a 55%,#070103 100%)}
-#dust{position:absolute;inset:0;width:100%;height:100%;z-index:1;pointer-events:none}
-.beam{position:absolute;z-index:0;top:-10%;left:50%;width:62vmax;height:130%;transform:translateX(-12%) rotate(-21deg);transform-origin:top center;
-  background:linear-gradient(90deg,transparent 0%,rgba(255,215,200,.07) 30%,rgba(255,228,215,.22) 50%,rgba(255,215,200,.07) 70%,transparent 100%);
-  filter:blur(6px);opacity:0;transition:opacity 2.4s ease 1.2s;mix-blend-mode:screen}
-.beam.edge{width:2px;filter:blur(.6px);background:linear-gradient(180deg,rgba(255,230,215,.0),rgba(255,230,215,.55) 40%,rgba(255,230,215,.0));transform:translateX(18vmax) rotate(-21deg)}
-.smoke{position:absolute;z-index:0;left:-20%;right:-20%;bottom:-6%;height:46%;pointer-events:none;opacity:0;transition:opacity 3s ease 1.6s;
-  background:radial-gradient(40% 50% at 30% 70%,rgba(140,30,45,.38),transparent 70%),radial-gradient(45% 55% at 72% 75%,rgba(120,20,35,.34),transparent 70%),radial-gradient(60% 40% at 50% 100%,rgba(255,160,150,.12),transparent 70%);
-  filter:blur(18px);animation:drift 14s ease-in-out infinite alternate}
-@keyframes drift{to{transform:translateX(6%) scale(1.08)}}
-.open .beam,.open .smoke{opacity:1}
+  background:radial-gradient(70% 45% at 55% 78%,#4a0d16 0%,transparent 70%),radial-gradient(120% 70% at 50% 100%,#2a050c 0%,#12030a 55%,#070103 100%)}
+.hero>*{position:absolute}
+.beam{inset:0;width:100%;height:100%;z-index:1;opacity:0;transition:opacity 2.4s ease 1.4s;pointer-events:none;mix-blend-mode:screen}
+.beam.soft{filter:blur(14px)}
+.open .beam{opacity:1}
+.smoke{z-index:1;left:-25%;right:-25%;bottom:4%;height:55%;pointer-events:none;opacity:0;transition:opacity 3s ease 1.6s;
+  background:radial-gradient(35% 40% at 22% 45%,rgba(120,35,48,.55),transparent 70%),radial-gradient(30% 35% at 78% 60%,rgba(110,25,40,.4),transparent 70%),radial-gradient(50% 30% at 50% 92%,rgba(255,160,150,.14),transparent 70%);
+  filter:blur(22px);animation:drift 16s ease-in-out infinite alternate}
+@keyframes drift{to{transform:translateX(7%) scale(1.1)}}
+.open .smoke{opacity:1}
+.ledge{z-index:2;left:-12%;right:-12%;bottom:-3%;height:15%;border-radius:50% 50% 0 0/45% 45% 0 0;
+  background:linear-gradient(180deg,#3a1a1d,#140709 40%,#060203);box-shadow:inset 0 1px 0 rgba(255,205,195,.28),0 -14px 40px rgba(255,120,120,.08)}
+.halo{z-index:2;left:50%;bottom:9%;width:min(110vw,560px);height:58svh;transform:translateX(-50%);pointer-events:none;
+  background:radial-gradient(closest-side,rgba(255,200,190,.22),rgba(255,120,120,.06) 60%,transparent)}
+.stage{z-index:3;left:50%;bottom:calc(4% + 6px);width:min(64vw,37svh,300px);aspect-ratio:240/320;transform:translateX(-50%)}
+.stage>*{position:absolute}
+.pool{left:-22%;right:-22%;bottom:-5%;height:24%;border-radius:50%;background:radial-gradient(closest-side,rgba(255,220,210,.65),rgba(255,140,140,.22) 55%,transparent);animation:pool 5s ease-in-out infinite}
+@keyframes pool{50%{opacity:.75;transform:scaleX(.96)}}
+.ring{left:-9%;right:-9%;bottom:0;height:12.5%;border-radius:50%;border:2px solid rgba(255,232,222,.9);
+  box-shadow:0 0 14px 2px rgba(255,140,140,.85),inset 0 0 12px rgba(255,150,150,.7);animation:ringGlow 3s ease-in-out infinite}
+.ring.back{clip-path:inset(0 0 50% 0)}
+.ring.front{clip-path:inset(50% 0 0 0);z-index:2}
+@keyframes ringGlow{50%{box-shadow:0 0 22px 4px rgba(255,140,140,1),inset 0 0 16px rgba(255,150,150,.9)}}
+.couple-box{inset:0;z-index:1}
+.couple-box svg{width:100%;height:100%;overflow:visible}
+.couple-box video,.couple-box img{width:140%;height:100%;margin-left:-20%;object-fit:cover;
+  -webkit-mask:radial-gradient(60% 55% at 50% 55%,#000 55%,transparent);mask:radial-gradient(60% 55% at 50% 55%,#000 55%,transparent)}
+/* raqs */
+.dance{transform-box:fill-box;transform-origin:50% 100%;animation:waltz 5.2s ease-in-out infinite}
+.skirt{transform-box:fill-box;transform-origin:50% 0;animation:swish 5.2s ease-in-out infinite}
+.veil{transform-box:fill-box;transform-origin:80% 0;animation:veil 5.2s ease-in-out infinite}
+.couple-sway{transform-box:fill-box;transform-origin:50% 100%;animation:lean 5.2s ease-in-out infinite}
+@keyframes waltz{
+  0%{transform:translate(0,0) scale(1)}
+  25%{transform:translate(14px,-3px) scale(.97)}
+  50%{transform:translate(0,0) scale(1)}
+  75%{transform:translate(-14px,-2px) scale(1.03)}
+  100%{transform:translate(0,0) scale(1)}}
+@keyframes lean{0%,50%,100%{transform:rotate(0)}25%{transform:rotate(2.5deg)}75%{transform:rotate(-2.5deg)}}
+@keyframes swish{0%,50%,100%{transform:skewX(0) scaleX(1)}20%{transform:skewX(-9deg) scaleX(1.05)}70%{transform:skewX(9deg) scaleX(1.05)}}
+@keyframes veil{0%,50%,100%{transform:rotate(0)}30%{transform:rotate(7deg)}80%{transform:rotate(-5deg)}}
+#dust{inset:0;width:100%;height:100%;z-index:4;pointer-events:none}
+#curtainCv{inset:0;width:100%;height:100%;z-index:5;pointer-events:none}
+.vignette{inset:0;z-index:5;pointer-events:none;background:linear-gradient(180deg,rgba(5,0,2,.75),transparent 16%,transparent 80%,rgba(5,0,2,.5))}
 
-.hero-inner{position:relative;z-index:2;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:max(8vh,48px) 24px max(6vh,32px)}
-.reveal-seq>*{opacity:0;transform:translateY(14px);filter:blur(6px);transition:opacity 1.4s ease,transform 1.4s ease,filter 1.4s ease}
+.hero-inner{z-index:6;top:0;left:0;right:0;padding:max(6svh,30px) 20px 0;text-align:center}
+.reveal-seq>*{opacity:0;transform:translateY(12px);filter:blur(6px);transition:opacity 1.3s ease,transform 1.3s ease,filter 1.3s ease}
 .open .reveal-seq>*{opacity:1;transform:none;filter:none}
-.open .reveal-seq>*:nth-child(1){transition-delay:1.5s}
-.open .reveal-seq>*:nth-child(2){transition-delay:2.0s}
-.open .reveal-seq>*:nth-child(3){transition-delay:2.4s}
-.open .reveal-seq>*:nth-child(4){transition-delay:2.8s}
-.open .reveal-seq>*:nth-child(5){transition-delay:3.3s}
-.open .reveal-seq>*:nth-child(6){transition-delay:3.7s}
-.open .reveal-seq>*:nth-child(7){transition-delay:4.1s}
-.open .reveal-seq>*:nth-child(8){transition-delay:4.8s}
-.kicker{font-style:italic;font-size:clamp(16px,4.2vw,20px);color:var(--cream-dim)}
-.name{font-family:var(--script);font-weight:400;font-size:clamp(56px,16vw,104px);line-height:1;color:#fff;
+.open .reveal-seq>*:nth-child(1){transition-delay:.3s}
+.open .reveal-seq>*:nth-child(2){transition-delay:1.2s}
+.open .reveal-seq>*:nth-child(3){transition-delay:1.7s}
+.open .reveal-seq>*:nth-child(4){transition-delay:2.1s}
+.open .reveal-seq>*:nth-child(5){transition-delay:2.8s}
+.open .reveal-seq>*:nth-child(6){transition-delay:3.2s}
+.open .reveal-seq>*:nth-child(7){transition-delay:3.6s}
+.kicker{font-style:italic;font-size:clamp(15px,4vw,19px);color:var(--cream-dim)}
+.name{font-family:var(--script);font-weight:400;font-size:clamp(50px,14.5vw,96px);line-height:1;color:#fff;
   text-shadow:0 0 22px rgba(255,190,190,.35),0 0 2px rgba(255,255,255,.6)}
-.amp{font-family:var(--script);font-size:clamp(30px,8vw,44px);color:var(--gold);line-height:1;margin:2px 0}
-.invite-line{font-style:italic;font-size:clamp(16px,4.2vw,20px);margin-top:16px;color:var(--cream-dim)}
-.date-big{font-family:var(--serif);font-weight:500;letter-spacing:.38em;font-size:clamp(20px,5.6vw,28px);margin-top:12px;padding-left:.38em}
-.venue{font-style:italic;font-size:clamp(15px,4vw,18px);color:var(--cream-dim)}
-.stage{position:relative;margin-top:clamp(18px,4vh,36px);width:min(64vw,260px);aspect-ratio:1}
-.stage .disc{position:absolute;left:-18%;right:-18%;bottom:-2%;height:20%;border-radius:50%;
-  background:radial-gradient(closest-side,rgba(255,200,190,.55),rgba(255,120,120,.16) 60%,transparent);filter:blur(2px)}
-.stage .ring{position:absolute;left:-10%;right:-10%;bottom:3%;height:12%;border-radius:50%;border:1.5px solid rgba(255,220,210,.7);box-shadow:0 0 18px rgba(255,170,170,.7),inset 0 0 14px rgba(255,170,170,.5)}
-.stage .photo{position:absolute;inset:0 6% 9%;border-radius:50% 50% 46% 46%/58% 58% 42% 42%;overflow:hidden;
-  -webkit-mask:linear-gradient(180deg,#000 70%,transparent);mask:linear-gradient(180deg,#000 70%,transparent)}
-.stage .photo img{width:100%;height:100%;object-fit:cover}
-.monogram{position:absolute;inset:4% 10% 14%;display:grid;place-items:center;border-radius:50%;
-  border:1px solid var(--line);background:radial-gradient(closest-side,rgba(255,255,255,.06),transparent)}
-.monogram::before{content:"";position:absolute;inset:7%;border-radius:50%;border:1px solid rgba(232,201,160,.12)}
-.monogram span{font-family:var(--script);font-size:clamp(60px,18vw,92px);color:#fff;text-shadow:0 0 30px rgba(255,170,170,.5)}
-.scroll-cue{margin-top:clamp(14px,3vh,26px);font-family:var(--sans);font-size:10px;letter-spacing:.35em;text-transform:uppercase;color:var(--cream-faint);text-decoration:none;display:flex;flex-direction:column;align-items:center;gap:8px}
-.scroll-cue i{width:1px;height:34px;background:linear-gradient(var(--cream-faint),transparent);animation:cue 2s ease-in-out infinite}
+.amp{font-family:var(--script);font-size:clamp(26px,7vw,40px);color:var(--gold);line-height:1;margin:0}
+.invite-line{font-style:italic;font-size:clamp(15px,4vw,19px);margin-top:10px;color:var(--cream-dim)}
+.date-big{font-family:var(--serif);font-weight:500;letter-spacing:.38em;font-size:clamp(18px,5vw,26px);margin-top:6px;padding-left:.38em}
+.venue{font-style:italic;font-size:clamp(14px,3.8vw,17px);color:var(--cream-dim)}
+.scroll-cue{z-index:6;left:50%;bottom:2px;transform:translateX(-50%);opacity:0;transition:opacity 1.2s ease 4.4s;font-family:var(--sans);font-size:9px;letter-spacing:.35em;text-transform:uppercase;color:var(--cream-faint);text-decoration:none;display:flex;flex-direction:column;align-items:center;gap:6px}
+.open .scroll-cue{opacity:1}
+.scroll-cue i{width:1px;height:22px;background:linear-gradient(var(--cream-faint),transparent);animation:cue 2s ease-in-out infinite}
 @keyframes cue{0%{transform:scaleY(0);transform-origin:top}50%{transform:scaleY(1);transform-origin:top}51%{transform-origin:bottom}100%{transform:scaleY(0);transform-origin:bottom}}
-
-/* parda */
-.curtain{position:fixed;inset:0;z-index:40;pointer-events:none;overflow:hidden}
-.curtain.done{display:none}
-.drape{position:absolute;top:0;bottom:0;width:51%;
-  background:
-    linear-gradient(180deg,rgba(0,0,0,.35) 0%,transparent 18%,transparent 75%,rgba(0,0,0,.55) 100%),
-    repeating-linear-gradient(90deg,var(--velvet-1) 0px,var(--velvet-2) 14px,var(--velvet-4) 26px,var(--velvet-3) 34px,var(--velvet-2) 46px,var(--velvet-1) 58px);
-  box-shadow:inset 0 0 80px rgba(0,0,0,.6);
-  transition:transform 3s cubic-bezier(.65,.02,.25,1)}
-.drape::after{content:"";position:absolute;inset:0;background:radial-gradient(60% 40% at 50% 30%,rgba(255,80,90,.18),transparent 70%);mix-blend-mode:screen}
-.drape.l{left:0;transform-origin:left center}
-.drape.r{right:0;transform-origin:right center}
-.curtain.opening .drape.l{transform:scaleX(.09)}
-.curtain.opening .drape.r{transform:scaleX(.09)}
-.valance{position:absolute;left:0;right:0;top:0;height:9vh;min-height:52px;z-index:2;
-  background:linear-gradient(180deg,#2a0005,var(--velvet-2) 60%,var(--velvet-1));
-  -webkit-mask:radial-gradient(60px 26px at 60px 100%,transparent 98%,#000) -60px 0/120px 100% repeat-x;
-          mask:radial-gradient(60px 26px at 60px 100%,transparent 98%,#000) -60px 0/120px 100% repeat-x;
-  box-shadow:0 8px 24px rgba(0,0,0,.6);transition:transform 2.4s ease 1.6s}
-.curtain.opening .valance{transform:translateY(-110%)}
-
 /* ============ 3. BO'LIMLAR ============ */
 main{position:relative;z-index:2}
 section{padding:clamp(72px,12vh,120px) 24px;text-align:center;position:relative}
@@ -220,19 +220,83 @@ footer p{font-family:var(--sans);font-size:11px;letter-spacing:.3em;color:var(--
   </div>
 </div>
 
-<!-- 2. Parda -->
-<div class="curtain" id="curtain" aria-hidden="true">
-  <div class="drape l"></div>
-  <div class="drape r"></div>
-  <div class="valance"></div>
-</div>
-
-<!-- 3. Sahna -->
+<!-- 2. Sahna (parda canvas ichida chiziladi) -->
 <header class="hero" id="hero">
-  <div class="beam"></div>
-  <div class="beam edge"></div>
+  <svg class="beam soft" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+    <defs><linearGradient id="bm" x1="0" y1="0" x2=".3" y2="1">
+      <stop offset="0" stop-color="#ffe9e0" stop-opacity=".42"/><stop offset=".7" stop-color="#ffd2c6" stop-opacity=".16"/><stop offset="1" stop-color="#ffc0b4" stop-opacity=".06"/></linearGradient></defs>
+    <polygon points="14,-2 31,-2 92,96 50,96" fill="url(#bm)"/>
+  </svg>
+  <svg class="beam" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+    <defs><linearGradient id="bl" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".0"/><stop offset=".25" stop-color="#fff2ec" stop-opacity=".75"/><stop offset="1" stop-color="#ffd8cc" stop-opacity=".15"/></linearGradient></defs>
+    <line x1="14" y1="-2" x2="50" y2="96" stroke="url(#bl)" stroke-width="1.3" vector-effect="non-scaling-stroke"/>
+    <line x1="31" y1="-2" x2="92" y2="96" stroke="url(#bl)" stroke-width="1" vector-effect="non-scaling-stroke"/>
+  </svg>
   <div class="smoke"></div>
+  <div class="halo"></div>
+  <div class="ledge"></div>
+  <div class="stage">
+    <div class="pool"></div>
+    <div class="ring back"></div>
+    <div class="couple-box" id="coupleBox">
+      <svg viewBox="0 0 240 320" aria-label="Raqs tushayotgan kelin va kuyov" role="img">
+        <defs>
+          <radialGradient id="gown" cx="42%" cy="8%" r="105%">
+            <stop offset="0" stop-color="#ffffff"/><stop offset=".38" stop-color="#fdeeea"/>
+            <stop offset=".72" stop-color="#f0bcb8"/><stop offset="1" stop-color="#b9606b"/></radialGradient>
+          <linearGradient id="bodice" x1="0" x2="1"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#f1c9c4"/></linearGradient>
+          <linearGradient id="suit" x1="0" x2="1"><stop offset="0" stop-color="#3a1d22"/><stop offset=".45" stop-color="#140a0c"/><stop offset="1" stop-color="#050203"/></linearGradient>
+          <linearGradient id="skinB" x1="0" x2="1"><stop offset="0" stop-color="#f3cdc2"/><stop offset=".6" stop-color="#a86e66"/><stop offset="1" stop-color="#5a3532"/></linearGradient>
+          <linearGradient id="skinG" x1="0" x2="1"><stop offset="0" stop-color="#9a6058"/><stop offset=".5" stop-color="#4a2a27"/><stop offset="1" stop-color="#1c0e0d"/></linearGradient>
+          <linearGradient id="veilG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".6"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+          <filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          <filter id="soft"><feGaussianBlur stdDeviation=".5"/></filter>
+        </defs>
+        <g class="dance">
+          <g class="couple-sway" filter="url(#soft)">
+            <!-- kuyov -->
+            <path fill="#0a0506" d="M134 156 L131 298 L143 298 L146 204 L150 298 L162 298 L160 156 Z"/>
+            <path fill="url(#suit)" d="M124 88 C131 80 151 79 160 87 C164 110 165 138 163 162 C152 168 136 168 128 162 C125 138 123 110 124 88 Z"/>
+            <path fill="#efe3df" d="M137 85 L143 106 L149 85 Z" opacity=".75"/><path d="M125 92 C126 86 130 82 136 81" stroke="#ffd9cf" stroke-opacity=".7" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+            <path fill="#0a0506" d="M141 92 l-3 3 l3 3 l3 -3 Z"/>
+            <rect x="138" y="70" width="9" height="15" rx="3" fill="url(#skinG)"/>
+            <path fill="url(#skinG)" d="M152 54 C153 64 152 72 147 75 C142 77 137 75 135 71 L134 67 L131.5 65.5 L133.5 63 L132 58 C134 50 150 46 152 54 Z"/>
+            <path fill="#120808" d="M132 57 C131 46 152 42 155 54 C155 60 153 66 151 68 C150 62 149 57 146 55 C141 53 136 55 132 57 Z"/>
+            <path fill="none" stroke="url(#suit)" stroke-width="9" stroke-linecap="round" d="M128 93 C112 86 92 82 70 82"/>
+            <!-- kelin -->
+            <g>
+              <path class="veil" fill="url(#veilG)" d="M101 64 C84 92 70 160 52 240 C72 214 92 156 106 90 Z"/>
+              <g class="skirt" filter="url(#glow)">
+                <path fill="url(#gown)" d="M98 130 C80 150 62 182 50 222 C41 252 31 278 20 298 Q40 309 60 302 Q80 312 100 304 Q120 313 140 304 Q160 311 180 302 Q200 309 218 298 C206 276 196 252 186 222 C172 182 140 150 121 130 Q109 137 98 130 Z"/>
+                <g fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="1.2" stroke-linecap="round">
+                  <path d="M102 142 C84 180 60 240 50 300"/><path d="M109 143 C104 200 98 260 96 306"/>
+                  <path d="M114 143 C124 196 138 256 146 306"/><path d="M119 140 C146 184 176 246 192 302"/>
+                </g>
+                <g fill="#fff">
+                  <circle cx="80" cy="250" r="1.1"/><circle cx="130" cy="230" r="1"/><circle cx="160" cy="270" r="1.2"/>
+                  <circle cx="100" cy="280" r="1"/><circle cx="60" cy="285" r="1.1"/><circle cx="185" cy="290" r="1"/>
+                  <circle cx="112" cy="200" r=".9"/><circle cx="140" cy="290" r="1"/>
+                </g>
+              </g>
+              <path fill="url(#bodice)" d="M99 97 C104 91 116 91 121 97 L122 133 Q110 140 98 133 Z"/>
+              <rect x="105" y="81" width="8" height="14" rx="3" fill="url(#skinB)"/>
+              <path fill="url(#skinB)" d="M100 66 C100 58 112 56 116 63 L117 68 L119.5 70.5 L117.5 72 L118 76 C116 82 111 85 106 83 C101 81 99 74 100 66 Z"/>
+              <path fill="#2b1517" d="M99 76 C95 62 106 55 115 59 C117 60 118 62 117 64 C112 61 106 63 104 69 C103 74 104 79 106 82 C102 82 100 80 99 76 Z"/>
+              <circle cx="99" cy="65" r="7.5" fill="#2b1517"/><path d="M96 59 C99 57 103 58 104 60" stroke="#fff" stroke-opacity=".7" stroke-width="1.4" fill="none"/>
+              <path fill="none" stroke="url(#skinB)" stroke-width="4.5" stroke-linecap="round" d="M101 100 C90 92 80 86 70 82"/>
+              <path fill="none" stroke="url(#skinB)" stroke-width="4" stroke-linecap="round" d="M119 101 C126 97 132 93 137 90"/>
+              <circle cx="68" cy="81" r="4.5" fill="url(#skinB)"/>
+            </g>
+          </g>
+        </g>
+      </svg>
+    </div>
+    <div class="ring front"></div>
+  </div>
   <canvas id="dust"></canvas>
+  <canvas id="curtainCv"></canvas>
+  <div class="vignette"></div>
   <div class="hero-inner reveal-seq">
     <p class="kicker" data-t="together"></p>
     <h1 class="name" data-t="groom"></h1>
@@ -241,15 +305,8 @@ footer p{font-family:var(--sans);font-size:11px;letter-spacing:.3em;color:var(--
     <p class="invite-line" data-t="inviteLine"></p>
     <p class="date-big" data-t="dateText"></p>
     <p class="venue"><span data-t="venue"></span>, <span data-t="city"></span></p>
-    <div>
-      <div class="stage">
-        <div class="disc"></div>
-        <div class="ring"></div>
-        <div class="monogram" id="monogram"><span data-t="monogram"></span></div>
-      </div>
-      <a href="#letter" class="scroll-cue"><span data-t="scroll"></span><i></i></a>
-    </div>
   </div>
+  <a href="#letter" class="scroll-cue" aria-label="Pastga suring"><i></i></a>
 </header>
 
 <main>
@@ -366,6 +423,7 @@ const CONFIG = {
   city: "Toshkent",
   address: "Amir Temur ko'chasi, 107-uy",
   lat: 41.3111, lng: 69.2797,              // xarita koordinatalari
+  coupleVideo: "",                         // ixtiyoriy: sahnadagi raqs videosi (masalan "dance.mp4") — chizilgan juftlik o'rniga
   photo: "",                               // ixtiyoriy: juftlik surati (masalan "couple.jpg")
   music: "",                               // ixtiyoriy: fon musiqasi (masalan "music.mp3")
   dressColors: ["#7a0012", "#0b0204", "#e8c9a0", "#f7ece4"],
@@ -424,10 +482,8 @@ const vals = {...T, groom:C.groom, bride:C.bride, monogram:C.monogram, initials:
 document.querySelectorAll('[data-t]').forEach(el => { const v = vals[el.dataset.t]; if (v != null) el.textContent = v; });
 document.title = `${C.groom} & ${C.bride} — to'y taklifnomasi`;
 
-if (C.photo) {
-  const m = $('#monogram');
-  m.outerHTML = `<div class="photo"><img src="${C.photo}" alt="${C.groom} va ${C.bride}"></div>`;
-}
+if (C.coupleVideo) $('#coupleBox').innerHTML = `<video src="${C.coupleVideo}" autoplay muted loop playsinline></video>`;
+else if (C.photo) $('#coupleBox').innerHTML = `<img src="${C.photo}" alt="${C.groom} va ${C.bride}">`;
 $('#tl').innerHTML = C.program.map(([t, h, p]) => `<li><time>${t}</time><div><h3>${h}</h3><p>${p}</p></div></li>`).join('');
 $('#swatches').innerHTML = C.dressColors.map(c => `<i style="background:${c}"></i>`).join('');
 $('#mapFrame').src = `https://maps.google.com/maps?q=${C.lat},${C.lng}&z=16&output=embed`;
@@ -435,11 +491,12 @@ $('#mapLink').href = `https://www.google.com/maps/search/?api=1&query=${C.lat},$
 $('#yandexLink').href = `https://yandex.uz/maps/?pt=${C.lng},${C.lat}&z=16&l=map`;
 
 /* =====================================================================
-   1. YALTIROQ — canvas zarrachalari
+   1. YALTIROQ — canvas zarrachalari (puflanganda qum kabi pastga to'kiladi)
    ===================================================================== */
 const gWrap = $('#glitter'), gCv = gWrap.querySelector('canvas'), g = gCv.getContext('2d');
-let W, H, DPR, parts = [], state = 'idle', cleared = 0, raf;
+let W, H, DPR, parts = [], state = 'idle', cleared = 0, raf, blowT = 0, lastT = 0;
 const REDS = ['#ff1f3a','#e0102b','#b5001e','#8c0016','#ff4a5f','#c80a26','#6d0011'];
+const GRAV = .42;                       // px / kadr²
 
 function sizeGlitter() {
   DPR = Math.min(devicePixelRatio || 1, 2);
@@ -454,85 +511,98 @@ function sizeGlitter() {
       r: spark ? 0.8 + Math.random() * 1.4 : 0.6 + Math.random() * 1.5,
       c: spark ? '#fff4f0' : REDS[(Math.random() * REDS.length) | 0],
       spark, ph: Math.random() * 6.28, sp: .6 + Math.random() * 2.2,
-      vx: 0, vy: 0, a: 1, fly: false, rot: Math.random() * 6.28, vr: 0
+      vx: 0, vy: 0, a: 1, fly: false, rest: false,
+      floor: H - 2 - Math.random() * Math.random() * 30
     };
   }).sort((a, b) => (a.c < b.c ? -1 : a.c > b.c ? 1 : 0));
   cleared = 0;
 }
 
 function drawGlitter(t) {
-  // fon: chuqur qizil baxmal
-  const bg = g.createRadialGradient(W * .5, H * .4, 0, W * .5, H * .5, Math.max(W, H) * .8);
-  bg.addColorStop(0, '#5a0612'); bg.addColorStop(.6, '#2a0208'); bg.addColorStop(1, '#120004');
-  g.globalAlpha = state === 'blown' ? Math.max(0, 1 - (t - blowT) / 1400) : 1;
-  g.fillStyle = bg; g.fillRect(0, 0, W, H);
-  g.globalAlpha = 1;
-
+  const dt = Math.min(3, lastT ? (t - lastT) / 16.67 : 1); lastT = t;
+  g.clearRect(0, 0, W, H);
+  // fon: yaltiroq qatlami — puflanganda u ham pastga sirg'alib tushadi
+  const el = state === 'blown' ? (t - blowT) / 16.67 : 0;
+  const top = .5 * GRAV * el * el;
+  if (top < H) {
+    const bg = g.createRadialGradient(W * .5, H * .4, 0, W * .5, H * .5, Math.max(W, H) * .8);
+    bg.addColorStop(0, '#5a0612'); bg.addColorStop(.6, '#2a0208'); bg.addColorStop(1, '#120004');
+    g.fillStyle = bg; g.fillRect(0, top, W, H - top);
+    if (top > 0) {
+      const e = g.createLinearGradient(0, top - 60, 0, top);
+      e.addColorStop(0, 'rgba(42,2,8,0)'); e.addColorStop(1, 'rgba(42,2,8,.95)');
+      g.fillStyle = e; g.fillRect(0, top - 60, W, 60);
+    }
+  }
+  const fading = state === 'blown' && t - blowT > 1500;
   let alive = 0;
   for (const p of parts) {
     if (p.a <= 0) continue;
-    if (p.fly) {
-      p.x += p.vx; p.y += p.vy; p.vx *= .985; p.vy = p.vy * .985 - .04; p.rot += p.vr;
-      p.a -= state === 'blown' ? .012 : .02;
-      if (p.x < -20 || p.x > W + 20 || p.y < -20 || p.y > H + 20) p.a = 0;
+    if (p.fly && !p.rest) {
+      p.vy += GRAV * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= .985;
+      if (p.y >= p.floor) {
+        p.y = p.floor;
+        if (p.vy > 4) { p.vy *= -.16; p.vx = p.vx * .4 + (Math.random() - .5) * 1.4; }
+        else { p.rest = true; p.vy = 0; }
+      }
+      if (p.x < -10 || p.x > W + 10) p.a = 0;
     }
+    if (fading) p.a -= .022 * dt * (p.rest ? 1 : .6);
     if (p.a <= 0) continue;
     alive++;
     const tw = .45 + .55 * Math.abs(Math.sin(p.ph + t * .0012 * p.sp));
     g.globalAlpha = p.a * (p.spark ? tw : .55 + .45 * tw);
     if (g.fillStyle !== p.c) g.fillStyle = p.c;
-    if (p.spark && tw > .85) {
-      // yulduzcha yaltirash
+    if (p.spark && tw > .85 && !p.fly) {
       const s = p.r * 3.2 * tw;
       g.fillRect(p.x - s, p.y - .35, s * 2, .7);
       g.fillRect(p.x - .35, p.y - s, .7, s * 2);
     }
-    const s = p.r * (p.fly ? Math.abs(Math.cos(p.rot)) + .2 : 1);
-    g.fillRect(p.x - s, p.y - p.r, s * 2, p.r * 2);
+    const streak = p.fly && !p.rest ? Math.min(5, Math.abs(p.vy) * .35) : 0;
+    g.fillRect(p.x - p.r, p.y - p.r - streak, p.r * 2, p.r * 2 + streak);
   }
   g.globalAlpha = 1;
   return alive;
 }
 
-let blowT = 0;
 function loop(t) {
   const alive = drawGlitter(t);
-  if (state === 'blown' && alive === 0 && t - blowT > 1400) { finishGlitter(); return; }
+  if (state === 'blown' && alive === 0 && t - blowT > 1500) { finishGlitter(); return; }
   raf = requestAnimationFrame(loop);
 }
 
-/* barmoq bilan yaltiroqni surish */
+/* barmoq bilan yaltiroqni surish — surilgan zarrachalar ham pastga to'kiladi */
 function wipe(x, y, dx, dy) {
-  const R = 46, R2 = R * R;
+  const R = 44, R2 = R * R;
   for (const p of parts) {
     if (p.fly || p.a <= 0) continue;
     const ex = p.x - x, ey = p.y - y, d2 = ex * ex + ey * ey;
     if (d2 < R2) {
-      const d = Math.sqrt(d2) || 1, f = (1 - d / R) * 5 + 1.5;
-      p.fly = true; p.vx = ex / d * f + dx * .25 + (Math.random() - .5) * 2; p.vy = ey / d * f + dy * .25 - Math.random() * 2;
-      p.vr = (Math.random() - .5) * .4; cleared++;
+      const d = Math.sqrt(d2) || 1, f = (1 - d / R) * 2.5 + .5;
+      p.fly = true; p.vx = ex / d * f + dx * .15; p.vy = ey / d * f * .5 + dy * .1; cleared++;
     }
   }
   if (cleared > parts.length * .3) blow();
 }
 
-/* puflash — hamma zarrachalar uchib ketadi */
-function blow(ox = W / 2, oy = H * 1.08) {
+/* puflash: nafas nuqtasi yaqinidagi zarrachalar sochiladi, qolgani qum kabi to'kiladi */
+function blow(ox = W / 2, oy = H * .85) {
   if (state !== 'idle') return;
   state = 'blown'; blowT = performance.now();
   gWrap.classList.add('blowing');
+  gWrap.style.pointerEvents = 'none';
   for (const p of parts) {
     if (p.fly) continue;
     const ex = p.x - ox, ey = p.y - oy, d = Math.hypot(ex, ey) || 1;
-    const f = 6 + Math.random() * 10;
-    p.fly = true; p.vx = ex / d * f * (.5 + Math.random()) + (Math.random() - .5) * 3;
-    p.vy = ey / d * f - Math.random() * 4; p.vr = (Math.random() - .5) * .5;
-    p.a = .6 + Math.random() * .4;
+    const push = Math.max(0, 1 - d / (H * .45)) * 6;
+    p.fly = true;
+    p.vx = ex / d * push + (Math.random() - .5) * 1.1;
+    p.vy = ey / d * push * .6 + Math.random() * 1.2;
   }
   stopMic();
   playMusic();
-  setTimeout(() => gWrap.classList.add('gone'), 500);
-  setTimeout(openCurtain, 900);
+  setTimeout(openCurtain, reduced ? 200 : 1350);
+  setTimeout(() => document.body.classList.remove('locked'), 4200);
 }
 
 function finishGlitter() {
@@ -554,7 +624,7 @@ gWrap.addEventListener('pointermove', e => {
 gWrap.addEventListener('pointerup', e => {
   if (!down) return;
   const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
-  if (moved < 12 && performance.now() - down.t < 600) blow(e.clientX, e.clientY + 40);
+  if (moved < 12 && performance.now() - down.t < 600) blow(e.clientX, e.clientY);
   down = null;
 });
 gWrap.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); blow(); } });
@@ -579,7 +649,6 @@ function resumeMic() { if (ac && ac.state === 'suspended') ac.resume(); }
 function listen() {
   if (!analyser || state !== 'idle') return;
   analyser.getByteFrequencyData(micBuf);
-  // puflash — past chastotalarda kuchli, keng shovqin
   let low = 0; for (let i = 1; i < 24; i++) low += micBuf[i];
   low /= 23;
   hot = low > 150 ? hot + 1 : Math.max(0, hot - 1);
@@ -593,28 +662,117 @@ function stopMic() {
 }
 
 /* =====================================================================
-   2. PARDA ochilishi
+   2. PARDA — baxmal mato canvas'da chiziladi va tabiiy ochiladi:
+      tepasi oldin, pasti kechikib, to'lqinlanib; burmalar yon tomonda yig'iladi
    ===================================================================== */
-function openCurtain() {
-  const cur = $('#curtain');
-  cur.classList.add('opening');
-  $('#hero').classList.add('open');
-  startDust();
-  setTimeout(() => { document.body.classList.remove('locked'); }, 1200);
-  setTimeout(() => cur.classList.add('done'), 4200);
+const hero = $('#hero'), cCv = $('#curtainCv'), cx = cCv.getContext('2d');
+const CUR = {start: null, dur: 3.1, lag: .9, texL: null, texR: null, shL: null, shR: null, D: 1, visible: true};
+
+function mix(a, b, k) { return a.map((v, i) => Math.round(v + (b[i] - v) * k)); }
+function buildCurtain() {
+  const D = CUR.D = Math.min(devicePixelRatio || 1, 2);
+  const w = hero.clientWidth, h = hero.clientHeight;
+  cCv.width = Math.round(w * D); cCv.height = Math.round(h * D);
+  const TW = Math.ceil(cCv.width / 2) + 2, TH = cCv.height;
+  const t = document.createElement('canvas'); t.width = TW; t.height = TH;
+  const x = t.getContext('2d');
+  const DARK = [26, 0, 5], MID = [118, 3, 20], HI = [196, 18, 42], SHEEN = [250, 80, 100];
+  const fold = 40 * D;
+  for (let i = 0; i < TW; i++) {
+    const ph = i / fold * 6.283 + Math.sin(i / (fold * 2.9)) * 1.3 + Math.sin(i / (fold * .77)) * .25;
+    let s = .5 + .5 * Math.cos(ph);
+    s = Math.pow(s, 1.7) * .85 + .15 * (.5 + .5 * Math.cos(ph * 2.2 + 1));
+    s *= .35 + .65 * Math.min(1, (TW - i) / (16 * D));   // ichki chet — soya
+    s *= .55 + .45 * Math.min(1, i / (12 * D));
+    const c = s < .5 ? mix(DARK, MID, s * 2) : s < .9 ? mix(MID, HI, (s - .5) / .4) : mix(HI, SHEEN, (s - .9) / .1);
+    x.fillStyle = `rgb(${c})`; x.fillRect(i, 0, 1, TH);
+  }
+  // baxmal tukchalari
+  for (let k = 0; k < TW * TH / 90; k++) {
+    x.fillStyle = Math.random() < .5 ? 'rgba(0,0,0,.18)' : 'rgba(255,120,130,.07)';
+    x.fillRect(Math.random() * TW, Math.random() * TH, D, D * (1 + Math.random() * 3));
+  }
+  // vertikal yorug'lik/soya
+  let gr = x.createLinearGradient(0, 0, 0, TH);
+  gr.addColorStop(0, 'rgba(0,0,0,.72)'); gr.addColorStop(.18, 'rgba(0,0,0,.12)');
+  gr.addColorStop(.45, 'rgba(0,0,0,0)'); gr.addColorStop(.82, 'rgba(0,0,0,.25)'); gr.addColorStop(1, 'rgba(0,0,0,.7)');
+  x.fillStyle = gr; x.fillRect(0, 0, TW, TH);
+  x.globalCompositeOperation = 'lighter';
+  gr = x.createRadialGradient(TW * .85, TH * .4, 0, TW * .85, TH * .4, TW * .9);
+  gr.addColorStop(0, 'rgba(120,10,25,.35)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  x.fillStyle = gr; x.fillRect(0, 0, TW, TH);
+  x.globalCompositeOperation = 'source-over';
+  CUR.texL = t;
+  // o'ng parda — ko'zgu
+  const r = document.createElement('canvas'); r.width = TW; r.height = TH;
+  const rx = r.getContext('2d'); rx.translate(TW, 0); rx.scale(-1, 1); rx.drawImage(t, 0, 0);
+  CUR.texR = r;
+  // parda tushiradigan soya
+  const mk = flip => {
+    const s = document.createElement('canvas'); s.width = Math.round(34 * D); s.height = 1;
+    const sx = s.getContext('2d'), sg = sx.createLinearGradient(flip ? s.width : 0, 0, flip ? 0 : s.width, 0);
+    sg.addColorStop(0, 'rgba(0,0,0,.65)'); sg.addColorStop(1, 'rgba(0,0,0,0)');
+    sx.fillStyle = sg; sx.fillRect(0, 0, s.width, 1); return s;
+  };
+  CUR.shL = mk(false); CUR.shR = mk(true);
+  drawCurtain(performance.now());
 }
 
-/* sahnadagi chang/yaltiroq zarrachalari */
+const ease = k => k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+function openAt(sec, yr, delay) {
+  if (CUR.start == null) return 0;
+  if (reduced) return 1;
+  const k = (sec - delay - yr * CUR.lag) / CUR.dur;
+  return ease(Math.max(0, Math.min(1, k)));
+}
+
+function drawCurtain(now) {
+  const Wd = cCv.width, Hd = cCv.height, half = Wd / 2, D = CUR.D, TW = CUR.texL.width;
+  const sec = CUR.start == null ? 0 : (now - CUR.start) / 1000;
+  const step = Math.max(2, Math.round(3 * D)), SW = CUR.shL.width;
+  const OPEN = .84, overlap = 3 * D;
+  cx.clearRect(0, 0, Wd, Hd);
+  for (let y = 0; y < Hd; y += step) {
+    const yr = y / Hd;
+    const pl = openAt(sec, yr, 0), pr = openAt(sec, yr, .18);
+    // ochilish paytidagi to'lqin + ochilgandan keyingi yengil tebranish
+    const wl = Math.sin(yr * 3.6 - sec * 2.4) * pl * (1 - pl) * 4 * 18 * D + Math.sin(sec * .9 + yr * 2.2) * 2.2 * D * yr * pl;
+    const wr = Math.sin(yr * 3.2 - sec * 2.1 + 1) * pr * (1 - pr) * 4 * 18 * D + Math.sin(sec * .8 + yr * 2.5 + 2) * 2.2 * D * yr * pr;
+    const eL = half + overlap - (half * OPEN) * pl + wl;
+    const eR = half - overlap + (half * OPEN) * pr + wr;
+    const h = Math.min(step, Hd - y);
+    if (pl > 0) cx.drawImage(CUR.shL, 0, 0, SW, 1, eL - 2, y, SW, h);
+    if (pr > 0) cx.drawImage(CUR.shR, 0, 0, SW, 1, eR - SW + 2, y, SW, h);
+    cx.drawImage(CUR.texL, 0, y, TW, h, 0, y, eL, h);
+    cx.drawImage(CUR.texR, 0, y, TW, h, eR, y, Wd - eR, h);
+  }
+}
+
+function curtainLoop(now) {
+  requestAnimationFrame(curtainLoop);
+  if (!CUR.visible) return;
+  drawCurtain(now);
+}
+
+function openCurtain() {
+  CUR.start = performance.now();
+  hero.classList.add('open');
+  startDust();
+  requestAnimationFrame(curtainLoop);
+}
+new IntersectionObserver(([e]) => { CUR.visible = e.isIntersecting; }).observe(hero);
+
+/* sahnadagi uchqunlar (nur ichida suzib tushadi) */
 function startDust() {
-  const cv = $('#dust'), x = cv.getContext('2d'), hero = $('#hero');
+  const cv = $('#dust'), x = cv.getContext('2d');
   let w, h, dots, visible = true;
   const size = () => {
     const d = Math.min(devicePixelRatio || 1, 2);
     w = hero.clientWidth; h = hero.clientHeight;
     cv.width = w * d; cv.height = h * d; x.setTransform(d, 0, 0, d, 0, 0);
-    dots = Array.from({length: Math.round(w * h / 4200)}, () => ({
+    dots = Array.from({length: Math.round(w * h / 3000)}, () => ({
       x: Math.random() * w, y: Math.random() * h, r: Math.random() * 1.3 + .2,
-      vy: .1 + Math.random() * .45, vx: (Math.random() - .5) * .15, ph: Math.random() * 6.28
+      vy: .12 + Math.random() * .45, vx: (Math.random() - .5) * .15, ph: Math.random() * 6.28
     }));
   };
   size(); addEventListener('resize', size);
@@ -635,7 +793,6 @@ function startDust() {
     }
   })(fade);
 }
-
 /* =====================================================================
    3. BO'LIMLAR
    ===================================================================== */
@@ -701,6 +858,8 @@ mBtn.addEventListener('click', () => {
 sizeGlitter();
 let rT; addEventListener('resize', () => { if (state === 'idle') { clearTimeout(rT); rT = setTimeout(sizeGlitter, 150); } });
 raf = requestAnimationFrame(loop);
+buildCurtain();
+let cT; addEventListener('resize', () => { clearTimeout(cT); cT = setTimeout(buildCurtain, 150); });
 startMic();
 if (reduced) { /* harakat kamaytirilgan rejimda ham bosish bilan ochiladi */ }
 })();
