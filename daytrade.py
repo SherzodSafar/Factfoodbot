@@ -34,6 +34,8 @@ class DayParams:
     commission: float = 0.0005
     slippage: float = 0.0005
     whole_shares: bool = False
+    target_r: float = 0.0      # foyda maqsadi: xavfning necha baravari (0 — kun oxirigacha ushlash)
+    spy_filter: bool = False   # SPY ning o'zi ochilishda o'smasa, bugun savdo qilinmaydi
 
     @classmethod
     def from_dict(cls, d):
@@ -99,7 +101,8 @@ class DayBook:
         if qty <= 0 or qty * buy < 1:
             return f"⚠️ {tk}: pul yetmadi (1 dona {buy:.2f}$)"
         self.cash -= qty * buy * (1 + p.commission)
-        self.positions[tk] = dict(qty=qty, entry=buy, stop=stop, time=str(ts))
+        tgt = buy + p.target_r * (buy - stop) if p.target_r > 0 else None
+        self.positions[tk] = dict(qty=qty, entry=buy, stop=stop, target=tgt, time=str(ts))
         self.done += 1
         return (f"🟢 Sotib olindi: {tk} — {dona(qty)} dona × {buy:.2f}$ = {pul(qty * buy, 2)} "
                 f"({pd.Timestamp(ts):%H:%M} NY)\n     🛡 Himoya narxi {stop:.2f}$ — kun oxirida (15:55) albatta sotiladi")
@@ -116,7 +119,8 @@ class DayBook:
                  exit=round(sell, 4), qty=pos["qty"], reason=reason, minutes=mins,
                  pnl=round(proceeds - cost, 2), pnl_pct=round((proceeds / cost - 1) * 100, 2))
         self.trades.append(t)
-        why = {"stop": "narx himoya narxiga tushdi — zarar cheklandi", "eod": "kun oxiri — kunlik savdo yopildi"}[reason]
+        why = {"stop": "narx himoya narxiga tushdi — zarar cheklandi", "eod": "kun oxiri — kunlik savdo yopildi",
+               "target": "maqsad narxga yetdi — foyda olindi"}[reason]
         return (f"{'💰' if t['pnl'] > 0 else '🔻'} Sotildi: {tk} — {t['entry']:.2f}$ → {sell:.2f}$, "
                 f"{natija(t['pnl'], t['pnl_pct'])}, {mins} daqiqa ({pd.Timestamp(ts):%H:%M} NY)\n     Sabab: {why}")
 
@@ -125,9 +129,11 @@ class DayBook:
         self.day = str(pd.Timestamp(day).date())
         self.orders, self.watch, self.done, self.last_bar = {}, [], 0, None
 
-    def select_orb(self, first_bars: dict, avg_first_vol: dict):
+    def select_orb(self, first_bars: dict, avg_first_vol: dict, spy_bar=None):
         """first_bars: {tk: 9:30 shami (Open/High/Low/Close/Volume)}. Nomzodlarni tanlab, buyurtma qo'yadi."""
         p = self.p
+        if p.spy_filter and spy_bar is not None and spy_bar["Close"] <= spy_bar["Open"]:
+            return ["🌍 Bugun umumiy bozor (SPY) ochilishda pasaydi — himoya uchun kunlik savdo qilinmaydi."]
         cand = []
         for tk, r in first_bars.items():
             av = avg_first_vol.get(tk)
@@ -157,6 +163,8 @@ class DayBook:
             pos = self.positions[tk]
             if r["Low"] <= pos["stop"]:
                 ev.append(self._sell(tk, min(r["Open"], pos["stop"]), ts, "stop"))
+            elif pos.get("target") and r["High"] >= pos["target"]:
+                ev.append(self._sell(tk, max(r["Open"], pos["target"]), ts, "target"))
         # 2) kutilayotgan buyurtmalar: narx darajadan oshsa xarid (shu shamning o'zida himoya ham tekshiriladi)
         if tod < LAST_BAR:
             for tk in list(self.orders):
@@ -241,7 +249,7 @@ def first_bar_avgs(days: dict, upto, n=14):
     return avg(fv), avg(bv)
 
 
-def run_day(book: DayBook, day, frames: dict, avg_first: dict, avg_bar: dict):
+def run_day(book: DayBook, day, frames: dict, avg_first: dict, avg_bar: dict, spy=None):
     """Butun bir kunni sham-ba-sham o'tkazadi (tarixiy sinov va botning "yetib olish" rejimi uchun)."""
     book.new_day(day)
     ev = []
@@ -255,7 +263,7 @@ def run_day(book: DayBook, day, frames: dict, avg_first: dict, avg_bar: dict):
             hi[tk] = max(hi.get(tk, 0), r["High"])
         if _tod(ts) == OPEN_BAR:
             if book.p.strategy == "orb":
-                ev += book.select_orb(first, avg_first)
+                ev += book.select_orb(first, avg_first, spy.iloc[0] if spy is not None and len(spy) else None)
             continue   # birinchi sham — faqat tanlash uchun
         ev += book.on_bar(ts, rows, avg_bar, hi)
     last = {tk: float(g["Close"].iloc[-1]) for tk, g in frames.items() if len(g)}

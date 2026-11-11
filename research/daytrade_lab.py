@@ -43,7 +43,7 @@ def run(days, p, start_i=15):
         af, ab = first_bar_avgs(days, d)
         frames = {k: v for k, v in days[d].items() if k != "SPY"}
         before = book.value()
-        run_day(book, d, frames, af, ab)
+        run_day(book, d, frames, af, ab, days[d].get("SPY"))
         daily.append((d, book.value() / before - 1))
     return book, daily
 
@@ -62,15 +62,18 @@ def main():
         intra = (s.groupby(s.index.normalize()).apply(lambda g: g["Close"].iloc[-1] / g["Open"].iloc[0]) ).prod() - 1
         print(f"Sinov davri: {len(test)} kun. SPY ushlab turish: {bh * 100:+.2f}%, SPY har kuni ochilishda olib "
               f"yopilishda sotish: {intra * 100:+.2f}%")
+    O = lambda **k: DayParams(strategy="orb", rvol_min=3, top_n=5, **k)
+    S = lambda **k: DayParams(strategy="spike", spike_mult=8, **k)
     variants = {
-        "ORB hajm≥2x top10": DayParams(strategy="orb", rvol_min=2, top_n=10),
-        "ORB hajm≥3x top5": DayParams(strategy="orb", rvol_min=3, top_n=5),
-        "ORB hajm≥1.5x top20": DayParams(strategy="orb", rvol_min=1.5, top_n=20, max_trades=10),
-        "ORB hajm≥2x top10 r0.5": DayParams(strategy="orb", rvol_min=2, top_n=10, risk_pct=0.5),
-        "ORB hajm≥5x top5": DayParams(strategy="orb", rvol_min=5, top_n=5),
-        "SPIKE hajm≥5x": DayParams(strategy="spike", spike_mult=5),
-        "SPIKE hajm≥8x": DayParams(strategy="spike", spike_mult=8),
-        "SPIKE hajm≥3x": DayParams(strategy="spike", spike_mult=3),
+        "ORB3 asos": O(),
+        "ORB3 +SPY filtr": O(spy_filter=True),
+        "ORB3 maqsad 1R": O(target_r=1),
+        "ORB3 maqsad 2R": O(target_r=2),
+        "ORB3 +SPY +2R": O(spy_filter=True, target_r=2),
+        "ORB3 +SPY +1R": O(spy_filter=True, target_r=1),
+        "ORB2 top10 +SPY +2R": DayParams(strategy="orb", rvol_min=2, top_n=10, spy_filter=True, target_r=2),
+        "SPIKE8 maqsad 2R": S(target_r=2),
+        "SPIKE8 maqsad 1R": S(target_r=1),
     }
     for name, p in variants.items():
         book, daily = run(days, p)
@@ -78,8 +81,8 @@ def main():
         tr = pd.DataFrame(book.trades)
         extra = ""
         if len(tr):
-            extra = (f" | kirish→chiqish: himoya {int((tr['reason'] == 'stop').sum())}, kun oxiri "
-                     f"{int((tr['reason'] == 'eod').sum())} | o'rt. {tr['minutes'].mean():.0f} daq")
+            extra = (f" | himoya {int((tr['reason'] == 'stop').sum())}, maqsad {int((tr['reason'] == 'target').sum())}, "
+                     f"kun oxiri {int((tr['reason'] == 'eod').sum())} | o'rt. {tr['minutes'].mean():.0f} daq")
         print(f"{name:<24} {CAPITAL:.0f}$ → {book.value():.0f}$ ({st['ret']:+.2f}%)  savdo {st['n']:3d}  "
               f"yutuq {st['win_rate']:4.1f}%  PF {st['pf']}  o'rt/savdo {st['avg']:+.3f}%  "
               f"pasayish {st['dd']:.1f}%  yashil kun {st['green_days']}/{st['days']}" + extra)

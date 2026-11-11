@@ -50,7 +50,7 @@ class Paper:
     def start(self, selection: dict, total_capital: float):
         """total_capital — umumiy virtual pul, guruhlarga teng bo'linadi."""
         with self.lock:
-            keep = {k: v for k, v in (self.state or {}).items() if k in ("auto_apply", "sent")}
+            keep = {k: v for k, v in (self.state or {}).items() if k in ("auto_apply", "sent", "day")}
             per = total_capital / max(len(selection), 1)
             books = {}
             for tier, tks in selection.items():

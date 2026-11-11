@@ -24,6 +24,7 @@ import requests
 
 import data
 from commands import HELP, Service
+from daylive import DayService
 from menu import Menu
 from paper import Paper
 
@@ -179,6 +180,21 @@ def scheduler():
         time.sleep(60)
 
 
+def intraday():
+    """Kunlik savdo: AQSh birjasi ochiq paytda har daqiqada yangi 5 daqiqalik shamlarni tekshiradi."""
+    while True:
+        try:
+            msgs = service.day.tick()
+            for m in msgs:
+                send(OWNER, m)
+            if msgs:
+                backup_state()
+                print(f"[kunlik] {len(msgs)} ta xabar yuborildi", flush=True)
+        except Exception:
+            traceback.print_exc()
+        time.sleep(60)
+
+
 def keep_awake():
     """Bepul Render 15 daqiqa so'rovsiz qolsa uxlaydi — o'zimizni har 10 daqiqada chaqiramiz."""
     url = os.environ.get("RENDER_EXTERNAL_URL")
@@ -210,7 +226,7 @@ COMMANDS = [("menyu", "Menyu va sozlamalar (tugmalar)"), ("aksiyalar", "Aksiyala
             ("savdolar", "Savdolar tarixi"), ("holat", "Portfel holati"), ("hisobot", "Hisobot: kunlik/haftalik/oylik"),
             ("bozor", "Bozor holati"), ("tahlil", "Tahlil va yaxshilash"), ("test", "O'tgan davrda sinash"),
             ("tanlash", "Aksiyalarni qayta tanlash"), ("demo_boshlash", "Boshlash: umumiy summa, masalan 3000"),
-            ("baho", "Real pulga tayyorlik"), ("sozlamalar", "Sozlamalar"), ("yordam", "Yordam")]
+            ("kunlik", "⚡️ Kunlik savdo (day trade)"), ("baho", "Real pulga tayyorlik"), ("sozlamalar", "Sozlamalar"), ("yordam", "Yordam")]
 
 
 def show_menu(chat_id, page="main"):
@@ -289,7 +305,8 @@ def main():
         threading.Thread(target=srv.serve_forever, daemon=True).start()
     restore_state()
     paper = Paper(STATE_FILE)
-    service = Service(paper, data.load, data.last_complete_us_day)
+    service = Service(paper, data.load, data.last_complete_us_day,
+                      DayService(paper, data.load_intraday, data.ny_now))
     menu = Menu(service)
     try:
         tg("deleteWebhook", json={})
@@ -298,6 +315,7 @@ def main():
         traceback.print_exc()
     threading.Thread(target=scheduler, daemon=True).start()
     threading.Thread(target=keep_awake, daemon=True).start()
+    threading.Thread(target=intraday, daemon=True).start()
     print("Bot ishga tushdi\n" + paper.describe(), flush=True)
     offset = None
     while True:

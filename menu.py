@@ -39,6 +39,7 @@ class Menu:
         return head, kb([
             [("💼 Aksiyalarim", "c:aksiyalar"), ("📜 Savdolar tarixi", "c:savdolar")],
             [("📅 Natijalar", "m:rep"), ("🌍 Bozor", "c:bozor")],
+            [("⚡️ Kunlik savdo (day trade)", "m:day")],
             [("🧭 Tahlil", "c:tahlil"), ("🎓 Real pulga tayyormi?", "c:baho")],
             [("⚙️ Sozlamalar", "m:set"), ("❓ Yordam", "m:help")],
             [("🚀 Yangi demo", "m:cap"), ("🧪 Tarixda sinash", "c:test")],
@@ -101,7 +102,24 @@ class Menu:
         return "❓ Yordam — bo'limni tanlang:", kb(
             [[(HELP_SECTIONS[k][0], f"h:{k}")] for k in HELP_SECTIONS] + [[BACK]])
 
-    PAGES = {"main": "main", "rep": "report", "set": "settings", "strat": "strategy", "share": "share",
+    def day(self):
+        d = self.svc.day
+        text = d.status() if d else "Kunlik savdo ulanmagan."
+        if not d or not d.st:
+            return text, kb([[(_money(c), f"d:start:{c}") for c in (500, 1000, 3000)],
+                             [(_money(c), f"d:start:{c}") for c in (5000, 10000)], [BACK]])
+        return text, kb([
+            [("🔄 Yangilash", "m:day"), ("📜 Kunlik savdolar", "c:kunlik_savdolar")],
+            [("⏸ To'xtatish", "d:stop") if d.active else ("▶️ Davom ettirish", "d:resume"),
+             ("🔁 Qaytadan boshlash", "d:restart")],
+            [BACK]])
+
+    def day_restart(self):
+        return ("🔁 Kunlik savdoni qaytadan boshlash — summani tanlang (eski kunlik natijalar o'chadi):",
+                kb([[(_money(c), f"d:start:{c}") for c in (500, 1000, 3000)],
+                    [(_money(c), f"d:start:{c}") for c in (5000, 10000)], [("⬅️ Orqaga", "m:day")]]))
+
+    PAGES = {"main": "main", "day": "day", "rep": "report", "set": "settings", "strat": "strategy", "share": "share",
              "cap": "capital", "help": "help"}
 
     # ---------- tugma bosilishi ----------
@@ -124,6 +142,15 @@ class Menu:
                 return ("ask", "✍️ Umumiy summani raqam bilan yozing (masalan: 2500)")
             conf = self.confirm_capital(int(arg))
             return ("edit", *conf) if conf else ("run", f"/demo_boshlash {arg}")
+        if kind == "d":
+            name, _, val = arg.partition(":")
+            if name == "start":
+                return ("run", f"/kunlik_boshlash {val}")
+            if name == "restart":
+                return ("edit", *self.day_restart())
+            if self.svc.day:
+                (self.svc.day.stop if name == "stop" else self.svc.day.resume)()
+            return ("edit", *self.day())
         if kind == "kc":
             return ("run", f"/demo_boshlash {arg}")
         if kind == "s":

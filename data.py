@@ -58,3 +58,45 @@ def last_complete_us_day() -> pd.Timestamp:
     now = datetime.now(ZoneInfo("America/New_York"))
     d = now.date() if now.time() >= time(16, 30) else now.date() - timedelta(days=1)
     return pd.Timestamp(d)
+
+
+NY = ZoneInfo("America/New_York")
+
+
+def load_intraday(tickers, period="20d", interval="5m") -> dict:
+    """5 daqiqalik shamlar, Nyu-York vaqtida (tz'siz), faqat asosiy savdo soatlari 9:30–15:55."""
+    import yfinance as yf
+    tickers = list(dict.fromkeys(tickers))
+    out = {}
+    for i in range(0, len(tickers), CHUNK):
+        part = tickers[i:i + CHUNK]
+        for attempt in range(3):
+            try:
+                df = yf.download(part, period=period, interval=interval, group_by="ticker", auto_adjust=False,
+                                 prepost=False, threads=True, progress=False)
+                break
+            except Exception as ex:
+                print("kun ichi yuklash xatosi:", ex)
+                df = None
+                _time.sleep(5 * (attempt + 1))
+        if df is None or df.empty:
+            continue
+        for tk in part:
+            try:
+                g = (df[tk] if isinstance(df.columns, pd.MultiIndex) else df)[["Open", "High", "Low", "Close", "Volume"]]
+            except KeyError:
+                continue
+            g = g.dropna()
+            if g.empty:
+                continue
+            if g.index.tz is not None:
+                g.index = g.index.tz_convert(NY).tz_localize(None)
+            tod = g.index - g.index.normalize()
+            g = g[(tod >= pd.Timedelta(hours=9, minutes=30)) & (tod <= pd.Timedelta(hours=15, minutes=55))]
+            if len(g):
+                out[str(tk)] = g.astype(float)
+    return out
+
+
+def ny_now():
+    return datetime.now(NY).replace(tzinfo=None)

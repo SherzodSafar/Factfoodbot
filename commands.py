@@ -26,6 +26,8 @@ Buyruqlar (xohlasangiz yozib ham ishlatsa bo'ladi):
 /tahlil — xato va ustunliklar, sozlamani tekshirish
 /qabul — tahlil taklifini qo'llash (/qabul arzon — bitta guruhga)
 /baho — real pulga o'tishga tayyorlik
+/kunlik — ⚡️ kunlik savdo (day trade) demo holati
+/kunlik_boshlash 1000 — kunlik savdo demosini boshlash, /kunlik_toxtatish, /kunlik_davom, /kunlik_savdolar
 /test — o'tgan 2 yilda sinash (/test AAPL,F 2024-01-01 2025-12-31 3000)
 /strategiya momentum | breakout | combo | pullback
 /xavf 1 — har savdoda kapitalning necha % i xavf ostida (0.25–2)
@@ -178,7 +180,8 @@ def parse_args(args):
 
 
 class Service:
-    def __init__(self, paper, loader, cutoff_fn):
+    def __init__(self, paper, loader, cutoff_fn, day=None):
+        self.day = day              # daylive.DayService (kunlik savdo) — bo'lmasa None
         self.paper = paper
         self.loader = loader        # loader(tickers, start, end=None) -> {tk: DataFrame}
         self.cutoff_fn = cutoff_fn  # oxirgi yopilgan savdo kuni
@@ -652,6 +655,37 @@ class Service:
         self.paper.set_all_params("kasr aksiya sozlamasi", whole_shares=not on)
         return ["✅ " + ("Kasr aksiya yoqildi." if on else "Endi faqat butun aksiya olinadi.")]
 
+    # ---------- kunlik savdo (day trade) ----------
+    def cmd_day(self):
+        return [self.day.status()] if self.day else ["Kunlik savdo ulanmagan."]
+
+    def cmd_day_start(self, args):
+        if not self.day:
+            return ["Kunlik savdo ulanmagan."]
+        _, _, nums, _ = parse_args(args)
+        cap = nums[0] if nums else 1000.0
+        if cap < 100:
+            return ["Summa kamida 100$ bo'lsin. Masalan: /kunlik_boshlash 1000"]
+        self.day.start(cap)
+        from daylive import HOW
+        return [f"⚡️ Kunlik savdo demo boshlandi — {_money(cap)} virtual pul.\n\n{HOW}\n\n"
+                "Birinchi savdo AQSh birjasining keyingi ish kunida (Toshkentda ~19:30 dan keyin) bo'ladi."]
+
+    def cmd_day_stop(self):
+        if not (self.day and self.day.st):
+            return ["Kunlik savdo hali boshlanmagan."]
+        self.day.stop()
+        return ["⏸ Kunlik savdo to'xtatildi. Natijalar saqlanadi. Davom ettirish: /kunlik_davom"]
+
+    def cmd_day_resume(self):
+        if not (self.day and self.day.st):
+            return ["Kunlik savdo hali boshlanmagan. /kunlik_boshlash 1000"]
+        self.day.resume()
+        return ["▶️ Kunlik savdo davom etmoqda."]
+
+    def cmd_day_trades(self):
+        return [self.day.trades_text()] if self.day else ["Kunlik savdo ulanmagan."]
+
     # ---------- marshrutlash ----------
     LONG = ("/test", "/tahlil", "/demo_boshlash", "/yangilash", "/bozor", "/tanlash")
 
@@ -674,6 +708,9 @@ class Service:
             "/kasr": lambda: self.cmd_fractional(args), "/strategiya": lambda: self.cmd_strategy(args),
             "/filtr": lambda: self.cmd_filter(args),
             "/baho": self.cmd_grade,
+            "/kunlik": self.cmd_day, "/kunlik_boshlash": lambda: self.cmd_day_start(args),
+            "/kunlik_toxtatish": self.cmd_day_stop, "/kunlik_davom": self.cmd_day_resume,
+            "/kunlik_savdolar": self.cmd_day_trades,
         }
         fn = table.get(cmd)
         return fn() if fn else ["Noma'lum buyruq. /yordam"]
