@@ -282,12 +282,16 @@ class Service:
         return (f"\n\n⚠️ Bitta xaridga ~{_money(budget)} ajratiladi va faqat butun aksiya olinadi — "
                 f"{budget:.0f}$ dan qimmat aksiyalarni ololmaydi. Yechim: ⚙️ Sozlamalar → Kasr aksiya.")
 
-    def _events(self, res):
+    def _events(self, res, skip_trades=False):
         lines = []
         for tier, (n, events) in res.items():
-            if events:
+            evs = [e for e in events if not (skip_trades and self._is_trade(e))]
+            if skip_trades:   # sanalar faqat savdo bo'lmagan hodisa bilan birga kerak
+                evs = [e for i, e in enumerate(evs) if not e.startswith("📆") or
+                       (i + 1 < len(evs) and not evs[i + 1].startswith("📆"))]
+            if evs:
                 lines.append(f"\n{TIER_SHORT[tier]}")
-                lines += ["  " + e for e in events]
+                lines += ["  " + e for e in evs]
         return "\n".join(lines).strip()
 
     def cmd_update(self):
@@ -307,12 +311,36 @@ class Service:
         n = max((v[0] for v in res.values()), default=0)
         last = self._last_date()
         lines = [f"🌙 Kunlik hisobot — {sana(last, kun=True) if last else '—'}", "", self._summary(day=True)]
-        ev = self._events(res)
-        lines += ["", "Bugungi harakatlar:", ev] if ev else ["", "Bugun xarid yoki sotuv bo'lmadi."]
+        trades = self._trade_msgs(res)
+        other = self._events(res, skip_trades=True)
+        lines.append("")
+        lines.append(f"Bugun: {len(trades)} ta savdo (har biri alohida xabarda)." if trades else
+                     "Bugun xarid yoki sotuv bo'lmadi.")
+        if other:
+            lines += ["", other]
         if not n:
             lines.append("ℹ️ Yangi ma'lumot kelmadi (dam olish kuni yoki narx yuklanmadi).")
         lines.append("\nBatafsil: 💼 Aksiyalarim")
-        return ["\n".join(lines)]
+        return trades + ["\n".join(lines)]
+
+    @staticmethod
+    def _is_trade(e):
+        return e.startswith(("🟢", "💰", "🔻"))
+
+    def _trade_msgs(self, res):
+        """Har bir sotib olish / sotish — alohida xabar."""
+        out = []
+        for tier, (n, events) in res.items():
+            day = None
+            for e in events:
+                if e.startswith("📆"):
+                    day = e
+                elif self._is_trade(e):
+                    head = "🟢 SOTIB OLINDI" if e.startswith("🟢") else "💰 SOTILDI (foyda)" if e.startswith("💰") \
+                        else "🔻 SOTILDI (zarar)"
+                    body = e.split(": ", 1)[1] if ": " in e.split("\n")[0] else e
+                    out.append(f"{head} — {TIER_NAME[tier]}" + (f"\n{day}" if day else "") + f"\n\n{body}")
+        return out
 
     def _last_date(self):
         return max((self.paper.portfolio(t).last_date or "" for t in self.paper.tiers()), default="") or None

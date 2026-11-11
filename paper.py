@@ -139,3 +139,20 @@ class Paper:
         if "start" not in b:
             b.update(start=float(c.iloc[-1]), start_date=c.index[-1].strftime("%Y-%m-%d"))
         b.update(last=float(c.iloc[-1]), last_date=c.index[-1].strftime("%Y-%m-%d"))
+
+    def describe(self):
+        """Loglar uchun qisqa holat (shaxsiy ma'lumot yo'q): strategiya, aksiyalar, savdolar soni."""
+        if not self.active:
+            return "Demo faol emas"
+        st = self.state
+        out = [f"Demo: boshlangan {st.get('started')}, kapital {st.get('capital')}, sent={st.get('sent')}"]
+        for t in self.tiers():
+            b = self.book(t)
+            pf = b["portfolio"]
+            p = b["params"]
+            val = pf["equity"][-1][1] if pf["equity"] else pf["capital"]
+            out.append(f"  {t}: strategiya={p.get('strategy', 'pullback(eski)')} butun={p.get('whole_shares')} "
+                       f"filtr={p.get('market_filter')} aksiyalar={len(b['tickers'])} ochiq={list(pf['positions'])} "
+                       f"kutilmoqda={list(pf['pending'])} yopilgan={len(pf['trades'])} qiymat={val} "
+                       f"oxirgi_kun={pf['last_date']} kunlar={len(pf['equity'])}")
+        return "\n".join(out)

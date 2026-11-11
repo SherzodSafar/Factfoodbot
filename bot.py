@@ -142,6 +142,8 @@ def run_and_send(chat_id, fn, with_menu=False):
             send(chat_id, f"⚠️ Xatolik: {e}")
         finally:
             backup_state()
+            print(f"[{datetime.now(TZ):%Y-%m-%d %H:%M}] bajarildi: {getattr(fn, '__name__', 'buyruq')}\n"
+                  + paper.describe(), flush=True)
 
 
 # ---------------- Jadval ----------------
@@ -296,7 +298,7 @@ def main():
         traceback.print_exc()
     threading.Thread(target=scheduler, daemon=True).start()
     threading.Thread(target=keep_awake, daemon=True).start()
-    print("Bot ishga tushdi")
+    print("Bot ishga tushdi\n" + paper.describe(), flush=True)
     offset = None
     while True:
         try:
