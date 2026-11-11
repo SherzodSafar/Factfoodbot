@@ -52,8 +52,12 @@ Cheklov: ro'yxat bugungi aksiyalardan (yo'qolib ketganlar yo'q) — real natija 
 ### Real pulga o'tish mezonlari (`/baho`)
 ≥3 oy demo, ≥30 yopilgan savdo, profit factor ≥1.3, natija ijobiy, SPY dan yaxshi, har guruhda tushish <10%.
 
-### Kun ichi savdo
-Qo'shilmadi: bepul kun ichi ma'lumot qisqa va kechikadi, xarajatlar foydani yeydi, kichik hisoblarda cheklovlar bor.
+### ⚡️ Kunlik savdo (day trade) demo — `daytrade.py`, `daylive.py`
+Alohida virtual hisob (`/kunlik_boshlash 1000`). AQSh birjasi ochiq paytda bot har daqiqada 5 daqiqalik shamlarni tekshiradi:
+9:35 da ochilishda hajmi ≥3x oshgan va o'sgan top 5 aksiya tanlanadi (SPY ochilishda pasaysa — savdo yo'q),
+birinchi shamning yuqorisidan oshsa xarid, himoya — shamning pasti, maqsad — 2R, 15:55 da hammasi sotiladi.
+Har bir savdo haqida darhol xabar. Real sinov (`research/daytrade_lab.py`, 45 kun): eng yaxshi variant +1.5%,
+ko'pchiligi zararda — TAJRIBA, foyda kafolati yo'q.
 
 ### Fayllar
 `bot.py` (Telegram, jadval, zaxira), `menu.py` (inline tugmalar), `commands.py` (buyruqlar, yordam matnlari),

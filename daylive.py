@@ -209,10 +209,15 @@ class DayService:
 
 
 HOW = """Qanday ishlaydi:
-• AQSh birjasi ochilgach (Toshkentda ~19:30) birinchi 5 daqiqada savdo hajmi odatdagidan kamida 2 baravar
-  oshgan va narxi o'sgan aksiyalar tanlanadi (eng kuchli 10 tasi).
-• Narx shu 5 daqiqaning eng yuqori nuqtasidan oshsa — bot sotib oladi.
+• AQSh birjasi ochilgach (Toshkentda ~19:30) birinchi 5 daqiqada savdo hajmi odatdagidan kamida 3 baravar
+  oshgan va narxi o'sgan aksiyalardan eng kuchli 5 tasi tanlanadi.
+• Agar umumiy bozor (SPY) ochilishda pasaygan bo'lsa — o'sha kuni savdo qilinmaydi (himoya).
+• Narx birinchi 5 daqiqaning eng yuqori nuqtasidan oshsa — bot sotib oladi.
 • Himoya narxi — shu 5 daqiqaning eng past nuqtasi: narx shunga tushsa, darhol sotadi.
-• Kun oxirida (Toshkentda ~02:00) barcha aksiyalar sotiladi — kechaga hech narsa qolmaydi.
-• Har bir savdoda pulning ko'pi bilan ~1% i xavf ostida, kuniga ko'pi bilan 6 ta savdo.
-• Har bir xarid va sotuv haqida darhol xabar keladi."""
+• Foyda maqsadi — xavfning 2 baravari: narx shunga yetsa, foydani olib sotadi.
+• Kun oxirida (Toshkentda ~02:00) qolganlari sotiladi — kechaga hech narsa qolmaydi.
+• Har savdoda pulning ko'pi bilan ~0.5% i xavf ostida, kuniga ko'pi bilan 6 ta savdo.
+• Har bir xarid va sotuv haqida darhol xabar keladi.
+
+⚠️ Tajriba: oxirgi 45 kunlik real sinovda eng yaxshi variant ham atigi +1.5% bergan, ko'p variantlar
+zararda bo'lgan. Kunlik savdo foyda kafolat bermaydi — natijani demoda kuzating."""

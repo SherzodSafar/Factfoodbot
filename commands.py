@@ -92,12 +92,12 @@ O'tmish kelajak kafolati emas. Shuning uchun avval demo."""),
 
 Nega har kuni sozlamalarni o'zgartirmaydi? Sinovda "eng yaxshi sozlamaga tez-tez o'tish"
 barqaror sozlamadan yaxshi natija bermadi — u o'tmishga moslashib qoladi."""),
-    "daily": ("⏱ Kun ichi savdo haqida", """Kun ichi (intraday) savdo qo'shilmadi, chunki:
-• Bepul narx ma'lumoti kechikadi va kun ichi tarixi juda qisqa (≈60 kun) — strategiyani ishonchli sinab bo'lmaydi.
-• Spred va komissiya kichik harakatlarda foydaning katta qismini yeydi.
-• Ko'p brokerlarda kichik hisobda kun ichi savdoga cheklov bor.
-• Tadqiqotlarga ko'ra kun ichi savdo qiluvchilarning ko'pchiligi zarar ko'radi.
-Bot kunlik grafikda ishlaydi: savdolar odatda bir necha haftadan bir necha oygacha davom etadi."""),
+    "daily": ("⚡️ Kunlik savdo (day trade)", """Alohida demo: /menyu → ⚡️ Kunlik savdo → summani tanlang.
+• Ochilishda (Toshkentda ~19:30) savdo hajmi keskin oshgan va o'sayotgan aksiyalarni oladi.
+• Himoya narxi va foyda maqsadi qo'yiladi, kun oxirida (~02:00) hammasi sotiladi.
+• Har bir xarid va sotuv haqida darhol xabar keladi.
+⚠️ Tajriba: real 45 kunlik sinovda eng yaxshi variant +1.5% bergan, ko'p variantlar zararda bo'lgan.
+Kunlik savdoda xarajatlar katta va natija tasodifga ko'p bog'liq — avval demoda uzoq kuzating."""),
     "real": ("🎓 Real pulga qachon?", """/baho dagi barcha mezonlar bajarilsin:
 kamida 3 oy demo, kamida 30 ta yopilgan savdo, jami foyda jami zarardan 1.3 baravar ko'p,
 natija foydada, S&P 500 indeksidan yaxshi, pasayish 10% dan kam.

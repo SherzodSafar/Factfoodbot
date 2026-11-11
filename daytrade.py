@@ -10,6 +10,10 @@ Strategiyalar:
           yopilsa — keyingi shamda xarid; himoya — shamning eng past nuqtasi; kun oxirida sotiladi.
 
 Bitta funksiya (DayBook.on_bar) ham tarixiy sinovda, ham botda ishlatiladi — natija bir xil hisoblanadi.
+
+Real sinov (research/daytrade_lab.py, 2026-sentabr — noyabr, 45 kun, 242 aksiya): ko'p variantlar zararda.
+Eng barqarori (standart sozlama): orb, hajm ≥3x, top 5, SPY filtri, maqsad 2R — +1.5%, pasayish −5.9%.
+Bu "nolga yaqin" natija: kunlik savdo bu yerda TAJRIBA sifatida, foyda kafolati yo'q.
 """
 from __future__ import annotations
 
@@ -24,18 +28,18 @@ from fmt import dona, natija, pul
 @dataclass
 class DayParams:
     strategy: str = "orb"
-    rvol_min: float = 2.0      # birinchi sham hajmi o'rtachadan necha baravar katta bo'lsin
-    top_n: int = 10            # kuniga eng ko'pi bilan nechta nomzod
+    rvol_min: float = 3.0      # birinchi sham hajmi o'rtachadan necha baravar katta bo'lsin
+    top_n: int = 5             # kuniga eng ko'pi bilan nechta nomzod
     spike_mult: float = 5.0    # spike: 5 daqiqalik hajm odatdagidan necha baravar
-    risk_pct: float = 1.0      # himoya narxida sotilsa kapitalning necha % i yo'qotiladi
+    risk_pct: float = 0.5      # himoya narxida sotilsa kapitalning necha % i yo'qotiladi
     max_pos_pct: float = 25.0  # bitta aksiyaga kapitalning ko'pi bilan necha % i
     max_trades: int = 6        # kuniga eng ko'p savdo
     min_price: float = 5.0
     commission: float = 0.0005
     slippage: float = 0.0005
     whole_shares: bool = False
-    target_r: float = 0.0      # foyda maqsadi: xavfning necha baravari (0 — kun oxirigacha ushlash)
-    spy_filter: bool = False   # SPY ning o'zi ochilishda o'smasa, bugun savdo qilinmaydi
+    target_r: float = 2.0      # foyda maqsadi: xavfning necha baravari (0 — kun oxirigacha ushlash)
+    spy_filter: bool = True    # SPY ning o'zi ochilishda o'smasa, bugun savdo qilinmaydi
 
     @classmethod
     def from_dict(cls, d):
