@@ -306,7 +306,7 @@ def main():
     restore_state()
     paper = Paper(STATE_FILE)
     service = Service(paper, data.load, data.last_complete_us_day,
-                      DayService(paper, data.load_intraday, data.ny_now))
+                      DayService(paper, data.load_intraday, data.ny_now, data.scan_gainers))
     menu = Menu(service)
     try:
         tg("deleteWebhook", json={})

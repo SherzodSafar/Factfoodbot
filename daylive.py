@@ -18,7 +18,8 @@ BAR = pd.Timedelta(minutes=5)
 
 
 class DayService:
-    def __init__(self, paper, intraday_loader, now_fn):
+    def __init__(self, paper, intraday_loader, now_fn, scanner=None):
+        self.scanner = scanner        # scanner(min_gain, min_price) -> [tickerlar] (runner uchun)
         self.paper = paper
         self.load = intraday_loader   # load(tickers, period=...) -> {tk: 5m DataFrame NY vaqtida}
         self.now = now_fn             # Nyu-York vaqti (tz'siz)
@@ -95,6 +96,8 @@ class DayService:
         book = self._book()
         if book.days and book.days[-1][0] == today:
             return []                       # bugun yopilgan
+        if book.p.strategy == "runner":
+            return self._tick_runner(book, now, today, tod)
         msgs = []
         if book.day != today:
             data = self.load(list(UNIVERSE) + ["SPY"], period="20d")
@@ -130,7 +133,54 @@ class DayService:
         self._save(book)
         return msgs
 
-    def _process(self, book, frames, now):
+    def _tick_runner(self, book, now, today, tod):
+        """Runner: har 5 daqiqada skaner + yangi shamlar."""
+        st = self.st
+        last = st.get("last_tick")
+        if last and now - pd.Timestamp(last) < pd.Timedelta(minutes=4, seconds=30) and tod < CLOSE_AFTER:
+            return []
+        msgs = []
+        if book.day != today:
+            book.new_day(today)
+            # kech ishga tushsa — faqat so'nggi shamlardan boshlaymiz (o'tmishdagi "uchish"ni bilib savdo qilmaslik uchun)
+            start = max(now.floor("5min") - pd.Timedelta(minutes=10), now.normalize() + OPEN_BAR)
+            book.last_bar = str(start)
+            with self.paper.lock:
+                st.update(avg_bar={}, prev_close={}, scan=[])
+        scan = []
+        if tod < CLOSE_AFTER and self.scanner:
+            try:
+                scan = self.scanner(book.p.min_gain, book.p.runner_price)
+            except Exception as ex:
+                print("skaner xatosi:", ex)
+        new = [t for t in scan if t not in st["prev_close"]]
+        if new:
+            hist = split_days(self.load(new, period="10d"))
+            d0 = pd.Timestamp(today)
+            prior = [d for d in hist if d < d0]
+            with self.paper.lock:
+                for tk in new:
+                    vols = [hist[d][tk]["Volume"].mean() for d in prior if tk in hist[d]]
+                    pcs = [float(hist[d][tk]["Close"].iloc[-1]) for d in prior if tk in hist[d]]
+                    st["prev_close"][tk] = pcs[-1] if pcs else None
+                    if len(vols) >= 3 and sum(vols) > 0:
+                        st["avg_bar"][tk] = round(sum(vols) / len(vols))
+        tks = sorted(set(scan) | set(book.orders) | set(book.positions))
+        frames = self.load(tks, period="1d") if tks else {}
+        frames = {k: g[g.index.normalize() == pd.Timestamp(today)] for k, g in frames.items()}
+        msgs += self._process(book, frames, now, {k: v for k, v in st["prev_close"].items() if v})
+        with self.paper.lock:
+            st["last_tick"] = str(now)
+            if scan:
+                st["scan"] = scan[:10]
+        if tod >= CLOSE_AFTER:
+            lastc = {tk: float(g["Close"].iloc[-1]) for tk, g in frames.items() if len(g)}
+            ev = book.end_day(lastc)
+            msgs += [self._trade_msg(e) for e in ev] + [self._day_summary(book)]
+        self._save(book)
+        return msgs
+
+    def _process(self, book, frames, now, prev_close=None):
         recs = {tk: g.to_dict("index") for tk, g in frames.items()}
         last = pd.Timestamp(book.last_bar) if book.last_bar else None
         times = sorted({ts for r in recs.values() for ts in r
@@ -143,7 +193,7 @@ class DayService:
                 hi[tk] = max(hi.get(tk, 0), r["High"])
             if ts not in times or _tod(ts) == OPEN_BAR:
                 continue
-            for e in book.on_bar(ts, rows, self.st.get("avg_bar"), hi):
+            for e in book.on_bar(ts, rows, self.st.get("avg_bar"), hi, prev_close):
                 msgs.append(self._trade_msg(e) if e.startswith(("🟢", "💰", "🔻")) else self._wrap(e))
         return msgs
 
@@ -190,6 +240,8 @@ class DayService:
             lines.append(f"\n📆 {sana(book.day, kun=True)}")
             if book.watch:
                 lines.append("👀 Nomzodlar: " + ", ".join(book.watch))
+            if self.st.get("scan") and book.p.strategy == "runner":
+                lines.append("🔭 Skanerda (bugun eng ko'p o'sganlar): " + ", ".join(self.st["scan"]))
             for tk, pos in book.positions.items():
                 lines.append(f"🟢 Ochiq: {tk} — {dona(pos['qty'])} dona × {pos['entry']:.2f}$, "
                              f"{pd.Timestamp(pos['time']):%H:%M} NY da olingan, himoya {pos['stop']:.2f}$")

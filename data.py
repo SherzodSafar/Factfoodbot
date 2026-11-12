@@ -100,3 +100,13 @@ def load_intraday(tickers, period="20d", interval="5m") -> dict:
 
 def ny_now():
     return datetime.now(NY).replace(tzinfo=None)
+
+
+def scan_gainers(min_gain=10.0, min_price=0.5, min_volume=500_000, size=100) -> list:
+    """Yahoo skaneri: bugun kamida min_gain % o'sgan AQSh aksiyalari (eng ko'p o'sganlari birinchi)."""
+    import yfinance as yf
+    Q = yf.EquityQuery
+    q = Q("and", [Q("eq", ["region", "us"]), Q("gt", ["percentchange", min_gain]),
+                  Q("gt", ["dayvolume", min_volume]), Q("gt", ["intradayprice", min_price])])
+    r = yf.screen(q, size=size, sortField="percentchange", sortAsc=False)
+    return [x["symbol"] for x in r.get("quotes", []) if x.get("symbol", "").isalpha()]
