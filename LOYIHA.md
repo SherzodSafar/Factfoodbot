@@ -58,6 +58,9 @@ Alohida virtual hisob (`/kunlik_boshlash 1000`). AQSh birjasi ochiq paytda bot h
 birinchi shamning yuqorisidan oshsa xarid, himoya — shamning pasti, maqsad — 2R, 15:55 da hammasi sotiladi.
 Har bir savdo haqida darhol xabar. Real sinov (`research/daytrade_lab.py`, 45 kun): eng yaxshi variant +1.5%,
 ko'pchiligi zararda — TAJRIBA, foyda kafolati yo'q.
+Ikkinchi kunlik strategiya — "tez uchayotganlar" (runner, menyudan tanlanadi): Yahoo skaneridan bugun ≥20% o'sganlar,
+5 daqiqalik hajm ≥5x, maqsad +10%, himoya −5%, 60 daqiqa. Real sinov (`research/runner_lab.py`, 1 093 aksiya, 49 kun):
+barcha 10 variant zararda (eng yaxshisi −3.1%) — faqat kuzatish uchun.
 
 ### Fayllar
 `bot.py` (Telegram, jadval, zaxira), `menu.py` (inline tugmalar), `commands.py` (buyruqlar, yordam matnlari),

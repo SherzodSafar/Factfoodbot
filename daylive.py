@@ -12,6 +12,15 @@ from daytrade import OPEN_BAR, DayBook, DayParams, _tod, day_stats, first_bar_av
 from fmt import dona, foiz, natija, pul, sana
 from universe import UNIVERSE
 
+# Kunlik strategiyalar: real sinovdagi eng yaxshi sozlamalari bilan
+DAY_PRESETS = {
+    "orb": dict(strategy="orb", rvol_min=3.0, top_n=5, spy_filter=True, target_r=2.0, target_pct=0.0, stop_pct=0.0,
+                time_stop=0, slippage=0.0005, risk_pct=0.5, max_pos_pct=25.0),
+    "runner": dict(strategy="runner", min_gain=20.0, runner_vol=5.0, target_pct=10.0, stop_pct=5.0, time_stop=60,
+                   spy_filter=False, target_r=0.0, slippage=0.003, risk_pct=0.5, max_pos_pct=20.0, max_trades=8),
+}
+DAY_NAMES = {"orb": "Ochilishda hajmi oshganlar (tavsiya)", "runner": "Tez uchayotganlar (runner) — tajriba"}
+
 START_AFTER = pd.Timedelta(hours=9, minutes=36)
 CLOSE_AFTER = pd.Timedelta(hours=16, minutes=5)
 BAR = pd.Timedelta(minutes=5)
@@ -75,6 +84,11 @@ class DayService:
                       f"   {t['entry']:.2f}$ → {t['exit']:.2f}$   {natija(t['pnl'], t['pnl_pct'])}",
                       f"   Sabab: {'himoya narxiga tushdi' if t['reason'] == 'stop' else 'kun oxiri'}"]
         return "\n".join(lines)
+
+    def set_strategy(self, name):
+        with self.paper.lock:
+            self.st["params"] = {**self.st["params"], **DAY_PRESETS[name]}
+            self.paper.save()
 
     def set_param(self, **kw):
         with self.paper.lock:
@@ -153,6 +167,9 @@ class DayService:
                 scan = self.scanner(book.p.min_gain, book.p.runner_price)
             except Exception as ex:
                 print("skaner xatosi:", ex)
+        with self.paper.lock:   # kun o'rtasida strategiya almashtirilgan bo'lsa ham
+            st.setdefault("prev_close", {})
+            st.setdefault("avg_bar", {})
         new = [t for t in scan if t not in st["prev_close"]]
         if new:
             hist = split_days(self.load(new, period="10d"))
@@ -235,7 +252,8 @@ class DayService:
                  f"💰 {pul(v)} (boshida {pul(book.capital)}) → {pul(v - book.capital, 0, True)} "
                  f"({foiz((v / book.capital - 1) * 100)})",
                  f"Savdo kunlari: {stt['days']} • savdolar: {stt['n']} ta (✅ {stt['wins']} / 🔴 {stt['n'] - stt['wins']})"
-                 + (f" • foydali kunlar: {stt['green_days']}" if stt["days"] else "")]
+                 + (f" • foydali kunlar: {stt['green_days']}" if stt["days"] else ""),
+                 f"🧠 Strategiya: {DAY_NAMES.get(book.p.strategy, book.p.strategy)}"]
         if book.day:
             lines.append(f"\n📆 {sana(book.day, kun=True)}")
             if book.watch:
@@ -259,6 +277,16 @@ class DayService:
         lines.append("\n🕘 Savdo vaqti: AQSh birjasi ochiq paytda — Toshkent vaqti bilan taxminan 19:30 dan 02:00 gacha.")
         return "\n".join(lines)
 
+
+RUNNER_HOW = """🚀 Tez uchayotganlar (runner) — qanday ishlaydi:
+• Har 5 daqiqada Yahoo skaneridan bugun kamida +20% o'sgan aksiyalar olinadi (narx cheklovi yo'q, 0.5$ dan qimmat).
+• 5 daqiqalik hajm odatdagidan ≥5 baravar ko'p va sham yuqorida yopilsa — "🚀 uchmoqda" xabari.
+• Narx shu shamning yuqorisidan oshsa — sotib oladi.
+• Maqsad +10% — yetsa foydani olib sotadi; himoya −5%; 60 daqiqada maqsadga yetmasa — sotadi.
+
+⚠️ Real sinov (1 093 aksiya, 49 kun): BARCHA 10 variant zararda bo'lgan — eng yaxshisi −3.1%,
+boshqalari −8% dan −35% gacha. Sabab: hajm portlashi ko'ringanda o'sishning ko'p qismi o'tib bo'lgan,
+kichik aksiyalar keskin qaytadi. Faqat kuzatish va o'rganish uchun — real pulda tavsiya etilmaydi."""
 
 HOW = """Qanday ishlaydi:
 • AQSh birjasi ochilgach (Toshkentda ~19:30) birinchi 5 daqiqada savdo hajmi odatdagidan kamida 3 baravar

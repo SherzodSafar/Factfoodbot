@@ -110,16 +110,24 @@ class Menu:
                              [(_money(c), f"d:start:{c}") for c in (5000, 10000)], [BACK]])
         return text, kb([
             [("🔄 Yangilash", "m:day"), ("📜 Kunlik savdolar", "c:kunlik_savdolar")],
+            [("🧠 Strategiyani tanlash", "m:daystrat")],
             [("⏸ To'xtatish", "d:stop") if d.active else ("▶️ Davom ettirish", "d:resume"),
              ("🔁 Qaytadan boshlash", "d:restart")],
             [BACK]])
+
+    def day_strategy(self):
+        from daylive import DAY_NAMES, HOW, RUNNER_HOW
+        cur = self.svc.day._book().p.strategy
+        rows = [[(("🔘 " if k == cur else "⚪️ ") + n, f"d:strat:{k}")] for k, n in DAY_NAMES.items()]
+        return ("🧠 Kunlik savdo strategiyasi\n\n1) " + HOW + "\n\n2) " + RUNNER_HOW,
+                kb(rows + [[("⬅️ Orqaga", "m:day")]]))
 
     def day_restart(self):
         return ("🔁 Kunlik savdoni qaytadan boshlash — summani tanlang (eski kunlik natijalar o'chadi):",
                 kb([[(_money(c), f"d:start:{c}") for c in (500, 1000, 3000)],
                     [(_money(c), f"d:start:{c}") for c in (5000, 10000)], [("⬅️ Orqaga", "m:day")]]))
 
-    PAGES = {"main": "main", "day": "day", "rep": "report", "set": "settings", "strat": "strategy", "share": "share",
+    PAGES = {"main": "main", "day": "day", "daystrat": "day_strategy", "rep": "report", "set": "settings", "strat": "strategy", "share": "share",
              "cap": "capital", "help": "help"}
 
     # ---------- tugma bosilishi ----------
@@ -148,6 +156,9 @@ class Menu:
                 return ("run", f"/kunlik_boshlash {val}")
             if name == "restart":
                 return ("edit", *self.day_restart())
+            if name == "strat" and self.svc.day and self.svc.day.st:
+                self.svc.day.set_strategy(val)
+                return ("edit", *self.day_strategy())
             if self.svc.day:
                 (self.svc.day.stop if name == "stop" else self.svc.day.resume)()
             return ("edit", *self.day())
