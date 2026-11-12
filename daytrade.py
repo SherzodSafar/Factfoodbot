@@ -40,6 +40,15 @@ class DayParams:
     whole_shares: bool = False
     target_r: float = 2.0      # foyda maqsadi: xavfning necha baravari (0 — kun oxirigacha ushlash)
     spy_filter: bool = True    # SPY ning o'zi ochilishda o'smasa, bugun savdo qilinmaydi
+    # runner — "tez uchayotgan aksiyalar" (narx cheklovi yo'q, faqat runner_price dan qimmat)
+    min_gain: float = 10.0       # bugun kamida necha % o'sgan bo'lsin
+    runner_vol: float = 5.0      # 5 daqiqalik hajm odatdagidan necha baravar
+    min_dollar_vol: float = 200000.0  # signal shamidagi savdo summasi ($) — likvidlik uchun
+    runner_price: float = 0.5    # bundan arzon aksiyalar olinmaydi (ma'lumot ishonchsiz)
+    target_pct: float = 0.0      # foyda maqsadi, % (0 — target_r ishlatiladi)
+    stop_pct: float = 0.0        # himoya: kirishdan necha % pastda (0 — signal shamining pasti)
+    time_stop: int = 0           # necha daqiqada maqsadga yetmasa — sotiladi (0 — cheklovsiz)
+    max_open: int = 3            # bir vaqtda eng ko'p ochiq savdo
 
     @classmethod
     def from_dict(cls, d):
@@ -50,6 +59,8 @@ class DayParams:
 
 
 OPEN_BAR = pd.Timedelta(hours=9, minutes=30)
+RUNNER_UNTIL = pd.Timedelta(hours=15)            # runner: 15:00 dan keyin yangi kirish yo'q
+ORDER_TTL = pd.Timedelta(minutes=15)             # runner buyurtmasi shuncha vaqt amal qiladi
 LAST_BAR = pd.Timedelta(hours=15, minutes=55)   # shu shamning yopilishida hammasi sotiladi
 SPIKE_FROM = pd.Timedelta(hours=10)
 
@@ -74,16 +85,17 @@ class DayBook:
         self.done = 0          # bugun ochilgan savdolar soni
         self.last_bar = None   # oxirgi qayta ishlangan sham vaqti (str)
         self.watch = []        # bugungi nomzodlar (xabar uchun)
+        self.traded = []       # bugun signal bergan aksiyalar (runner: kuniga bir marta)
 
     def to_dict(self):
         return dict(capital=self.capital, cash=self.cash, positions=self.positions, orders=self.orders,
                     trades=self.trades, days=self.days, day=self.day, done=self.done, last_bar=self.last_bar,
-                    watch=self.watch)
+                    watch=self.watch, traded=self.traded)
 
     @classmethod
     def from_dict(cls, d, p):
         b = cls(p, d["capital"])
-        for k in ("cash", "positions", "orders", "trades", "days", "day", "done", "last_bar", "watch"):
+        for k in ("cash", "positions", "orders", "trades", "days", "day", "done", "last_bar", "watch", "traded"):
             setattr(b, k, d.get(k, getattr(b, k)))
         return b
 
@@ -95,7 +107,9 @@ class DayBook:
     def _buy(self, tk, px, stop, ts):
         p = self.p
         buy = px * (1 + p.slippage)
-        if buy - stop <= 0 or self.done >= p.max_trades:
+        if p.stop_pct > 0:
+            stop = max(stop, buy * (1 - p.stop_pct / 100))
+        if buy - stop <= 0 or self.done >= p.max_trades or len(self.positions) >= p.max_open:
             return None
         eq = self.value()
         budget = min(eq * p.risk_pct / 100 / (buy - stop) * buy, eq * p.max_pos_pct / 100, self.cash / (1 + p.commission))
@@ -105,11 +119,15 @@ class DayBook:
         if qty <= 0 or qty * buy < 1:
             return f"⚠️ {tk}: pul yetmadi (1 dona {buy:.2f}$)"
         self.cash -= qty * buy * (1 + p.commission)
-        tgt = buy + p.target_r * (buy - stop) if p.target_r > 0 else None
+        tgt = (buy * (1 + p.target_pct / 100) if p.target_pct > 0 else
+               buy + p.target_r * (buy - stop) if p.target_r > 0 else None)
         self.positions[tk] = dict(qty=qty, entry=buy, stop=stop, target=tgt, time=str(ts))
         self.done += 1
         return (f"🟢 Sotib olindi: {tk} — {dona(qty)} dona × {buy:.2f}$ = {pul(qty * buy, 2)} "
-                f"({pd.Timestamp(ts):%H:%M} NY)\n     🛡 Himoya narxi {stop:.2f}$ — kun oxirida (15:55) albatta sotiladi")
+                f"({pd.Timestamp(ts):%H:%M} NY)\n     🛡 Himoya narxi {stop:.2f}$ ({(stop / buy - 1) * 100:+.1f}%)"
+                + (f"\n     🎯 Maqsad {tgt:.2f}$ ({(tgt / buy - 1) * 100:+.1f}%) — yetsa foydani olib sotadi" if tgt else "")
+                + (f"\n     ⏱ {p.time_stop} daqiqada maqsadga yetmasa — sotadi" if p.time_stop else "")
+                + "\n     Kun oxirida (15:55) albatta sotiladi")
 
     def _sell(self, tk, px, ts, reason):
         p = self.p
@@ -124,14 +142,15 @@ class DayBook:
                  pnl=round(proceeds - cost, 2), pnl_pct=round((proceeds / cost - 1) * 100, 2))
         self.trades.append(t)
         why = {"stop": "narx himoya narxiga tushdi — zarar cheklandi", "eod": "kun oxiri — kunlik savdo yopildi",
-               "target": "maqsad narxga yetdi — foyda olindi"}[reason]
+               "target": "maqsad narxga yetdi — foyda olindi",
+               "time": "belgilangan vaqtda maqsadga yetmadi — chiqildi"}[reason]
         return (f"{'💰' if t['pnl'] > 0 else '🔻'} Sotildi: {tk} — {t['entry']:.2f}$ → {sell:.2f}$, "
                 f"{natija(t['pnl'], t['pnl_pct'])}, {mins} daqiqa ({pd.Timestamp(ts):%H:%M} NY)\n     Sabab: {why}")
 
     # ---------- asosiy ----------
     def new_day(self, day):
         self.day = str(pd.Timestamp(day).date())
-        self.orders, self.watch, self.done, self.last_bar = {}, [], 0, None
+        self.orders, self.watch, self.done, self.last_bar, self.traded = {}, [], 0, None, []
 
     def select_orb(self, first_bars: dict, avg_first_vol: dict, spy_bar=None):
         """first_bars: {tk: 9:30 shami (Open/High/Low/Close/Volume)}. Nomzodlarni tanlab, buyurtma qo'yadi."""
@@ -154,7 +173,8 @@ class DayBook:
                  + "\n     Narx birinchi 5 daqiqaning eng yuqori nuqtasidan oshsa — bot sotib oladi."]
                 if self.watch else ["👀 Bugun ochilishda hajmi keskin oshgan aksiya topilmadi — savdo bo'lmasligi mumkin."])
 
-    def on_bar(self, ts, rows: dict, avg_bar_vol: dict | None = None, day_high: dict | None = None):
+    def on_bar(self, ts, rows: dict, avg_bar_vol: dict | None = None, day_high: dict | None = None,
+               prev_close: dict | None = None):
         """Bitta 5 daqiqalik sham (barcha kuzatilayotgan aksiyalar uchun). Hodisalar ro'yxatini qaytaradi."""
         p = self.p
         tod = _tod(ts)
@@ -169,11 +189,16 @@ class DayBook:
                 ev.append(self._sell(tk, min(r["Open"], pos["stop"]), ts, "stop"))
             elif pos.get("target") and r["High"] >= pos["target"]:
                 ev.append(self._sell(tk, max(r["Open"], pos["target"]), ts, "target"))
+            elif p.time_stop and pd.Timestamp(ts) - pd.Timestamp(pos["time"]) >= pd.Timedelta(minutes=p.time_stop - 5):
+                ev.append(self._sell(tk, r["Close"], ts, "time"))
         # 2) kutilayotgan buyurtmalar: narx darajadan oshsa xarid (shu shamning o'zida himoya ham tekshiriladi)
         if tod < LAST_BAR:
             for tk in list(self.orders):
                 r = rows.get(tk)
                 o = self.orders[tk]
+                if o.get("expires") and pd.Timestamp(ts) > pd.Timestamp(o["expires"]):
+                    self.orders.pop(tk)
+                    continue
                 if r is None or tk in self.positions or r["High"] < o["level"]:
                     continue
                 self.orders.pop(tk)
@@ -193,6 +218,24 @@ class DayBook:
                     self.orders[tk] = dict(level=float(r["High"]), stop=float(r["Low"]), rvol=round(r["Volume"] / av, 1))
                     ev.append(f"⚡️ {tk}: 5 daqiqada hajm odatdagidan ×{r['Volume'] / av:.0f} — "
                               f"narx {r['High']:.2f}$ dan oshsa sotib olinadi")
+        # 3b) runner: bugun kuchli o'sgan + hajm portlashi + sham yuqorida yopilgan
+        if (p.strategy == "runner" and avg_bar_vol and prev_close
+                and OPEN_BAR + pd.Timedelta(minutes=5) <= tod < RUNNER_UNTIL):
+            for tk, r in rows.items():
+                av, pc = avg_bar_vol.get(tk), prev_close.get(tk)
+                if (not av or not pc or tk in self.traded or tk in self.positions or tk in self.orders
+                        or r["Close"] < p.runner_price or r["Close"] <= r["Open"]):
+                    continue
+                gain = (r["Close"] / pc - 1) * 100
+                rng = r["High"] - r["Low"]
+                if (gain >= p.min_gain and r["Volume"] >= p.runner_vol * av
+                        and r["Close"] * r["Volume"] >= p.min_dollar_vol and rng > 0
+                        and r["Close"] >= r["High"] - 0.25 * rng):
+                    self.traded.append(tk)
+                    self.orders[tk] = dict(level=float(r["High"]), stop=float(r["Low"]), rvol=round(r["Volume"] / av, 1),
+                                           expires=str(pd.Timestamp(ts) + ORDER_TTL))
+                    ev.append(f"🚀 {tk} uchmoqda: bugun {gain:+.0f}%, 5 daqiqada hajm odatdagidan ×{r['Volume'] / av:.0f} "
+                              f"({r['Close']:.2f}$). Narx {r['High']:.2f}$ dan oshsa — sotib olinadi.")
         # 4) kun oxiri: hammasi sotiladi
         if tod >= LAST_BAR:
             for tk in list(self.positions):
@@ -253,7 +296,7 @@ def first_bar_avgs(days: dict, upto, n=14):
     return avg(fv), avg(bv)
 
 
-def run_day(book: DayBook, day, frames: dict, avg_first: dict, avg_bar: dict, spy=None):
+def run_day(book: DayBook, day, frames: dict, avg_first: dict, avg_bar: dict, spy=None, prev_close=None):
     """Butun bir kunni sham-ba-sham o'tkazadi (tarixiy sinov va botning "yetib olish" rejimi uchun)."""
     book.new_day(day)
     ev = []
@@ -269,7 +312,7 @@ def run_day(book: DayBook, day, frames: dict, avg_first: dict, avg_bar: dict, sp
             if book.p.strategy == "orb":
                 ev += book.select_orb(first, avg_first, spy.iloc[0] if spy is not None and len(spy) else None)
             continue   # birinchi sham — faqat tanlash uchun
-        ev += book.on_bar(ts, rows, avg_bar, hi)
+        ev += book.on_bar(ts, rows, avg_bar, hi, prev_close)
     last = {tk: float(g["Close"].iloc[-1]) for tk, g in frames.items() if len(g)}
     ev += book.end_day(last)
     return ev
