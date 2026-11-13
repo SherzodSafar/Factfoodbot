@@ -48,7 +48,7 @@ export async function watchLinks(lang, film) {
   } else {
     out.push({
       name: "YouTube (o'zbek tilida)",
-      url: `https://www.youtube.com/results?search_query=${enc(`${film.uz} o'zbek tilida`)}`,
+      url: `https://www.youtube.com/results?search_query=${enc(`${film.uz}${year} o'zbek tilida`)}`,
     });
   }
   return out.slice(0, 8);

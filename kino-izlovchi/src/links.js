@@ -142,14 +142,20 @@ export async function fromLink(link) {
     try {
       const args = [
         '--no-simulate', '-j',
-        '--download-sections', '*0-90',
+        '--socket-timeout', '15',
         '-f', 'best[height<=480][ext=mp4]/best[height<=480]/worst[ext=mp4]/worst',
         '--max-filesize', '80M',
         '-o', path.join(dir, 'video.%(ext)s'),
         link,
       ];
-      // Faqat to'liq yo'l berilganda ko'rsatamiz; "ffmpeg" (PATH'dagi) bo'lsa yt-dlp o'zi topadi
-      if (ffmpegBin().includes('/')) args.unshift('--ffmpeg-location', ffmpegBin());
+      // Qisqa videolar (Instagram, TikTok, Shorts) to'liq yuklanadi — bu tezroq.
+      // Uzun bo'lishi mumkin bo'lganlaridan (YouTube va h.k.) faqat boshidagi 90 soniya olinadi.
+      const shortForm = /instagram|tiktok|facebook|fb\.watch|pinterest|pin\.it|likee/i.test(link) || /youtube\.com\/shorts\//i.test(link);
+      if (!shortForm) {
+        args.unshift('--download-sections', '*0-90');
+        // Faqat to'liq yo'l berilganda ko'rsatamiz; "ffmpeg" (PATH'dagi) bo'lsa yt-dlp o'zi topadi
+        if (ffmpegBin().includes('/')) args.unshift('--ffmpeg-location', ffmpegBin());
+      }
       const { stdout } = await ytdlp(args, dir);
       meta = parseInfo(stdout) || {};
       const file = (await readdir(dir)).find((f) => f.startsWith('video.') && !f.endsWith('.part'));
