@@ -22,10 +22,13 @@ async function step(name, fn) {
 
 export async function runDiag() {
   log('boshlandi');
-  await step('wiki-search-en', () => searchPages('Alan Ritchson courier liver transplant film'));
-  await step('wiki-search-ru', () => searchPages('Курьер фильм 2026 Ричсон', 'ru'));
-  await step('actor-films', () => actorFilms('Alan Ritchson'));
-  const pages = await step('page-details', () =>
+  const full = process.env.DIAG_FULL === '1';
+  if (full) {
+    await step('wiki-search-en', () => searchPages('Alan Ritchson courier liver transplant film'));
+    await step('wiki-search-ru', () => searchPages('Курьер фильм 2026 Ричсон', 'ru'));
+    await step('actor-films', () => actorFilms('Alan Ritchson'));
+  }
+  const pages = !full ? null : await step('page-details', () =>
     pageDetails(['Bumblebee (film)', 'Ordinary Angels (film)']).then((p) =>
       p.map(({ title, description, qid, thumb }) => ({ title, description, qid, thumb: Boolean(thumb) })),
     ),

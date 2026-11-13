@@ -19,25 +19,59 @@ const settled = async (promises) =>
 export async function retrieve(analysis) {
   if (!analysis) return [];
   const yearOf = (c) => (c.year ? ` ${c.year}` : '');
+
+  // Har bir qidiruv manbasi: qaysi til, qayerdan (taxmin / qidiruv / aktyor) va natijasi
+  const tasks = [
+    ...analysis.candidates.slice(0, 2).map((c) => ({
+      lang: 'en', src: 'taxmin', run: () => searchPages(`${c.title_en}${yearOf(c)} film`, 'en', 2),
+    })),
+    ...analysis.queries.filter((q) => q.lang === 'en').slice(0, 2).map((q) => ({
+      lang: 'en', src: 'qidiruv', run: () => searchPages(q.q, 'en', 3),
+    })),
+    ...analysis.queries.filter((q) => q.lang === 'ru').slice(0, 1).map((q) => ({
+      lang: 'ru', src: 'qidiruv', run: () => searchPages(q.q, 'ru', 3),
+    })),
+    ...analysis.actors.slice(0, 2).map((a) => ({
+      lang: 'en', src: `aktyor: ${a}`, actor: true, run: () => actorFilms(a, 8),
+    })),
+  ];
+  const results = await Promise.allSettled(tasks.map((t) => t.run()));
+
+  const sources = new Map(); // "til:nom" -> manbalar
   const en = [];
   const ru = [];
-
-  const [byCandidate, byQueryEn, byQueryRu, byActor] = await Promise.all([
-    settled(analysis.candidates.slice(0, 2).map((c) => searchPages(`${c.title_en}${yearOf(c)} film`, 'en', 2))),
-    settled(analysis.queries.filter((q) => q.lang === 'en').map((q) => searchPages(q.q, 'en', 3))),
-    settled(analysis.queries.filter((q) => q.lang === 'ru').map((q) => searchPages(q.q, 'ru', 3))),
-    settled(analysis.actors.slice(0, 3).map((a) => actorFilms(a, 8))),
-  ]);
-  en.push(...byCandidate, ...byQueryEn, ...byActor.map((f) => f.title));
-  ru.push(...byQueryRu);
+  const actorItems = [];
+  results.forEach((r, i) => {
+    const t = tasks[i];
+    if (r.status === 'rejected') {
+      console.warn('Wiki xatosi:', r.reason?.message);
+      return;
+    }
+    for (const item of r.value) {
+      const title = t.actor ? item.title : item;
+      if (t.actor) actorItems.push(item);
+      (t.lang === 'ru' ? ru : en).push(title);
+      const key = `${t.lang}:${title}`;
+      if (!sources.has(key)) sources.set(key, new Set());
+      sources.get(key).add(t.src);
+    }
+  });
 
   const [enRes, ruRes] = await Promise.allSettled([pageDetails(en, 'en'), pageDetails(ru, 'ru')]);
   let pages = [...(enRes.value || []), ...(ruRes.value || [])];
   if (enRes.status === 'rejected') {
     // Wikipedia javob bermadi — aktyor filmlari bo'yicha Wikidata'dan qisqa ma'lumot olamiz
     console.warn('Wikipedia xatosi:', enRes.reason?.message, '— Wikidata zaxirasi');
-    pages = [...(await wikidataDetails(byActor).catch(() => [])), ...pages];
+    pages = [...(await wikidataDetails(actorItems).catch(() => [])), ...pages];
   }
+  for (const p of pages) p.sources = [...(sources.get(`${p.lang}:${p.title}`) || [])];
+
+  // Tanilgan aktyorlardan ko'prog'i o'ynagan nomzodlar oldinga chiqadi
+  const actorHits = (p) => p.sources.filter((x) => x.startsWith('aktyor')).length;
+  pages = pages
+    .map((p, i) => ({ p, i }))
+    .sort((a, b) => actorHits(b.p) - actorHits(a.p) || a.i - b.i)
+    .map((x) => x.p);
 
   // Bir xil film (Wikidata ID) takrorlanmasin; inglizcha sahifa afzal
   const seen = new Set();

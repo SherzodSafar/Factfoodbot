@@ -132,9 +132,13 @@ const Choice = z.object({
 
 const CHOOSE_SYSTEM = `Sen kino va seriallarni taniydigan mutaxassissan.
 Senga dalillar (kadrlar, izoh, subtitr, birinchi tahlil) va Wikipedia'dan topilgan nomzodlar ro'yxati beriladi.
-- Dalillarga eng mos nomzodni tanla (index). Syujet, qahramonlar, aktyorlar va yilni solishtir.
-- Wikipedia nomzodlari sening bilimingdan yangiroq bo'lishi mumkin — ularga ishon, agar dalillarga mos kelsa.
-- Hech biri mos kelmasa index=-1 qo'y; agar o'zing aniq bilsang, nomini o'zing yoz, aks holda confidence'ni past qo'y.
+- Dalillarga eng mos nomzodni tanla (index). Syujet, qahramonlar, aktyorlar, kadrdagi yozuvlar va yilni solishtir.
+- Nomzod yonidagi [aktyor: X] — tanilgan aktyor X shu filmda o'ynagan degani. Bir nechta tanilgan aktyor birga
+  o'ynagan nomzod — juda kuchli dalil.
+- Video yangi (2025–2026) film bo'lishi mumkin va sen uni bilmasliging mumkin. Wikipedia nomzodlariga ishon,
+  o'z bilimingdagi eski filmlarni afzal ko'rma.
+- Ro'yxatda yo'q filmni (index=-1) faqat kadrdagi yozuv yoki izohda uning nomi aniq yozilgan bo'lsa tanla.
+  Aks holda ro'yxatdan eng mosini tanla; hech biri mos kelmasa index=-1 va confidence ≤ 0.5.
 - confidence — haqiqiy ishonching (0..1).
 - Nomzod tanlansa, nomlar va yil uchun uning ma'lumotlaridan foydalan (ru/uz nomlari berilgan bo'lsa — ularni ol).
 - title_ru — rus prokatidagi nomi; title_uz — o'zbekcha nomi: rasmiy o'zbekcha nomi bo'lmasa, rus prokatidagi nomini o'zbek lotin yozuviga o'gir (masalan «Курьер» → «Kuryer», «Бамблби» → «Bamblbi»).
@@ -162,7 +166,8 @@ export async function choose({ frames = [], text = '', transcript = '', analysis
         candidates
           .map((c, i) => {
             const names = [c.labels?.ru && `ru: ${c.labels.ru}`, c.labels?.uz && `uz: ${c.labels.uz}`].filter(Boolean).join(', ');
-            return `[${i}] ${c.title}${c.description ? ` — ${c.description}` : ''}${names ? ` (${names})` : ''}\n    ${c.extract.slice(0, 450)}`;
+            const src = c.sources?.filter((x) => x.startsWith('aktyor')).join('; ');
+            return `[${i}] ${c.title}${c.description ? ` — ${c.description}` : ''}${names ? ` (${names})` : ''}${src ? ` [${src}]` : ''}\n    ${c.extract.slice(0, 450)}`;
           })
           .join('\n'),
     );
