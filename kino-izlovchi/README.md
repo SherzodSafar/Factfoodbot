@@ -7,16 +7,20 @@ Telegram bot: foydalanuvchi **Instagram / YouTube / TikTok havolasi**, kinodan
 
 ## Qanday ishlaydi
 
-1. **Video olinadi** — havola bo'lsa `yt-dlp` bilan (bloklansa — muqova rasmi va sarlavha),
-   Telegram'ga yuklangan bo'lsa to'g'ridan-to'g'ri.
-2. **Kadrlar bo'yicha** — videodan 6 ta kadr + video sarlavhasi/tavsifi Gemini'ga yuboriladi.
-3. **Ovoz bo'yicha (zaxira yo'l)** — tasvirdan aniq topilmasa, videoning ovozi ajratiladi,
-   Gemini uni **subtitrga** aylantiradi va dialog bo'yicha kino qayta qidiriladi.
-4. **Kartochka** — nomi uch tilda, yili, janri, qisqa mazmuni (o'zbekcha) va
-   🇺🇿 / 🇷🇺 / 🇬🇧 tugmalari.
-5. **Til tugmasi** — shu tildagi rasmiy platformalar (ITV.uz, Splay, Allplay, Кинопоиск,
-   Иви, Okko, JustWatch, Tubi, Pluto TV, Netflix va h.k.) bo'yicha qidiruv havolalari.
-   ⭐ — sun'iy intellekt fikricha shu yerda bo'lishi ehtimoli yuqori, 🆓 — bepul (reklama bilan).
+1. **Video olinadi** — havola bo'lsa `yt-dlp` bilan (bloklansa — muqova rasmi va izoh),
+   Telegram'ga yuklangan bo'lsa to'g'ridan-to'g'ri. Videodan 6 ta kadr olinadi.
+2. **Tahlil (Gemini)** — kadrlar va izohdan aktyorlar, kadrdagi yozuvlar, syujet kalit so'zlari
+   va qidiruv so'rovlari ajratiladi.
+3. **Qidiruv (Wikipedia / Wikidata, kalitsiz)** — so'rovlar bo'yicha maqolalar va tanilgan
+   aktyorlarning eng so'nggi filmlari olinadi. Shu tufayli sun'iy intellekt bilimidan keyin
+   chiqqan (2025–2026) kinolar ham topiladi.
+4. **Tanlash (Gemini)** — dalillarga eng mos nomzod tanlanadi; nomlari uch tilda, yili,
+   janri, qisqa mazmuni va posteri olinadi.
+5. **Ovoz bo'yicha (zaxira yo'l)** — aniq topilmasa, videoning ovozi **subtitrga** aylantirilib,
+   2–4-bosqichlar dialog bilan qaytariladi.
+6. **🇺🇿 / 🇷🇺 / 🇬🇧 tugmalari** — shu tildagi rasmiy manbalar: Wikidata'dagi aniq sahifalar
+   (Кинопоиск, Netflix, Apple TV, Disney+, Prime Video va h.k.), TMDB'ning
+   "qayerda ko'rish" sahifasi (bepul / obuna / ijara), IMDb; o'zbekcha uchun — YouTube qidiruvi.
 
 🚫 Bot to'liq kinoni fayl qilib yubormaydi va pirat saytlarni ko'rsatmaydi (mualliflik huquqi).
 
@@ -54,9 +58,12 @@ cookies.txt (Netscape formati) matnini qo'ying — **alohida, yangi ochilgan** a
 |------|----------|
 | `src/index.js` | Bot, xabarlar, til tugmalari, polling/webhook |
 | `src/ai.js` | Gemini mijozi: modellar navbati, band/limit bo'lsa keyingisiga o'tish |
-| `src/identify.js` | Kinoni aniqlash (kadr / matn / subtitr) va audioni subtitrga aylantirish |
+| `src/pipeline.js` | Aniqlash jarayoni: tahlil → Wikipedia qidiruvi → tanlash → (ovoz) |
+| `src/identify.js` | Gemini so'rovlari: tahlil, tanlash, audioni subtitrga aylantirish |
+| `src/wiki.js` | Wikipedia/Wikidata: qidiruv, aktyor filmlari, rasmiy havolalar |
 | `src/card.js` | Natija kartochkasi va uni qayta o'qish |
-| `src/platforms.js` | Rasmiy platformalar ro'yxati (uz / ru / en) va havolalar |
+| `src/platforms.js` | Har bir til uchun "qayerda ko'rish" havolalari |
+| `src/diag.js` | `DIAG=1` bo'lsa — ishga tushganda bir martalik tekshiruv |
 | `src/links.js` | Instagram/YouTube/TikTok havolalaridan video olish |
 | `src/frames.js` | ffmpeg: kadrlar, audio, rasmni JPEG'ga o'girish |
 | `src/tmdb.js` | Ixtiyoriy: poster va reyting |
@@ -66,4 +73,5 @@ cookies.txt (Netscape formati) matnini qo'ying — **alohida, yangi ochilgan** a
 - Render kabi bulut serverlaridan YouTube va Instagram ba'zan yuklab olishni bloklaydi —
   shunda bot muqova va sarlavha bo'yicha qidiradi (audio bo'yicha qidirib bo'lmaydi).
 - Telegram'ga yuklanadigan fayl **20 MB gacha** — qisqa parcha (10–60 s) yetarli.
-- "Qayerda ko'rish" havolalari — rasmiy platformalardagi qidiruv; kino u yerda borligi kafolatlanmaydi.
+- Platforma havolalari Wikidata'dan olinadi: yangi kinolarda ular hali bo'lmasligi mumkin
+  (shunda Кинопоиск/JustWatch qidiruvi beriladi). Rasmiy o'zbekcha platformalar bazasi yo'q.
