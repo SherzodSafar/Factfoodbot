@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { config } from './config.js';
-import { download, extractAudio, extractFrames, ffmpegBin } from './frames.js';
+import { download, extractAudio, extractFrames, ffmpegBin, toJpeg } from './frames.js';
 
 const run = promisify(execFile);
 
@@ -67,6 +67,54 @@ async function oembed(link) {
   return res.json();
 }
 
+/** yt-dlp chiqargan JSON'ni o'qiydi (bir nechta video bo'lsa — birinchisi). */
+function parseInfo(stdout) {
+  const line = String(stdout)
+    .split('\n')
+    .find((l) => l.trim().startsWith('{'));
+  if (!line) return null;
+  try {
+    const info = JSON.parse(line);
+    return info._type === 'playlist' && info.entries?.length ? { ...info, ...info.entries[0] } : info;
+  } catch {
+    return null;
+  }
+}
+
+const decodeHtml = (s = '') =>
+  s
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&#x27;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .trim();
+
+/** Instagram'ning ommaviy "embed" sahifasidan izoh va muqova (yt-dlp bloklansa). */
+async function instagramEmbed(link) {
+  const m = link.match(/instagram\.com\/(?:[^/]+\/)?(reel|reels|p|tv)\/([A-Za-z0-9_-]+)/);
+  if (!m) return null;
+  const kind = m[1] === 'reels' ? 'reel' : m[1];
+  const res = await fetch(`https://www.instagram.com/${kind}/${m[2]}/embed/captioned/`, {
+    headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36' },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) return null;
+  const html = await res.text();
+  const thumb = html.match(/class="EmbeddedMediaImage"[^>]*src="([^"]+)"/)?.[1];
+  const caption = html.match(/<div class="Caption">([\s\S]*?)<div class="CaptionComments">/)?.[1];
+  const author = html.match(/class="UsernameText">([^<]+)</)?.[1];
+  if (!thumb && !caption) return null;
+  return {
+    title: '',
+    author_name: author ? decodeHtml(author) : '',
+    caption: caption ? decodeHtml(caption).slice(0, 1500) : '',
+    thumbnail_url: thumb ? decodeHtml(thumb) : null,
+  };
+}
+
 function hintText(meta) {
   return [
     meta.title && `Video sarlavhasi: ${meta.title}`,
@@ -88,49 +136,50 @@ export async function fromLink(link) {
     let meta = {};
     let frames = [];
     let videoBuf = null;
+    const t0 = Date.now();
 
-    try {
-      const { stdout } = await ytdlp(['-J', link], dir);
-      meta = JSON.parse(stdout);
-      // Ba'zi Instagram postlarida bir nechta video bo'ladi — birinchisini olamiz
-      if (meta._type === 'playlist' && meta.entries?.length) meta = { ...meta, ...meta.entries[0] };
-    } catch (err) {
-      console.warn('yt-dlp -J xatosi:', err.stderr?.slice?.(0, 300) || err.message);
-    }
-
-    // Faqat boshidagi ~90 soniyani, past sifatda yuklaymiz — tez va yengil
+    // Bitta chaqiruvda: ma'lumot (JSON) + videoning faqat boshidagi ~90 soniyasi, past sifatda
     try {
       const args = [
+        '--no-simulate', '-j',
+        '--download-sections', '*0-90',
         '-f', 'best[height<=480][ext=mp4]/best[height<=480]/worst[ext=mp4]/worst',
         '--max-filesize', '80M',
         '-o', path.join(dir, 'video.%(ext)s'),
         link,
       ];
-      if (!meta.duration || meta.duration > 120) {
-        args.unshift('--download-sections', '*0-90');
-        // Faqat to'liq yo'l berilganda ko'rsatamiz; "ffmpeg" (PATH'dagi) bo'lsa yt-dlp o'zi topadi
-        if (ffmpegBin().includes('/')) args.unshift('--ffmpeg-location', ffmpegBin());
-      }
-      await ytdlp(args, dir);
+      // Faqat to'liq yo'l berilganda ko'rsatamiz; "ffmpeg" (PATH'dagi) bo'lsa yt-dlp o'zi topadi
+      if (ffmpegBin().includes('/')) args.unshift('--ffmpeg-location', ffmpegBin());
+      const { stdout } = await ytdlp(args, dir);
+      meta = parseInfo(stdout) || {};
       const file = (await readdir(dir)).find((f) => f.startsWith('video.') && !f.endsWith('.part'));
       if (file) {
         videoBuf = await readFile(path.join(dir, file));
         frames = await extractFrames(videoBuf, Math.min(meta.duration || 30, 90));
       }
     } catch (err) {
-      console.warn('yt-dlp yuklash xatosi:', err.stderr?.slice?.(0, 300) || err.message);
+      console.warn('yt-dlp yuklash xatosi:', String(err.stderr || err.message).slice(0, 300));
+      // Video bloklangan bo'lsa ham, ma'lumot (izoh, muqova) olinishi mumkin
+      try {
+        const { stdout } = await ytdlp(['-J', link], dir);
+        meta = parseInfo(stdout) || {};
+      } catch (err2) {
+        console.warn('yt-dlp -J xatosi:', String(err2.stderr || err2.message).slice(0, 200));
+      }
     }
 
     // Video olinmadi — hech bo'lmasa muqova rasmini olamiz
     if (!frames.length) {
-      const oe = await oembed(link).catch(() => null);
-      if (oe) meta = { title: oe.title, uploader: oe.author_name, ...meta };
-      const thumb = meta.thumbnail || oe?.thumbnail_url;
+      const extra = (await oembed(link).catch(() => null)) || (await instagramEmbed(link).catch(() => null));
+      if (extra) meta = { title: extra.title, uploader: extra.author_name, description: extra.caption, ...meta };
+      const thumb = meta.thumbnail || extra?.thumbnail_url;
       if (thumb) {
         const buf = await download(thumb).catch(() => null);
-        if (buf) frames = [buf.toString('base64')];
+        const jpeg = buf && (await toJpeg(buf).catch(() => null));
+        if (jpeg) frames = [jpeg];
       }
     }
+    console.log(`📥 ${platformName(link)}: ${videoBuf ? 'video' : frames.length ? 'faqat muqova' : "olinmadi"}, ${Date.now() - t0}ms`);
 
     return {
       frames,

@@ -21,6 +21,16 @@ const wikiApi = (lang, params) => {
 
 const FILM_RE = /\b(film|movie|series|sitcom|miniseries|television|anime|documentary)\b|фильм|сериал|мультфильм|аниме/i;
 
+const PERSON_RE = /\b(actor|actress|singer|rapper|musician|politician|footballer|director|producer|comedian|model|born)\b|\(born |актёр|актриса|певец|певица|режиссёр|\bрод\.|родился|родилась/i;
+
+/** Faqat film/serial sahifalari (aktyorlar, ro'yxatlar va boshqa sahifalar emas). */
+function isFilmPage(p) {
+  if (/^(List of|Список)/i.test(p.title)) return false;
+  if (p.description) return FILM_RE.test(p.description) && !PERSON_RE.test(p.description);
+  const head = p.extract.slice(0, 180);
+  return FILM_RE.test(head) && !PERSON_RE.test(head);
+}
+
 /** Wikipedia'da to'liq matnli qidiruv. Qaytaradi: sahifa nomlari. */
 export async function searchPages(query, lang = 'en', limit = 5) {
   const d = await getJson(
@@ -65,7 +75,7 @@ export async function pageDetails(titles, lang = 'en') {
       qid: p.pageprops?.wikibase_item || null,
       url: `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(p.title.replace(/ /g, '_'))}`,
     }))
-    .filter((p) => FILM_RE.test(`${p.description} ${p.extract.slice(0, 200)}`))
+    .filter(isFilmPage)
     .sort((a, b) => (order.get(a.title) ?? 99) - (order.get(b.title) ?? 99));
 }
 

@@ -72,7 +72,7 @@ export async function analyze({ frames = [], text = '', transcript = '' }) {
   lines.push('Dalillarni tahlil qil.');
   parts.push({ text: lines.join('\n\n') });
 
-  const { text: out, model } = await generate({ parts, system: ANALYZE_SYSTEM, json: ANALYZE_SCHEMA });
+  const { text: out, model } = await generate({ parts, system: ANALYZE_SYSTEM, json: ANALYZE_SCHEMA, thinking: 'LOW' });
   const a = Analysis.safeParse(parseJson(out) ?? {});
   if (!a.success) return null;
   const r = a.data;
@@ -97,7 +97,7 @@ const CHOOSE_SCHEMA = {
     kind: { type: 'string', enum: ['movie', 'tv'] },
     title_en: { type: 'string' },
     title_ru: { type: 'string', description: 'Rus prokatidagi nomi' },
-    title_uz: { type: 'string', description: "O'zbekcha nomi (lotin)" },
+    title_uz: { type: 'string', description: "O'zbekcha nomi (lotin); rasmiysi bo'lmasa ruscha nomining lotincha o'girmasi" },
     title_original: { type: 'string' },
     year: { type: 'integer', description: "Noma'lum bo'lsa 0" },
     season: { type: 'integer', description: "Noma'lum bo'lsa 0" },
@@ -137,7 +137,7 @@ Senga dalillar (kadrlar, izoh, subtitr, birinchi tahlil) va Wikipedia'dan topilg
 - Hech biri mos kelmasa index=-1 qo'y; agar o'zing aniq bilsang, nomini o'zing yoz, aks holda confidence'ni past qo'y.
 - confidence — haqiqiy ishonching (0..1).
 - Nomzod tanlansa, nomlar va yil uchun uning ma'lumotlaridan foydalan (ru/uz nomlari berilgan bo'lsa — ularni ol).
-- title_ru — rus prokatidagi nomi; title_uz — o'zbekcha nomi (rasmiy nomi bo'lmasa, inglizchasini o'zbek lotin yozuviga moslab yoz).
+- title_ru — rus prokatidagi nomi; title_uz — o'zbekcha nomi: rasmiy o'zbekcha nomi bo'lmasa, rus prokatidagi nomini o'zbek lotin yozuviga o'gir (masalan «Курьер» → «Kuryer», «Бамблби» → «Bamblbi»).
 - genres_uz va overview_uz — o'zbek tilida (lotin), overview spoilersiz 1–2 gap.`;
 
 /**
@@ -172,7 +172,7 @@ export async function choose({ frames = [], text = '', transcript = '', analysis
   lines.push('Qaysi film yoki serial?');
   parts.push({ text: lines.join('\n\n') });
 
-  const { text: out, model } = await generate({ parts, system: CHOOSE_SYSTEM, json: CHOOSE_SCHEMA });
+  const { text: out, model } = await generate({ parts, system: CHOOSE_SYSTEM, json: CHOOSE_SCHEMA, thinking: 'LOW' });
   const parsed = Choice.safeParse(parseJson(out) ?? {});
   if (!parsed.success) return null;
   const r = parsed.data;

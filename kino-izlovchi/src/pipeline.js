@@ -24,9 +24,9 @@ export async function retrieve(analysis) {
 
   const [byCandidate, byQueryEn, byQueryRu, byActor] = await Promise.all([
     settled(analysis.candidates.map((c) => searchPages(`${c.title_en}${yearOf(c)} film`, 'en', 2))),
-    settled(analysis.queries.filter((q) => q.lang === 'en').map((q) => searchPages(q.q, 'en', 4))),
+    settled(analysis.queries.filter((q) => q.lang === 'en').map((q) => searchPages(q.q, 'en', 3))),
     settled(analysis.queries.filter((q) => q.lang === 'ru').map((q) => searchPages(q.q, 'ru', 3))),
-    settled(analysis.actors.slice(0, 2).map((a) => actorFilms(a, 10))),
+    settled(analysis.actors.slice(0, 3).map((a) => actorFilms(a, 8))),
   ]);
   en.push(...byCandidate, ...byQueryEn, ...byActor);
   ru.push(...byQueryRu);

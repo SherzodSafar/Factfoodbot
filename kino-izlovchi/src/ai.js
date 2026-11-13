@@ -1,7 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import { config } from './config.js';
 
-const TIMEOUT_MS = 45_000; // bitta model uchun; javob kelmasa keyingisiga o'tamiz
+const TIMEOUT_MS = 30_000; // bitta model uchun; javob kelmasa keyingisiga o'tamiz
 
 let _ai = null;
 const ai = () =>
