@@ -1,17 +1,44 @@
 import { execFile } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import ffmpegPath from 'ffmpeg-static';
+import ffmpegStatic from 'ffmpeg-static';
+import { config } from './config.js';
 
 const run = promisify(execFile);
 
-/** Telegram fayl havolasidan baytlarni yuklab oladi. */
+/** ffmpeg yo'li: FFMPEG_PATH > ffmpeg-static > tizimdagi "ffmpeg". */
+export function ffmpegBin() {
+  if (config.ffmpegPath) return config.ffmpegPath;
+  if (ffmpegStatic && existsSync(ffmpegStatic)) return ffmpegStatic;
+  return 'ffmpeg';
+}
+
+/** Havoladan baytlarni yuklab oladi. */
 export async function download(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Faylni yuklab bo'lmadi: ${res.status}`);
   return Buffer.from(await res.arrayBuffer());
+}
+
+const SCALE = "scale='min(1024,iw)':-2";
+
+/** Istalgan rasmni (webp, png, heic...) JPEG base64'ga o'giradi. */
+export async function toJpeg(imageBuffer) {
+  const dir = await mkdtemp(path.join(tmpdir(), 'img-'));
+  try {
+    const input = path.join(dir, 'in');
+    const out = path.join(dir, 'out.jpg');
+    await writeFile(input, imageBuffer);
+    await run(ffmpegBin(), ['-v', 'error', '-i', input, '-frames:v', '1', '-vf', SCALE, '-q:v', '4', '-y', out], {
+      timeout: 30_000,
+    });
+    return (await readFile(out)).toString('base64');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 }
 
 /**
@@ -25,23 +52,15 @@ export async function extractFrames(videoBuffer, durationSec, count = 6) {
     await writeFile(input, videoBuffer);
 
     const duration = durationSec && durationSec > 0 ? durationSec : 10;
-    // Boshidan va oxiridan biroz chetlab, oraliqni teng bo'lamiz
-    const times = Array.from({ length: count }, (_, i) =>
-      Math.max(0, (duration * (i + 0.5)) / count),
-    );
+    const times = Array.from({ length: count }, (_, i) => Math.max(0, (duration * (i + 0.5)) / count));
 
     const frames = [];
     for (const [i, t] of times.entries()) {
       const out = path.join(dir, `f${i}.jpg`);
       try {
-        await run(ffmpegPath, [
-          '-v', 'error',
-          '-ss', t.toFixed(2),
-          '-i', input,
-          '-frames:v', '1',
-          '-vf', "scale='min(1024,iw)':-2",
-          '-q:v', '4',
-          '-y', out,
+        await run(ffmpegBin(), [
+          '-v', 'error', '-ss', t.toFixed(2), '-i', input,
+          '-frames:v', '1', '-vf', SCALE, '-q:v', '4', '-y', out,
         ], { timeout: 30_000 });
         frames.push((await readFile(out)).toString('base64'));
       } catch {
