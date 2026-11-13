@@ -48,17 +48,20 @@ export function buildCard(guess, details, transcript) {
 }
 
 export function buildKeyboard(guess) {
-  const cb = (lang) => `w:${lang}:${guess[`platforms_${lang}`].slice(0, 4).join('.')}`;
+  // Tugmada faqat Wikidata ID saqlanadi — havolalar bosilganda yangidan olinadi (holat saqlanmaydi)
+  const cb = (lang) => `w:${lang}:${guess.qid || '-'}`;
   const trailer = `https://www.youtube.com/results?search_query=${encodeURIComponent(
     `${guess.title_en} ${guess.year || ''} trailer`,
   )}`;
+  const extra = [Markup.button.url('🎞 Treyler', trailer)];
+  if (guess.wikiUrl) extra.push(Markup.button.url('📖 Batafsil', guess.wikiUrl));
   return Markup.inlineKeyboard([
     [
       Markup.button.callback("🇺🇿 O'zbekcha", cb('uz')),
       Markup.button.callback('🇷🇺 Ruscha', cb('ru')),
       Markup.button.callback('🇬🇧 Inglizcha', cb('en')),
     ],
-    [Markup.button.url('🎞 Treyler', trailer)],
+    extra,
   ]);
 }
 

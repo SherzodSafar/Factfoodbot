@@ -4,17 +4,15 @@ import { Telegraf, Markup } from 'telegraf';
 import { AiBusyError } from './ai.js';
 import { aiReady, config } from './config.js';
 import { download, extractAudio, extractFrames, toJpeg } from './frames.js';
-import { identifyMovie, transcribe } from './identify.js';
 import { findVideoLink, fromLink, platformName } from './links.js';
-import { LANG, pickPlatforms } from './platforms.js';
+import { identify } from './pipeline.js';
+import { LANG, watchLinks } from './platforms.js';
 import { buildCard, buildKeyboard, esc, parseCard } from './card.js';
 import { findDetails, tmdbEnabled } from './tmdb.js';
 
 const bot = new Telegraf(config.botToken, { handlerTimeout: 300_000 });
 
 const MAX_FILE_BYTES = 20 * 1024 * 1024; // Bot API getFile chegarasi
-const CONFIDENT = 0.65; // shundan past bo'lsa — audio (subtitr) orqali ham tekshiramiz
-const MIN_CONFIDENCE = 0.35; // shundan past bo'lsa — "topilmadi"
 
 // ---------- Yordamchi holatlar (xotirada) ----------
 const busy = new Set(); // hozir qidirilayotgan foydalanuvchilar
@@ -67,31 +65,12 @@ async function handleSearch(ctx, getInput, firstStatus = '🔎 Qidiryapman..') {
       return;
     }
 
-    // 1-qadam: kadrlar (+ sarlavha/tavsif) bo'yicha
-    let guess = null;
-    if (frames.length || input.text) {
-      await setStatus('🔎 Qidiryapman..');
-      guess = await identifyMovie({ frames, text: input.text });
-    }
-
-    // 2-qadam: aniq topilmasa — ovozni subtitrga aylantirib, dialog bo'yicha
-    let transcript = '';
-    if ((!guess || guess.confidence < CONFIDENT) && input.getAudio) {
-      await setStatus("🎧 Tasvirdan aniq topilmadi — ovozini subtitrga aylantiryapman..");
-      const audio = await input.getAudio();
-      if (audio) transcript = await transcribe(audio);
-      if (transcript) {
-        await setStatus("🔎 Dialog (subtitr) bo'yicha qidiryapman..");
-        const byAudio = await identifyMovie({ frames, text: input.text, transcript });
-        if (byAudio && (!guess || byAudio.confidence >= guess.confidence)) guess = { ...byAudio, viaAudio: true };
-      }
-    }
-
-    if (!guess || guess.confidence < MIN_CONFIDENCE) {
+    await setStatus('🔎 Qidiryapman..');
+    const guess = await identify(input, setStatus);
+    if (!guess) {
       await setStatus(
-        "😕 Afsus, bundan kinoni aniqlay olmadim" +
-          (transcript ? ' (dialog bo‘yicha ham).' : '.') +
-          "\n\nAktyorlar yuzi yoki muhim sahna ko'rinadigan boshqa parcha/skrinshot yuboring, " +
+        "😕 Afsus, bundan kinoni aniqlay olmadim.\n\n" +
+          "Aktyorlar yuzi yoki muhim sahna ko'rinadigan boshqa parcha/skrinshot yuboring, " +
           "yoki sahnani so'z bilan tasvirlab yozing.",
       );
       return;
@@ -104,15 +83,25 @@ async function handleSearch(ctx, getInput, firstStatus = '🔎 Qidiryapman..') {
       console.error('TMDB xatosi:', err.message);
     }
 
-    const caption = buildCard(guess, details, transcript);
+    const caption = buildCard(guess, details, guess.transcript || '');
     const opts = {
       parse_mode: 'HTML',
       reply_parameters: { message_id: ctx.message.message_id },
       ...buildKeyboard(guess),
     };
     await ctx.telegram.deleteMessage(ctx.chat.id, status.message_id).catch(() => {});
-    if (details?.poster) await ctx.replyWithPhoto(details.poster, { caption, ...opts });
-    else await ctx.reply(caption, opts);
+    const poster = details?.poster || guess.poster;
+    let sent = false;
+    if (poster) {
+      sent = await ctx
+        .replyWithPhoto(poster, { caption, ...opts })
+        .then(() => true)
+        .catch((err) => {
+          console.warn('Poster yuborilmadi:', err.message);
+          return false;
+        });
+    }
+    if (!sent) await ctx.reply(caption, opts);
   } catch (err) {
     console.error('Qidiruv xatosi:', err);
     if (err instanceof AiBusyError) {
@@ -233,32 +222,32 @@ bot.on('text', (ctx) => {
 });
 
 // ---------- Til tugmalari: qayerda ko'rish ----------
-bot.action(/^w:(uz|ru|en):([a-z.]*)$/, async (ctx) => {
-  const [, lang, keyStr] = ctx.match;
+bot.action(/^w:(uz|ru|en):(Q\d+|-)$/, async (ctx) => {
+  const [, lang, ref] = ctx.match;
   const msg = ctx.callbackQuery.message;
   const card = parseCard(msg?.caption ?? msg?.text ?? '');
   if (!card) {
     return ctx.answerCbQuery("Ma'lumot topilmadi — parchani qayta yuboring.", { show_alert: true });
   }
-  await ctx.answerCbQuery();
+  await ctx.answerCbQuery('Qidiryapman…');
 
   const { flag, name } = LANG[lang];
-  const title = card[lang];
-  const platforms = pickPlatforms(lang, keyStr.split('.').filter(Boolean));
+  const links = await watchLinks(lang, { ...card, qid: ref === '-' ? null : ref });
+  const direct = links.filter((l) => l.direct);
 
-  const lines = [
-    `${flag} <b>${esc(title)}</b>${card.year ? ` (${card.year})` : ''} — ${name} tilida qonuniy ko'rish:`,
-    '',
-    "Pastdagi tugmalar rasmiy platformalarda shu kinoni qidiradi.",
-  ];
-  if (platforms.some((p) => p.suggested)) lines.push("⭐ — sun'iy intellekt fikricha shu yerda bo'lishi ehtimoli yuqori");
-  if (platforms.some((p) => p.free)) lines.push("🆓 — bepul (reklama bilan) ko'rish imkoni bor platforma");
-  if (lang === 'uz') lines.push('', "ℹ️ Rasmiy o'zbekcha dublyaj hamma kinoda bo'lavermaydi.");
+  const lines = [`${flag} <b>${esc(card[lang])}</b>${card.year ? ` (${card.year})` : ''} — ${name} tilida:`, ''];
+  if (direct.length) {
+    lines.push(`✅ Rasmiy platformalardagi sahifasi topildi: ${direct.map((l) => esc(l.name)).join(', ')}.`);
+  } else if (lang === 'uz') {
+    lines.push("Rasmiy o'zbekcha versiya haqida ma'lumot topilmadi. YouTube'da o'zbek tilidagi versiyasini qidirib ko'ring.");
+  } else {
+    lines.push("Aniq sahifa topilmadi — pastdagi rasmiy servislarda qidirib ko'ring.");
+  }
+  if (links.some((l) => l.tmdb)) lines.push("📺 TMDB sahifasida kino qaysi servislarda (bepul, obuna yoki ijara) borligi ko'rsatilgan.");
+  if (links.some((l) => l.free)) lines.push('🆓 — bepul (reklama bilan)');
   lines.push('', "🔒 Faqat qonuniy manbalar. To'liq kinoni fayl qilib yubormayman — bu mualliflik huquqini buzadi.");
 
-  const rows = platforms.map((p) => [
-    Markup.button.url(`${p.suggested ? '⭐ ' : ''}${p.free ? '🆓 ' : ''}${p.name}`, p.url(card)),
-  ]);
+  const rows = links.map((l) => [Markup.button.url(`${l.direct ? '▶️ ' : ''}${l.free ? '🆓 ' : ''}${l.name}`, l.url)]);
   await ctx.reply(lines.join('\n'), {
     parse_mode: 'HTML',
     link_preview_options: { is_disabled: true },
@@ -334,6 +323,11 @@ async function main() {
     await bot.telegram.deleteWebhook();
     bot.launch();
     console.log('🤖 Kino Izlovchi ishga tushdi (polling).');
+  }
+
+  // Bir martalik tekshiruv (faqat DIAG=1 bo'lsa)
+  if (process.env.DIAG === '1') {
+    import('./diag.js').then((m) => m.runDiag()).catch((err) => console.error('[DIAG] xato:', err));
   }
 }
 

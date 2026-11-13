@@ -1,43 +1,122 @@
 import { z } from 'zod';
 import { generate, parseJson } from './ai.js';
-import { PLATFORMS } from './platforms.js';
 
-const keysOf = (lang) => Object.keys(PLATFORMS[lang]);
+// =====================================================================
+// 1-bosqich: dalillarni tahlil qilish (kadrlar, izoh, subtitr)
+// =====================================================================
 
-// Gemini'ga beriladigan javob sxemasi (JSON Schema)
-const RESULT_SCHEMA = {
+const ANALYZE_SCHEMA = {
   type: 'object',
   properties: {
-    found: { type: 'boolean', description: 'Aniq yoki ehtimoliy nomzod topildimi' },
+    kind: { type: 'string', enum: ['movie', 'tv', 'unknown'] },
+    scene: { type: 'string', description: 'Kadrda/dialogda nima borligi — 1–2 gap' },
+    on_screen_text: { type: 'string', description: 'Kadrdagi yozuvlar (nom, titrlar), bo`lmasa bo`sh' },
+    actors: {
+      type: 'array',
+      description: 'Tanilgan aktyorlar (ingliz tilidagi to`liq ismi), faqat ishonchli bo`lsa, 0–3 ta',
+      items: { type: 'string' },
+    },
+    candidates: {
+      type: 'array',
+      description: 'O`z bilimingdan nomzod filmlar/seriallar, 0–3 ta',
+      items: {
+        type: 'object',
+        properties: {
+          title_en: { type: 'string' },
+          year: { type: 'integer' },
+          confidence: { type: 'number' },
+        },
+        required: ['title_en', 'year', 'confidence'],
+      },
+    },
+    queries: {
+      type: 'array',
+      description:
+        'Wikipedia`da qidirish uchun 1–3 ta qisqa so`rov: syujetning o`ziga xos kalit so`zlari, qahramon ismlari, aktyor + mavzu',
+      items: {
+        type: 'object',
+        properties: { q: { type: 'string' }, lang: { type: 'string', enum: ['en', 'ru'] } },
+        required: ['q', 'lang'],
+      },
+    },
+  },
+  required: ['kind', 'scene', 'on_screen_text', 'actors', 'candidates', 'queries'],
+};
+
+const Analysis = z.object({
+  kind: z.enum(['movie', 'tv', 'unknown']).catch('unknown'),
+  scene: z.string().catch(''),
+  on_screen_text: z.string().catch(''),
+  actors: z.array(z.string()).catch([]),
+  candidates: z
+    .array(z.object({ title_en: z.string().catch(''), year: z.coerce.number().catch(0), confidence: z.coerce.number().catch(0) }))
+    .catch([]),
+  queries: z.array(z.object({ q: z.string().catch(''), lang: z.enum(['en', 'ru']).catch('en') })).catch([]),
+});
+
+const ANALYZE_SYSTEM = `Sen kino va seriallarni taniydigan mutaxassissan. Vazifang — dalillarni tahlil qilish.
+Foydalanuvchi kino/serialdan olingan kadrlar, ijtimoiy tarmoq videosining izohi, dialog subtitri yoki sahna tavsifini yuboradi.
+- Aktyorlar yuzini, kadrdagi yozuvlarni, logotiplarni, kostyum va joylarni diqqat bilan ko'r.
+- Izohda (caption) ko'pincha kino nomi, qahramon ismi yoki syujet yozilgan bo'ladi — undagi kalit so'zlarni ajrat.
+- MUHIM: kino sening bilimingdan keyin (2025–2026) chiqqan bo'lishi mumkin. Shuning uchun nomzodlarga ko'r-ko'rona ishonma
+  va queries'ga yangi filmni ham topa oladigan so'rovlar yoz: aktyor ismi + syujet kalit so'zlari, qahramon ismlari, o'ziga xos predmetlar.
+- Ruscha izoh bo'lsa, lang="ru" so'rov ham qo'sh.`;
+
+export async function analyze({ frames = [], text = '', transcript = '' }) {
+  const parts = frames.map((data) => ({ inlineData: { mimeType: 'image/jpeg', data } }));
+  const lines = [];
+  if (frames.length > 1) lines.push(`Yuqorida bitta videodan olingan ${frames.length} ta kadr.`);
+  else if (frames.length === 1) lines.push('Yuqorida kinodan olingan kadr (skrinshot yoki video muqovasi).');
+  if (text) lines.push(`Video izohi / foydalanuvchi yozgani:\n"""${text.slice(0, 2500)}"""`);
+  if (transcript) lines.push(`Videodagi dialog subtitri:\n"""${transcript.slice(0, 4000)}"""`);
+  lines.push('Dalillarni tahlil qil.');
+  parts.push({ text: lines.join('\n\n') });
+
+  const { text: out, model } = await generate({ parts, system: ANALYZE_SYSTEM, json: ANALYZE_SCHEMA });
+  const a = Analysis.safeParse(parseJson(out) ?? {});
+  if (!a.success) return null;
+  const r = a.data;
+  r.actors = r.actors.filter(Boolean).slice(0, 3);
+  r.candidates = r.candidates.filter((c) => c.title_en).slice(0, 3);
+  r.queries = r.queries.filter((q) => q.q).slice(0, 3);
+  console.log(
+    `🔬 [${model}] aktyorlar: ${r.actors.join(', ') || '-'} | nomzodlar: ${r.candidates.map((c) => `${c.title_en} ${c.year}`).join('; ') || '-'} | so'rovlar: ${r.queries.map((q) => q.q).join(' / ') || '-'}`,
+  );
+  return r;
+}
+
+// =====================================================================
+// 2-bosqich: Wikipedia nomzodlari orasidan tanlash
+// =====================================================================
+
+const CHOOSE_SCHEMA = {
+  type: 'object',
+  properties: {
+    index: { type: 'integer', description: 'Mos nomzod raqami; hech biri mos kelmasa -1' },
+    confidence: { type: 'number', description: '0..1' },
     kind: { type: 'string', enum: ['movie', 'tv'] },
-    title_en: { type: 'string', description: 'Inglizcha nomi' },
-    title_ru: { type: 'string', description: 'Ruscha prokat nomi' },
-    title_uz: { type: 'string', description: "O'zbekcha nomi (lotin yozuvida)" },
-    title_original: { type: 'string', description: 'Asl tildagi nomi' },
-    year: { type: 'integer', description: 'Chiqqan yili, noma`lum bo`lsa 0' },
-    season: { type: 'integer', description: 'Serial fasli, noma`lum bo`lsa 0' },
-    episode: { type: 'integer', description: 'Serial qismi, noma`lum bo`lsa 0' },
-    confidence: { type: 'number', description: '0..1 — qanchalik ishonchli' },
+    title_en: { type: 'string' },
+    title_ru: { type: 'string', description: 'Rus prokatidagi nomi' },
+    title_uz: { type: 'string', description: "O'zbekcha nomi (lotin)" },
+    title_original: { type: 'string' },
+    year: { type: 'integer', description: "Noma'lum bo'lsa 0" },
+    season: { type: 'integer', description: "Noma'lum bo'lsa 0" },
+    episode: { type: 'integer', description: "Noma'lum bo'lsa 0" },
     genres_uz: { type: 'array', items: { type: 'string' } },
-    overview_uz: { type: 'string', description: "1–2 gaplik spoilersiz mazmun, o'zbekcha" },
-    evidence: { type: 'string', description: 'Qisqa: nimaga qarab aniqlandi' },
-    platforms_uz: { type: 'array', items: { type: 'string', enum: keysOf('uz') } },
-    platforms_ru: { type: 'array', items: { type: 'string', enum: keysOf('ru') } },
-    platforms_en: { type: 'array', items: { type: 'string', enum: keysOf('en') } },
+    overview_uz: { type: 'string', description: "1–2 gaplik spoilersiz mazmun, o'zbekcha (lotin)" },
+    evidence: { type: 'string', description: 'Qisqa: nimaga qarab tanlandi' },
   },
   required: [
-    'found', 'kind', 'title_en', 'title_ru', 'title_uz', 'title_original', 'year', 'season',
-    'episode', 'confidence', 'genres_uz', 'overview_uz', 'evidence',
-    'platforms_uz', 'platforms_ru', 'platforms_en',
+    'index', 'confidence', 'kind', 'title_en', 'title_ru', 'title_uz', 'title_original',
+    'year', 'season', 'episode', 'genres_uz', 'overview_uz', 'evidence',
   ],
 };
 
-// Model javobini tekshirish (xato maydonlar xavfsiz standart qiymatga tushadi)
 const str = z.string().catch('');
 const num = z.coerce.number().catch(0);
-const keys = (lang) => z.array(z.string()).catch([]).transform((a) => a.filter((k) => PLATFORMS[lang][k]));
-const Result = z.object({
-  found: z.boolean().catch(false),
+const Choice = z.object({
+  index: z.coerce.number().int().catch(-1),
+  confidence: num,
   kind: z.enum(['movie', 'tv']).catch('movie'),
   title_en: str,
   title_ru: str,
@@ -46,58 +125,73 @@ const Result = z.object({
   year: num,
   season: num,
   episode: num,
-  confidence: num,
   genres_uz: z.array(z.string()).catch([]),
   overview_uz: str,
   evidence: str,
-  platforms_uz: keys('uz'),
-  platforms_ru: keys('ru'),
-  platforms_en: keys('en'),
 });
 
-const SYSTEM = `Sen kino va seriallarni taniydigan mutaxassissan.
-Foydalanuvchi kino/serialdan olingan kadrlar, video sarlavhasi/tavsifi, dialog subtitri yoki sahna tavsifini yuboradi.
-Vazifang — aynan qaysi film yoki serial ekanini aniqlash.
-- Aktyorlar yuzi, kostyumlar, joylar, kadrdagi yozuvlar va logotiplar, davr va operatorlik uslubiga e'tibor ber.
-- Ijtimoiy tarmoq videosining sarlavhasi, tavsifi va teglari ko'pincha kino nomini o'z ichiga oladi — kadrlar bilan solishtir, lekin ko'r-ko'rona ishonma.
-- Dialog subtitri berilsa, taniqli iboralar, qahramonlar ismlari va voqealarga tayan.
-- Nomzoding bo'lsa found=true. confidence — haqiqiy ishonching (0..1): taxmin bo'lsa past qo'y. Umuman topa olmasang found=false va satrlarni bo'sh qoldir.
-- title_en — inglizcha nomi, title_ru — rus prokatidagi nomi, title_uz — o'zbekcha nomi (rasmiy o'zbekcha nomi bo'lmasa, inglizchasini o'zbek lotin yozuviga moslab yoz), title_original — asl tildagi nomi.
-- Serial bo'lsa kind="tv", aniqlay olsang season/episode ni ham yoz (bilmasang 0).
-- genres_uz va overview_uz — o'zbek tilida (lotin), overview spoilersiz 1–2 gap.
-- platforms_uz/ru/en — shu tilda bu kino QONUNIY ravishda bo'lishi ehtimoli yuqori bo'lgan platformalar (faqat ro'yxatdagi kalitlar, 0–4 ta). Bilmasang bo'sh qoldir.`;
+const CHOOSE_SYSTEM = `Sen kino va seriallarni taniydigan mutaxassissan.
+Senga dalillar (kadrlar, izoh, subtitr, birinchi tahlil) va Wikipedia'dan topilgan nomzodlar ro'yxati beriladi.
+- Dalillarga eng mos nomzodni tanla (index). Syujet, qahramonlar, aktyorlar va yilni solishtir.
+- Wikipedia nomzodlari sening bilimingdan yangiroq bo'lishi mumkin — ularga ishon, agar dalillarga mos kelsa.
+- Hech biri mos kelmasa index=-1 qo'y; agar o'zing aniq bilsang, nomini o'zing yoz, aks holda confidence'ni past qo'y.
+- confidence — haqiqiy ishonching (0..1).
+- Nomzod tanlansa, nomlar va yil uchun uning ma'lumotlaridan foydalan (ru/uz nomlari berilgan bo'lsa — ularni ol).
+- title_ru — rus prokatidagi nomi; title_uz — o'zbekcha nomi (rasmiy nomi bo'lmasa, inglizchasini o'zbek lotin yozuviga moslab yoz).
+- genres_uz va overview_uz — o'zbek tilida (lotin), overview spoilersiz 1–2 gap.`;
 
 /**
- * Kadrlar, matn va/yoki dialog subtitri bo'yicha kinoni aniqlaydi.
- * @param {{frames?: string[], text?: string, transcript?: string}} input
- * @returns {Promise<z.infer<typeof Result> | null>}
+ * @param {{frames?: string[], text?: string, transcript?: string, analysis: any, candidates: any[]}} p
  */
-export async function identifyMovie({ frames = [], text = '', transcript = '' }) {
+export async function choose({ frames = [], text = '', transcript = '', analysis, candidates }) {
   const parts = frames.map((data) => ({ inlineData: { mimeType: 'image/jpeg', data } }));
   const lines = [];
-  if (frames.length > 1) lines.push(`Yuqorida bitta videodan olingan ${frames.length} ta kadr.`);
-  else if (frames.length === 1) lines.push('Yuqorida kinodan olingan kadr (skrinshot).');
-  if (text) lines.push(`Qo'shimcha ma'lumot (video sarlavhasi/tavsifi yoki foydalanuvchi yozgani):\n"""${text.slice(0, 2500)}"""`);
-  if (transcript) lines.push(`Videodagi dialog subtitri:\n"""${transcript.slice(0, 4000)}"""`);
-  lines.push('Bu qaysi film yoki serial?');
+  if (frames.length) lines.push(`Yuqorida ${frames.length} ta kadr.`);
+  if (text) lines.push(`Video izohi / foydalanuvchi yozgani:\n"""${text.slice(0, 2000)}"""`);
+  if (transcript) lines.push(`Dialog subtitri:\n"""${transcript.slice(0, 3000)}"""`);
+  if (analysis) {
+    lines.push(
+      `Birinchi tahlil: sahna — ${analysis.scene}; kadrdagi yozuv — ${analysis.on_screen_text || "yo'q"}; ` +
+        `aktyorlar — ${analysis.actors.join(', ') || "noma'lum"}; ` +
+        `taxminlar — ${analysis.candidates.map((c) => `${c.title_en} (${c.year})`).join(', ') || "yo'q"}.`,
+    );
+  }
+  if (candidates.length) {
+    lines.push(
+      "Wikipedia nomzodlari:\n" +
+        candidates
+          .map((c, i) => {
+            const names = [c.labels?.ru && `ru: ${c.labels.ru}`, c.labels?.uz && `uz: ${c.labels.uz}`].filter(Boolean).join(', ');
+            return `[${i}] ${c.title}${c.description ? ` — ${c.description}` : ''}${names ? ` (${names})` : ''}\n    ${c.extract.slice(0, 450)}`;
+          })
+          .join('\n'),
+    );
+  } else {
+    lines.push("Wikipedia nomzodlari topilmadi — o'z bilimingdan javob ber (index=-1).");
+  }
+  lines.push('Qaysi film yoki serial?');
   parts.push({ text: lines.join('\n\n') });
 
-  const { text: out, model } = await generate({ parts, system: SYSTEM, json: RESULT_SCHEMA });
-  const parsed = Result.safeParse(parseJson(out) ?? {});
+  const { text: out, model } = await generate({ parts, system: CHOOSE_SYSTEM, json: CHOOSE_SCHEMA });
+  const parsed = Choice.safeParse(parseJson(out) ?? {});
   if (!parsed.success) return null;
   const r = parsed.data;
-  console.log(`🎯 [${model}] ${r.found ? `${r.title_en} (${r.year}) ${r.confidence}` : 'topilmadi'} — ${r.evidence.slice(0, 160)}`);
-  if (!r.found || !(r.title_en || r.title_ru || r.title_original)) return null;
+  if (r.index >= candidates.length) r.index = -1;
+  console.log(
+    `🎯 [${model}] #${r.index} ${r.title_en || '-'} (${r.year}) ${r.confidence} — ${r.evidence.slice(0, 160)}`,
+  );
+  if (!(r.title_en || r.title_ru || r.title_original)) return null;
   r.title_en ||= r.title_original || r.title_ru;
   r.title_ru ||= r.title_en;
   r.title_uz ||= r.title_en;
   return r;
 }
 
-/**
- * Audioni subtitrga (matnga) aylantiradi.
- * @returns {Promise<string>} subtitr matni yoki bo'sh satr (nutq bo'lmasa)
- */
+// =====================================================================
+// Audio -> subtitr
+// =====================================================================
+
+/** @returns {Promise<string>} subtitr matni yoki bo'sh satr (nutq bo'lmasa) */
 export async function transcribe(audioBase64) {
   const { text } = await generate({
     parts: [
@@ -108,7 +202,6 @@ export async function transcribe(audioBase64) {
           "Musiqa yoki shovqinni yozma. Nutq umuman bo'lmasa, faqat NO_SPEECH deb javob ber.",
       },
     ],
-    thinking: 'LOW',
   });
   const t = text.trim();
   if (!t || /^NO_SPEECH/i.test(t)) return '';

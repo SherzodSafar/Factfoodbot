@@ -1,63 +1,9 @@
-// Faqat rasmiy, litsenziyali platformalar. Bot boshqa (pirat) saytlarni hech qachon ko'rsatmaydi.
-// Har bir havola — shu platformaning o'zida (yoki Google orqali faqat shu saytda) qidiruv.
+// "Qayerda ko'rish": faqat rasmiy, litsenziyali manbalar.
+// 1) Wikidata'dagi aniq sahifalar (Кинопоиск, Netflix, Apple TV, ... va TMDB "qayerda ko'rish" sahifasi)
+// 2) Ular bo'lmasa — rasmiy servislarning o'z qidiruvi (JustWatch, Кинопоиск) va YouTube qidiruvi
+import { officialLinks } from './wiki.js';
 
 const enc = encodeURIComponent;
-const google = (query, site) => `https://www.google.com/search?q=${enc(`${query} site:${site}`)}`;
-
-/** @type {Record<'uz'|'ru'|'en', Record<string, {name: string, free?: boolean, url: (t: Titles) => string}>>} */
-export const PLATFORMS = {
-  uz: {
-    itv: { name: 'ITV.uz', url: (t) => google(`(${t.uz} OR ${t.ru})`, 'itv.uz') },
-    splay: { name: 'Splay', url: (t) => google(`(${t.uz} OR ${t.ru})`, 'splay.uz') },
-    allplay: { name: 'Allplay', url: (t) => google(`(${t.uz} OR ${t.ru})`, 'allplay.uz') },
-    youtube: {
-      name: "YouTube (o'zbek tilida qidirish)",
-      url: (t) => `https://www.youtube.com/results?search_query=${enc(`${t.uz} o'zbek tilida`)}`,
-    },
-  },
-  ru: {
-    kinopoisk: { name: 'Кинопоиск', url: (t) => `https://www.kinopoisk.ru/index.php?kp_query=${enc(t.ru)}` },
-    ivi: { name: 'Иви', free: true, url: (t) => google(t.ru, 'ivi.ru') },
-    okko: { name: 'Okko', url: (t) => google(t.ru, 'okko.tv') },
-    start: { name: 'Start', url: (t) => google(t.ru, 'start.ru') },
-    wink: { name: 'Wink', url: (t) => google(t.ru, 'wink.ru') },
-    premier: { name: 'Premier', url: (t) => google(t.ru, 'premier.one') },
-    kion: { name: 'Kion', url: (t) => google(t.ru, 'kion.ru') },
-    amediateka: { name: 'Амедиатека', url: (t) => google(t.ru, 'amediateka.ru') },
-    youtube: {
-      name: 'YouTube (rus tilida qidirish)',
-      url: (t) => `https://www.youtube.com/results?search_query=${enc(`${t.ru} фильм`)}`,
-    },
-  },
-  en: {
-    justwatch: {
-      name: 'JustWatch — barcha platformalar',
-      url: (t) => `https://www.justwatch.com/us/search?q=${enc(t.en)}`,
-    },
-    tubi: { name: 'Tubi', free: true, url: (t) => google(t.en, 'tubitv.com') },
-    pluto: { name: 'Pluto TV', free: true, url: (t) => google(t.en, 'pluto.tv') },
-    plex: { name: 'Plex', free: true, url: (t) => google(t.en, 'watch.plex.tv') },
-    youtube: {
-      name: 'YouTube Movies',
-      url: (t) => `https://www.youtube.com/results?search_query=${enc(`${t.en} ${t.year || ''} movie`)}`,
-    },
-    netflix: { name: 'Netflix', url: (t) => `https://www.netflix.com/search?q=${enc(t.en)}` },
-    prime: { name: 'Prime Video', url: (t) => `https://www.amazon.com/s?k=${enc(t.en)}&i=instant-video` },
-    disney: { name: 'Disney+', url: (t) => google(t.en, 'disneyplus.com') },
-    max: { name: 'Max', url: (t) => google(t.en, 'max.com') },
-    appletv: { name: 'Apple TV', url: (t) => `https://tv.apple.com/search?term=${enc(t.en)}` },
-    hulu: { name: 'Hulu', url: (t) => google(t.en, 'hulu.com') },
-    paramount: { name: 'Paramount+', url: (t) => google(t.en, 'paramountplus.com') },
-    peacock: { name: 'Peacock', url: (t) => google(t.en, 'peacocktv.com') },
-  },
-};
-
-/** Model tavsiya qilmasa ham har doim ko'rsatiladiganlar. */
-export const DEFAULTS = {
-  uz: ['itv', 'splay', 'allplay', 'youtube'],
-  ru: ['kinopoisk', 'ivi', 'okko', 'youtube'],
-  en: ['justwatch', 'tubi', 'pluto', 'youtube'],
-};
 
 export const LANG = {
   uz: { flag: '🇺🇿', name: "o'zbek" },
@@ -65,14 +11,45 @@ export const LANG = {
   en: { flag: '🇬🇧', name: 'ingliz' },
 };
 
-/** Platforma kalitlari ro'yxatini (model tavsiyasi + standartlar) tartiblab, 6 tagacha qaytaradi. */
-export function pickPlatforms(lang, suggested = []) {
-  const known = PLATFORMS[lang];
-  const sugg = suggested.filter((k) => known[k]);
-  const all = [...new Set([...sugg, ...DEFAULTS[lang]])].slice(0, 6);
-  return all.map((key) => ({ key, ...known[key], suggested: sugg.includes(key) }));
-}
-
 /**
- * @typedef {{ uz: string, ru: string, en: string, year?: number|null }} Titles
+ * @param {'uz'|'ru'|'en'} lang
+ * @param {{qid?: string|null, uz: string, ru: string, en: string, year?: number|null}} film
+ * @returns {Promise<Array<{name: string, url: string, direct?: boolean, free?: boolean}>>}
  */
+export async function watchLinks(lang, film) {
+  let official = [];
+  if (film.qid) {
+    try {
+      official = await officialLinks(film.qid);
+    } catch (err) {
+      console.warn('Wikidata havolalari xatosi:', err.message);
+    }
+  }
+  const mine = official.filter((l) => l.lang === lang);
+  const direct = mine.filter((l) => !l.tmdb && !l.info).map((l) => ({ ...l, direct: true }));
+  const tmdb = mine.find((l) => l.tmdb);
+  const info = mine.filter((l) => l.info);
+  const has = (name) => direct.some((l) => l.name === name);
+  const year = film.year ? ` ${film.year}` : '';
+
+  const out = [...direct];
+  if (lang === 'ru') {
+    if (tmdb) out.push(tmdb);
+    if (!has('Кинопоиск')) {
+      out.push({ name: 'Кинопоиск (qidiruv)', url: `https://www.kinopoisk.ru/index.php?kp_query=${enc(film.ru)}` });
+    }
+    out.push({ name: 'YouTube (rus tilida)', url: `https://www.youtube.com/results?search_query=${enc(`${film.ru}${year} фильм`)}` });
+  } else if (lang === 'en') {
+    if (tmdb) out.push(tmdb);
+    if (!has('JustWatch')) {
+      out.push({ name: 'JustWatch (qidiruv)', url: `https://www.justwatch.com/us/search?q=${enc(film.en)}` });
+    }
+    out.push(...info);
+  } else {
+    out.push({
+      name: "YouTube (o'zbek tilida)",
+      url: `https://www.youtube.com/results?search_query=${enc(`${film.uz} o'zbek tilida`)}`,
+    });
+  }
+  return out.slice(0, 8);
+}

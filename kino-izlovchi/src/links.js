@@ -108,7 +108,8 @@ export async function fromLink(link) {
       ];
       if (!meta.duration || meta.duration > 120) {
         args.unshift('--download-sections', '*0-90');
-        if (ffmpegBin()) args.unshift('--ffmpeg-location', ffmpegBin());
+        // Faqat to'liq yo'l berilganda ko'rsatamiz; "ffmpeg" (PATH'dagi) bo'lsa yt-dlp o'zi topadi
+        if (ffmpegBin().includes('/')) args.unshift('--ffmpeg-location', ffmpegBin());
       }
       await ytdlp(args, dir);
       const file = (await readdir(dir)).find((f) => f.startsWith('video.') && !f.endsWith('.part'));
