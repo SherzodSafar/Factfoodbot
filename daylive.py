@@ -256,7 +256,10 @@ class DayService:
                  + (f" • foydali kunlar: {stt['green_days']}" if stt["days"] else ""),
                  f"🧠 Strategiya: {DAY_NAMES.get(book.p.strategy, book.p.strategy)}"]
         if not book.day:
-            lines.append("\nHali savdo kuni bo'lmagan. Birja ochilgach (9:36 NY) bot nomzodlarni tanlaydi va xabar beradi.")
+            lines.append("\nBot bugungi kunni boshlamoqda — bir necha daqiqada nomzodlar haqida xabar keladi."
+                         if market_status().startswith("🟢") else
+                         "\nHali savdo kuni bo'lmagan. Birja ochilgach (ochilishdan 6 daqiqa keyin) bot nomzodlarni "
+                         "tanlaydi va xabar beradi.")
         if book.day:
             lines.append(f"\n📆 {sana(book.day, kun=True)}")
             if book.watch:
