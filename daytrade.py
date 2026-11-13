@@ -49,6 +49,10 @@ class DayParams:
     stop_pct: float = 0.0        # himoya: kirishdan necha % pastda (0 — signal shamining pasti)
     time_stop: int = 0           # necha daqiqada maqsadga yetmasa — sotiladi (0 — cheklovsiz)
     max_open: int = 3            # bir vaqtda eng ko'p ochiq savdo
+    entry: str = "breakout"      # runner kirishi: breakout — yorib chiqishda; dip — cho'qqidan qaytgach tiklanishda;
+                                 # vwap — VWAP dan pastga tushib, qayta ustiga chiqqanda
+    dip_min: float = 8.0         # dip: kunning cho'qqisidan kamida necha % pastga qaytgan bo'lsin
+    target_hod: bool = False     # maqsad — kunning cho'qqisi (kamida target_pct)
 
     @classmethod
     def from_dict(cls, d):
@@ -86,16 +90,17 @@ class DayBook:
         self.last_bar = None   # oxirgi qayta ishlangan sham vaqti (str)
         self.watch = []        # bugungi nomzodlar (xabar uchun)
         self.traded = []       # bugun signal bergan aksiyalar (runner: kuniga bir marta)
+        self.play = {}         # runner dip/vwap: tk -> {hod, pv, v, hot, below, prev}
 
     def to_dict(self):
         return dict(capital=self.capital, cash=self.cash, positions=self.positions, orders=self.orders,
                     trades=self.trades, days=self.days, day=self.day, done=self.done, last_bar=self.last_bar,
-                    watch=self.watch, traded=self.traded)
+                    watch=self.watch, traded=self.traded, play=self.play)
 
     @classmethod
     def from_dict(cls, d, p):
         b = cls(p, d["capital"])
-        for k in ("cash", "positions", "orders", "trades", "days", "day", "done", "last_bar", "watch", "traded"):
+        for k in ("cash", "positions", "orders", "trades", "days", "day", "done", "last_bar", "watch", "traded", "play"):
             setattr(b, k, d.get(k, getattr(b, k)))
         return b
 
@@ -121,6 +126,9 @@ class DayBook:
         self.cash -= qty * buy * (1 + p.commission)
         tgt = (buy * (1 + p.target_pct / 100) if p.target_pct > 0 else
                buy + p.target_r * (buy - stop) if p.target_r > 0 else None)
+        hod = (self.play.get(tk) or {}).get("hod")
+        if p.target_hod and hod and (tgt is None or hod > tgt):
+            tgt = hod * 0.995           # kunning cho'qqisiga qaytish (biroz pastroqda sotamiz)
         self.positions[tk] = dict(qty=qty, entry=buy, stop=stop, target=tgt, time=str(ts))
         self.done += 1
         return (f"🟢 Sotib olindi: {tk} — {dona(qty)} dona × {buy:.2f}$ = {pul(qty * buy, 2)} "
@@ -150,7 +158,7 @@ class DayBook:
     # ---------- asosiy ----------
     def new_day(self, day):
         self.day = str(pd.Timestamp(day).date())
-        self.orders, self.watch, self.done, self.last_bar, self.traded = {}, [], 0, None, []
+        self.orders, self.watch, self.done, self.last_bar, self.traded, self.play = {}, [], 0, None, [], {}
 
     def select_orb(self, first_bars: dict, avg_first_vol: dict, spy_bar=None):
         """first_bars: {tk: 9:30 shami (Open/High/Low/Close/Volume)}. Nomzodlarni tanlab, buyurtma qo'yadi."""
@@ -218,8 +226,49 @@ class DayBook:
                     self.orders[tk] = dict(level=float(r["High"]), stop=float(r["Low"]), rvol=round(r["Volume"] / av, 1))
                     ev.append(f"⚡️ {tk}: 5 daqiqada hajm odatdagidan ×{r['Volume'] / av:.0f} — "
                               f"narx {r['High']:.2f}$ dan oshsa sotib olinadi")
+        # 3a) runner dip/vwap: "o'yindagi" aksiya cho'qqidan qaytgach yoki VWAP ni qayta egallaganda kirish
+        if p.strategy == "runner" and p.entry in ("dip", "vwap") and avg_bar_vol and prev_close:
+            for tk, r in rows.items():
+                av, pc = avg_bar_vol.get(tk), prev_close.get(tk)
+                if not av or not pc:
+                    continue
+                st = self.play.setdefault(tk, dict(hod=0.0, pv=0.0, v=0.0, hot=False, below=False, low=None, prev=None))
+                st["pv"] += (r["High"] + r["Low"] + r["Close"]) / 3 * r["Volume"]
+                st["v"] += r["Volume"]
+                vwap = st["pv"] / st["v"] if st["v"] else r["Close"]
+                gain = (r["Close"] / pc - 1) * 100
+                if (not st["hot"] and gain >= p.min_gain and r["Volume"] >= p.runner_vol * av
+                        and r["Close"] * r["Volume"] >= p.min_dollar_vol):
+                    st["hot"] = True
+                    ev.append(f"🚀 {tk} uchmoqda: bugun {gain:+.0f}%, hajm odatdagidan ×{r['Volume'] / av:.0f}. "
+                              + ("Cho'qqidan qaytib, qayta ko'tarila boshlasa — sotib olinadi." if p.entry == "dip" else
+                                 "VWAP'dan pastga tushib, qayta ustiga chiqsa — sotib olinadi."))
+                if r["High"] >= st["hod"]:
+                    st["hod"], st["low"] = float(r["High"]), None
+                else:
+                    st["low"] = float(r["Low"]) if st["low"] is None else min(st["low"], float(r["Low"]))
+                prev = st["prev"]
+                st["prev"] = dict(High=float(r["High"]), Low=float(r["Low"]))
+                if r["Close"] < vwap:
+                    st["below"] = True
+                if (not st["hot"] or tk in self.traded or tk in self.positions or tk in self.orders or prev is None
+                        or r["Close"] < p.runner_price or not (OPEN_BAR + pd.Timedelta(minutes=10) <= tod < RUNNER_UNTIL)):
+                    continue
+                green = r["Close"] > r["Open"] and r["Close"] > prev["High"]
+                if p.entry == "dip":
+                    depth = (st["hod"] - (st["low"] or r["Low"])) / st["hod"] * 100 if st["hod"] else 0
+                    ok = green and depth >= p.dip_min and r["Close"] > vwap
+                else:
+                    ok = green and st["below"] and r["Close"] > vwap and prev["Low"] <= vwap
+                if ok:
+                    self.traded.append(tk)
+                    stop = min(float(r["Low"]), st["low"] or float(r["Low"]))
+                    self.orders[tk] = dict(level=float(r["High"]), stop=stop, rvol=0,
+                                           expires=str(pd.Timestamp(ts) + ORDER_TTL))
+                    ev.append(f"🎯 {tk}: {'cho‘qqidan qaytib' if p.entry == 'dip' else 'VWAP ni qayta egallab'} yana ko'tarilmoqda "
+                              f"({r['Close']:.2f}$, kun cho'qqisi {st['hod']:.2f}$). Narx {r['High']:.2f}$ dan oshsa — sotib olinadi.")
         # 3b) runner: bugun kuchli o'sgan + hajm portlashi + sham yuqorida yopilgan
-        if (p.strategy == "runner" and avg_bar_vol and prev_close
+        if (p.strategy == "runner" and p.entry == "breakout" and avg_bar_vol and prev_close
                 and OPEN_BAR + pd.Timedelta(minutes=5) <= tod < RUNNER_UNTIL):
             for tk, r in rows.items():
                 av, pc = avg_bar_vol.get(tk), prev_close.get(tk)

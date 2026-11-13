@@ -98,22 +98,23 @@ def main():
     R = lambda **k: DayParams(**{**dict(strategy="runner", slippage=0.003, risk_pct=0.5, max_pos_pct=20,
                                         max_trades=8, spy_filter=False, target_r=0), **k})
     variants = {
-        "+10% o'sgan, maqsad +10%, himoya −5%, 60 daq": R(min_gain=10, target_pct=10, stop_pct=5, time_stop=60),
-        "+10%, maqsad +5%, himoya −5%, 30 daq": R(min_gain=10, target_pct=5, stop_pct=5, time_stop=30),
-        "+10%, maqsad +20%, himoya −7%, vaqtsiz": R(min_gain=10, target_pct=20, stop_pct=7),
-        "+10%, maqsad +10%, himoya sham pasti": R(min_gain=10, target_pct=10),
-        "+5%, maqsad +5%, himoya −3%, 30 daq": R(min_gain=5, target_pct=5, stop_pct=3, time_stop=30),
-        "+5%, maqsad +10%, himoya −5%, 60 daq": R(min_gain=5, target_pct=10, stop_pct=5, time_stop=60),
-        "+20%, maqsad +10%, himoya −5%, 60 daq": R(min_gain=20, target_pct=10, stop_pct=5, time_stop=60),
-        "+20%, maqsad +20%, himoya −10%, vaqtsiz": R(min_gain=20, target_pct=20, stop_pct=10),
-        "+10%, hajm 10x, maqsad +10%, −5%, 60d": R(min_gain=10, runner_vol=10, target_pct=10, stop_pct=5, time_stop=60),
-        "+10%, maqsad +10%, −5%, 60d, sirp 0.1%": R(min_gain=10, target_pct=10, stop_pct=5, time_stop=60, slippage=0.001),
+        "YORIB: +20%, maqsad +10%, −5%, 60d (eski eng yaxshi)": R(min_gain=20, target_pct=10, stop_pct=5, time_stop=60),
+        "DIP: +20%, qaytish ≥8%, maqsad = cho'qqi": R(min_gain=20, entry="dip", dip_min=8, target_hod=True, target_pct=5),
+        "DIP: +20%, qaytish ≥12%, maqsad = cho'qqi": R(min_gain=20, entry="dip", dip_min=12, target_hod=True, target_pct=5),
+        "DIP: +20%, qaytish ≥8%, maqsad +10%, 60d": R(min_gain=20, entry="dip", dip_min=8, target_pct=10, time_stop=60),
+        "DIP: +10%, qaytish ≥8%, maqsad = cho'qqi": R(min_gain=10, entry="dip", dip_min=8, target_hod=True, target_pct=5),
+        "DIP: +30%, qaytish ≥10%, maqsad = cho'qqi": R(min_gain=30, entry="dip", dip_min=10, target_hod=True, target_pct=5),
+        "VWAP: +20%, maqsad = cho'qqi": R(min_gain=20, entry="vwap", target_hod=True, target_pct=5),
+        "VWAP: +20%, maqsad +10%, 60d": R(min_gain=20, entry="vwap", target_pct=10, time_stop=60),
+        "VWAP: +10%, maqsad = cho'qqi": R(min_gain=10, entry="vwap", target_hod=True, target_pct=5),
+        "DIP: +20%, qaytish ≥8%, cho'qqi, sirp 0.1%": R(min_gain=20, entry="dip", dip_min=8, target_hod=True, target_pct=5,
+                                                       slippage=0.001),
     }
     for name, p in variants.items():
         book = run(days, p)
         st = day_stats(book)
         tr = pd.DataFrame(book.trades)
-        line = (f"{name:<44} {CAPITAL:.0f}$ → {book.value():.0f}$ ({st['ret']:+.2f}%)  savdo {st['n']:3d}  "
+        line = (f"{name:<52} {CAPITAL:.0f}$ → {book.value():.0f}$ ({st['ret']:+.2f}%)  savdo {st['n']:3d}  "
                 f"yutuq {st['win_rate']:4.1f}%  PF {st['pf']}  pasayish {st['dd']:.1f}%  yashil kun {st['green_days']}/{st['days']}")
         print(line)
         if len(tr):
