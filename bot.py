@@ -129,6 +129,7 @@ def restore_watch():
             print("Holat keyinroq tiklandi:\n" + paper.describe(), flush=True)
             if res == "ok":
                 send(OWNER, "✅ Bot holati zaxiradan tiklandi — demo davom etmoqda.")
+            return
 
 
 def backup_state():
@@ -305,9 +306,35 @@ def handle_action(chat_id, act, mid=None):
         threading.Thread(target=run_and_send, args=(chat_id, lambda: service.handle(cmd), True), daemon=True).start()
 
 
+def restore_from_upload(chat_id, doc):
+    """Egasi zaxira faylni (demo_state.json) qayta yuborsa — undan holatni tiklaydi va yangidan mahkamlaydi."""
+    try:
+        f = tg("getFile", json={"file_id": doc["file_id"]})
+        content = requests.get(f"https://api.telegram.org/file/bot{TOKEN}/{f['result']['file_path']}", timeout=60).content
+        state = json.loads(content)
+        if not isinstance(state, dict) or not (state.get("books") or state.get("day")):
+            send(chat_id, "⚠️ Bu fayl bot holatiga o'xshamaydi. Mahkamlangan \"💾 Bot holati\" faylini yuboring.")
+            return
+        with paper.lock:
+            with open(STATE_FILE, "wb") as fh:
+                fh.write(content)
+            paper.reload()
+        backup_info.update(restore="ok", msg_id=None, hash=None)
+        backup_state()     # yangi xabar sifatida yuborib, mahkamlaydi
+        print("Holat yuborilgan fayldan tiklandi:\n" + paper.describe(), flush=True)
+        send(chat_id, "✅ Bot holati fayldan tiklandi va qayta mahkamlandi. Demo davom etmoqda.", MENU_BTN)
+    except Exception as e:
+        traceback.print_exc()
+        send(chat_id, f"⚠️ Faylni o'qib bo'lmadi: {e}")
+
+
 def on_message(msg):
     chat_id = msg.get("chat", {}).get("id")
     text = (msg.get("text") or "").strip()
+    doc = msg.get("document") or {}
+    if chat_id == OWNER and doc.get("file_name") == "demo_state.json":
+        restore_from_upload(chat_id, doc)
+        return
     if not chat_id or not text:
         return
     if chat_id != OWNER:
@@ -355,6 +382,11 @@ def main():
     threading.Thread(target=intraday, daemon=True).start()
     if backup_info["restore"] == "error":
         threading.Thread(target=restore_watch, daemon=True).start()
+    if backup_info["restore"] != "ok" and not paper.active:
+        send(OWNER, "⚠️ Bot qayta ishga tushdi, lekin mahkamlangan zaxirani topa olmadi.\n\n"
+                    "Agar sizda demo bo'lgan bo'lsa: chatdagi \"💾 Bot holati\" faylini (demo_state.json) "
+                    "shu botga qayta yuboring (forward) — bot holatni o'zi tiklaydi.\n"
+                    "Yangi demo boshlamoqchi bo'lsangiz — /menyu.")
     print("Bot ishga tushdi\n" + paper.describe(), flush=True)
     offset = None
     while True:
