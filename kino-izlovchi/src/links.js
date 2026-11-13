@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { config } from './config.js';
-import { download, extractFrames, ffmpegBin } from './frames.js';
+import { download, extractAudio, extractFrames, ffmpegBin } from './frames.js';
 
 const run = promisify(execFile);
 
@@ -80,13 +80,14 @@ function hintText(meta) {
 
 /**
  * Havoladagi videodan kadrlar va matnli ishoralar (sarlavha, tavsif) oladi.
- * Qaytaradi: { frames: string[], text: string }
+ * Qaytaradi: { frames: string[], text: string, gotVideo: boolean, getAudio: () => Promise<string|null> }
  */
 export async function fromLink(link) {
   const dir = await mkdtemp(path.join(tmpdir(), 'link-'));
   try {
     let meta = {};
     let frames = [];
+    let videoBuf = null;
 
     try {
       const { stdout } = await ytdlp(['-J', link], dir);
@@ -112,8 +113,8 @@ export async function fromLink(link) {
       await ytdlp(args, dir);
       const file = (await readdir(dir)).find((f) => f.startsWith('video.') && !f.endsWith('.part'));
       if (file) {
-        const buf = await readFile(path.join(dir, file));
-        frames = await extractFrames(buf, Math.min(meta.duration || 30, 90));
+        videoBuf = await readFile(path.join(dir, file));
+        frames = await extractFrames(videoBuf, Math.min(meta.duration || 30, 90));
       }
     } catch (err) {
       console.warn('yt-dlp yuklash xatosi:', err.stderr?.slice?.(0, 300) || err.message);
@@ -130,7 +131,13 @@ export async function fromLink(link) {
       }
     }
 
-    return { frames, text: hintText(meta), gotVideo: frames.length > 1 };
+    return {
+      frames,
+      text: hintText(meta),
+      gotVideo: Boolean(videoBuf),
+      // Audio faqat kerak bo'lganda (tasvirdan topilmasa) ajratiladi
+      getAudio: videoBuf ? () => extractAudio(videoBuf, 90) : null,
+    };
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

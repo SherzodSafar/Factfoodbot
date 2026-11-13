@@ -1,20 +1,24 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { Telegraf, Markup } from 'telegraf';
+import { AiBusyError } from './ai.js';
 import { aiReady, config } from './config.js';
-import { download, extractFrames, toJpeg } from './frames.js';
-import { findWhereToWatch, identifyMovie, translateToUzbek } from './identify.js';
+import { download, extractAudio, extractFrames, toJpeg } from './frames.js';
+import { identifyMovie, transcribe } from './identify.js';
 import { findVideoLink, fromLink, platformName } from './links.js';
-import { findDetails, getDetails, getWatchProviders, tmdbEnabled } from './tmdb.js';
+import { LANG, pickPlatforms } from './platforms.js';
+import { buildCard, buildKeyboard, esc, parseCard } from './card.js';
+import { findDetails, tmdbEnabled } from './tmdb.js';
 
 const bot = new Telegraf(config.botToken, { handlerTimeout: 300_000 });
 
 const MAX_FILE_BYTES = 20 * 1024 * 1024; // Bot API getFile chegarasi
+const CONFIDENT = 0.65; // shundan past bo'lsa — audio (subtitr) orqali ham tekshiramiz
+const MIN_CONFIDENCE = 0.35; // shundan past bo'lsa — "topilmadi"
 
 // ---------- Yordamchi holatlar (xotirada) ----------
 const busy = new Set(); // hozir qidirilayotgan foydalanuvchilar
 const usage = new Map(); // userId -> { day, count }
-const cache = new Map(); // TMDB'siz rejim uchun: key -> natija
 
 function underLimit(userId) {
   if (!config.dailyLimit) return true;
@@ -29,101 +33,65 @@ function underLimit(userId) {
   return true;
 }
 
-function remember(value) {
-  const key = crypto.randomBytes(6).toString('base64url');
-  cache.set(key, value);
-  if (cache.size > 5000) cache.delete(cache.keys().next().value);
-  return key;
-}
-
-const esc = (s = '') => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-const cut = (s, n) => (s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s);
-
-const searchLinks = (title, year) => {
-  const q = encodeURIComponent(`${title}${year ? ' ' + year : ''}`);
-  const uz = encodeURIComponent(`${title} uzbek tilida`);
-  return {
-    trailer: `https://www.youtube.com/results?search_query=${q}+trailer`,
-    uzbek: `https://www.youtube.com/results?search_query=${uz}`,
-    google: `https://www.google.com/search?q=${q}+watch+online+legally`,
-  };
-};
-
 const NOT_READY =
   "🛠 Bot hozircha sozlanmoqda: kinoni aniqlovchi sun'iy intellekt kaliti hali qo'shilmagan.\n" +
   "Tez orada ishga tushadi — keyinroq qayta urinib ko'ring.";
 
-// ---------- Kartochka ----------
-function buildCard(guess, details) {
-  const isTv = (details?.kind || guess.kind) === 'tv';
-  const title = details?.title || guess.title_ru || guess.title_original;
-  const original = details?.originalTitle || guess.title_original;
-  const year = details?.year || guess.year;
-  const genres = details?.genres?.length ? details.genres : guess.genres;
-
-  const lines = [`✅ ${isTv ? 'Serial' : 'Kino'}`, `<b>${esc(title)}</b>`];
-  if (original && original !== title) lines.push(`Asl nomi: ${esc(original)}`);
-  const meta = [genres?.slice(0, 4).join(', '), year].filter(Boolean).join(' • ');
-  if (meta) lines.push(`<i>${esc(meta)}</i>`);
-  if (isTv && guess.season) {
-    lines.push(`📺 ${guess.season}-fasl${guess.episode ? `, ${guess.episode}-qism` : ''} (taxminan)`);
-  }
-  if (details?.rating) lines.push(`⭐ ${details.rating} • 🗳 ${details.votes.toLocaleString('ru-RU')} ovoz`);
-
-  const overview = details?.overview || guess.overview_uz;
-  if (overview) lines.push('', esc(cut(overview, 500)));
-  if (guess.confidence < 0.7) lines.push('', "🤔 <i>Aniqligi o'rtacha — tekshirib ko'ring.</i>");
-  return lines.join('\n');
-}
-
-function buildKeyboard(guess, details) {
-  const ref = details ? `${details.kind === 'tv' ? 't' : 'm'}${details.id}` : `c${remember(guess)}`;
-  return Markup.inlineKeyboard([
-    [Markup.button.callback("▶️ Qayerda ko'rish (bepul bo'lsa)", `w:${ref}`)],
-    [Markup.button.callback("🇺🇿 O'zbekchaga o'girish", `u:${ref}`)],
-  ]);
-}
-
-async function resolveRef(ref) {
-  if (ref.startsWith('c')) {
-    const guess = cache.get(ref.slice(1));
-    return guess ? { guess, details: null } : null;
-  }
-  const kind = ref[0] === 't' ? 'tv' : 'movie';
-  const details = await getDetails(kind, Number(ref.slice(1)));
-  return { guess: null, details };
-}
-
 // ---------- Asosiy oqim ----------
 /**
- * @param getInput async (setStatus) => ({ frames, text })
+ * @param getInput async (setStatus) => ({ frames, text, getAudio? })
  */
 async function handleSearch(ctx, getInput, firstStatus = '🔎 Qidiryapman..') {
   const userId = ctx.from.id;
   if (!aiReady()) return ctx.reply(NOT_READY);
-  if (busy.has(userId)) return ctx.reply('⏳ Oldingi so‘rov hali qidirilyapti, biroz kuting.');
+  if (busy.has(userId)) return ctx.reply("⏳ Oldingi so'rov hali qidirilyapti, biroz kuting.");
   if (!underLimit(userId)) {
     return ctx.reply(`Bugungi limit (${config.dailyLimit} ta) tugadi. Ertaga yana urinib ko'ring 🙂`);
   }
 
   busy.add(userId);
   const status = await ctx.reply(firstStatus, { reply_parameters: { message_id: ctx.message.message_id } });
-  const setStatus = (text) =>
-    ctx.telegram.editMessageText(ctx.chat.id, status.message_id, undefined, text).catch(() => {});
-  const typing = setInterval(() => ctx.sendChatAction('typing').catch(() => {}), 4000);
+  let lastStatus = firstStatus;
+  const setStatus = async (text) => {
+    if (text === lastStatus) return;
+    lastStatus = text;
+    await ctx.telegram.editMessageText(ctx.chat.id, status.message_id, undefined, text).catch(() => {});
+  };
+  const typing = setInterval(() => ctx.sendChatAction('typing').catch(() => {}), 4500);
 
   try {
     const input = await getInput(setStatus);
-    if (!input.frames?.length && !input.text) {
+    const frames = input.frames || [];
+    if (!frames.length && !input.text && !input.getAudio) {
       await setStatus("😕 Videoni olib bo'lmadi. Videoning o'zini yoki skrinshotini yuboring.");
       return;
     }
-    await setStatus('🔎 Qidiryapman..');
-    const guess = await identifyMovie(input);
-    if (!guess) {
+
+    // 1-qadam: kadrlar (+ sarlavha/tavsif) bo'yicha
+    let guess = null;
+    if (frames.length || input.text) {
+      await setStatus('🔎 Qidiryapman..');
+      guess = await identifyMovie({ frames, text: input.text });
+    }
+
+    // 2-qadam: aniq topilmasa — ovozni subtitrga aylantirib, dialog bo'yicha
+    let transcript = '';
+    if ((!guess || guess.confidence < CONFIDENT) && input.getAudio) {
+      await setStatus("🎧 Tasvirdan aniq topilmadi — ovozini subtitrga aylantiryapman..");
+      const audio = await input.getAudio();
+      if (audio) transcript = await transcribe(audio);
+      if (transcript) {
+        await setStatus("🔎 Dialog (subtitr) bo'yicha qidiryapman..");
+        const byAudio = await identifyMovie({ frames, text: input.text, transcript });
+        if (byAudio && (!guess || byAudio.confidence >= guess.confidence)) guess = { ...byAudio, viaAudio: true };
+      }
+    }
+
+    if (!guess || guess.confidence < MIN_CONFIDENCE) {
       await setStatus(
-        "😕 Afsus, bundan kinoni aniqlay olmadim.\n\n" +
-          "Aktyorlar yuzi yoki muhim sahna ko'rinadigan boshqa parcha/skrinshot yuboring, " +
+        "😕 Afsus, bundan kinoni aniqlay olmadim" +
+          (transcript ? ' (dialog bo‘yicha ham).' : '.') +
+          "\n\nAktyorlar yuzi yoki muhim sahna ko'rinadigan boshqa parcha/skrinshot yuboring, " +
           "yoki sahnani so'z bilan tasvirlab yozing.",
       );
       return;
@@ -136,20 +104,26 @@ async function handleSearch(ctx, getInput, firstStatus = '🔎 Qidiryapman..') {
       console.error('TMDB xatosi:', err.message);
     }
 
-    const caption = buildCard(guess, details);
-    const keyboard = buildKeyboard(guess, details);
-    await ctx.telegram.deleteMessage(ctx.chat.id, status.message_id).catch(() => {});
-
-    const replyOpts = {
+    const caption = buildCard(guess, details, transcript);
+    const opts = {
       parse_mode: 'HTML',
       reply_parameters: { message_id: ctx.message.message_id },
-      ...keyboard,
+      ...buildKeyboard(guess),
     };
-    if (details?.poster) await ctx.replyWithPhoto(details.poster, { caption, ...replyOpts });
-    else await ctx.reply(caption, replyOpts);
+    await ctx.telegram.deleteMessage(ctx.chat.id, status.message_id).catch(() => {});
+    if (details?.poster) await ctx.replyWithPhoto(details.poster, { caption, ...opts });
+    else await ctx.reply(caption, opts);
   } catch (err) {
     console.error('Qidiruv xatosi:', err);
-    await setStatus("⚠️ Xatolik yuz berdi. Birozdan so'ng qayta urinib ko'ring.");
+    if (err instanceof AiBusyError) {
+      await setStatus(
+        err.quota
+          ? "⏳ Sun'iy intellektning bepul limiti vaqtincha tugadi. Bir necha daqiqadan so'ng qayta urinib ko'ring."
+          : "⏳ Sun'iy intellekt hozir juda band. 1–2 daqiqadan so'ng qayta urinib ko'ring.",
+      );
+    } else {
+      await setStatus("⚠️ Xatolik yuz berdi. Birozdan so'ng qayta urinib ko'ring.");
+    }
   } finally {
     clearInterval(typing);
     busy.delete(userId);
@@ -157,12 +131,16 @@ async function handleSearch(ctx, getInput, firstStatus = '🔎 Qidiryapman..') {
 }
 
 function videoInput(ctx, file, duration) {
-  return async () => {
+  return async (setStatus) => {
+    await setStatus('📥 Videoni olyapman..');
     const link = await ctx.telegram.getFileLink(file.file_id);
     const buffer = await download(link.href);
     const frames = await extractFrames(buffer, duration);
-    if (!frames.length) throw new Error("Videodan kadr ajratib bo'lmadi");
-    return { frames, text: ctx.message.caption || '' };
+    return {
+      frames,
+      text: ctx.message.caption || '',
+      getAudio: () => extractAudio(buffer, 120),
+    };
   };
 }
 
@@ -179,9 +157,13 @@ function linkInput(link, extraText) {
     await setStatus(`📥 ${platformName(link)} videosini yuklab olyapman..`);
     const res = await fromLink(link);
     if (!res.gotVideo && res.frames.length) {
-      await setStatus('📥 Videoning o‘zini olib bo‘lmadi, muqovasi bo‘yicha qidiryapman..');
+      await setStatus("📥 Videoning o'zini olib bo'lmadi, muqovasi bo'yicha qidiryapman..");
     }
-    return { frames: res.frames, text: [res.text, extraText].filter(Boolean).join('\n') };
+    return {
+      frames: res.frames,
+      text: [res.text, extraText].filter(Boolean).join('\n'),
+      getAudio: res.getAudio,
+    };
   };
 }
 
@@ -189,7 +171,7 @@ function tooBig(ctx, file) {
   if (file.file_size && file.file_size > MAX_FILE_BYTES) {
     ctx.reply(
       "📦 Fayl juda katta (Telegram botlar 20 MB gacha qabul qiladi).\n" +
-        "Qisqa parcha (10–60 s), skrinshot yoki video havolasini yuboring.",
+        'Qisqa parcha (10–60 s), skrinshot yoki video havolasini yuboring.',
     );
     return true;
   }
@@ -198,14 +180,15 @@ function tooBig(ctx, file) {
 
 // ---------- Buyruqlar ----------
 const WELCOME =
-  "🎬 <b>Kino Izlovchi</b>ga xush kelibsiz!\n\n" +
+  '🎬 <b>Kino Izlovchi</b>ga xush kelibsiz!\n\n' +
   "Menga yuboring — qaysi kino ekanini aytaman:\n" +
-  "🔗 Instagram, YouTube yoki TikTok video <b>havolasi</b>\n" +
-  "📹 Kinodan <b>video parcha</b>\n" +
-  "🖼 Kinodan <b>skrinshot</b>\n" +
+  '🔗 Instagram, YouTube yoki TikTok video <b>havolasi</b>\n' +
+  '📹 Kinodan <b>video parcha</b>\n' +
+  '🖼 Kinodan <b>skrinshot</b>\n' +
   "✍️ yoki sahnani so'z bilan tasvirlang\n\n" +
-  "Topgach, kinoni <b>qonuniy</b> ravishda onlayn qayerda ko'rish mumkinligini " +
-  "(iloji bo'lsa <b>bepul</b>) havolalari bilan beraman.\n\n" +
+  "Tasvirdan topa olmasam, videoning <b>ovozini subtitrga</b> aylantirib, dialog bo'yicha qidiraman.\n\n" +
+  "Kino nomini 🇺🇿 o'zbek, 🇷🇺 rus va 🇬🇧 ingliz tillarida beraman va har bir tilda uni " +
+  "<b>qonuniy</b> ravishda (iloji bo'lsa <b>bepul</b>) qayerda ko'rish mumkinligini ko'rsataman.\n\n" +
   "<i>Hech qanday kanalga a'zo bo'lish shart emas.</i>";
 
 bot.start((ctx) => ctx.reply(WELCOME, { parse_mode: 'HTML' }));
@@ -241,89 +224,53 @@ bot.on('text', (ctx) => {
     return handleSearch(ctx, linkInput(link, rest), '📥 Havolani ochyapman..');
   }
   if (/https?:\/\//i.test(text)) {
-    return ctx.reply("Bu havolani qo'llab-quvvatlamayman. Instagram, YouTube yoki TikTok havolasini, yoki videoning o'zini yuboring.");
+    return ctx.reply(
+      "Bu havolani qo'llab-quvvatlamayman. Instagram, YouTube yoki TikTok havolasini, yoki videoning o'zini yuboring.",
+    );
   }
-  if (text.length < 3) return ctx.reply("Biroz batafsilroq yozing yoki kinodan parcha yuboring 🎬");
+  if (text.length < 3) return ctx.reply('Biroz batafsilroq yozing yoki kinodan parcha yuboring 🎬');
   return handleSearch(ctx, async () => ({ text }));
 });
 
-// ---------- Tugmalar ----------
-bot.action(/^w:(.+)$/, async (ctx) => {
-  await ctx.answerCbQuery('Qidiryapman…');
-  const wait = await ctx.reply("🔎 Qonuniy va bepul ko'rish joylarini qidiryapman..");
-  try {
-    if (!aiReady()) throw new Error('AI kaliti yo‘q');
-    const r = await resolveRef(ctx.match[1]);
-    if (!r) {
-      await ctx.telegram.editMessageText(ctx.chat.id, wait.message_id, undefined, "Ma'lumot eskirgan — parchani qayta yuboring.");
-      return;
-    }
-    const { guess, details } = r;
-    const info = {
-      title: details?.title || guess.title_ru || guess.title_original,
-      originalTitle: details?.originalTitle || guess.title_original,
-      year: details?.year || guess.year,
-      kind: details?.kind || guess.kind,
-    };
-    const links = searchLinks(info.originalTitle, info.year);
-
-    const [providers, found] = await Promise.all([
-      details ? getWatchProviders(details.kind, details.id).catch(() => null) : null,
-      findWhereToWatch(info).catch((err) => {
-        console.error('Veb-qidiruv xatosi:', err.message);
-        return null;
-      }),
-    ]);
-
-    const lines = [`▶️ ${info.title}${info.year ? ` (${info.year})` : ''} — qayerda ko'rish mumkin:`, ''];
-    if (found) lines.push(found);
-    else lines.push("Aniq havolalarni topa olmadim — pastdagi tugmalar orqali qidirib ko'ring.");
-    if (providers) lines.push('', `📺 Rasmiy platformalar (${providers.region}): ${providers.providers.join(', ')}`);
-    lines.push('', "ℹ️ Faqat qonuniy manbalar ko'rsatiladi. To'liq kinoni fayl qilib yubora olmayman — bu mualliflik huquqini buzadi.");
-
-    const buttons = [[Markup.button.url('🎞 Treyler (YouTube)', links.trailer)]];
-    if (providers?.link) buttons.push([Markup.button.url('📺 Barcha platformalar', providers.link)]);
-    if (details?.imdbId) buttons.push([Markup.button.url('IMDb', `https://www.imdb.com/title/${details.imdbId}/`)]);
-    buttons.push([Markup.button.url('🔍 Google orqali qidirish', links.google)]);
-
-    await ctx.telegram.deleteMessage(ctx.chat.id, wait.message_id).catch(() => {});
-    await ctx.reply(cut(lines.join('\n'), 4000), {
-      link_preview_options: { is_disabled: true },
-      ...Markup.inlineKeyboard(buttons),
-    });
-  } catch (err) {
-    console.error("Qayerda ko'rish xatosi:", err);
-    await ctx.telegram
-      .editMessageText(ctx.chat.id, wait.message_id, undefined, "⚠️ Ma'lumot olib bo'lmadi, keyinroq urinib ko'ring.")
-      .catch(() => {});
+// ---------- Til tugmalari: qayerda ko'rish ----------
+bot.action(/^w:(uz|ru|en):([a-z.]*)$/, async (ctx) => {
+  const [, lang, keyStr] = ctx.match;
+  const msg = ctx.callbackQuery.message;
+  const card = parseCard(msg?.caption ?? msg?.text ?? '');
+  if (!card) {
+    return ctx.answerCbQuery("Ma'lumot topilmadi — parchani qayta yuboring.", { show_alert: true });
   }
+  await ctx.answerCbQuery();
+
+  const { flag, name } = LANG[lang];
+  const title = card[lang];
+  const platforms = pickPlatforms(lang, keyStr.split('.').filter(Boolean));
+
+  const lines = [
+    `${flag} <b>${esc(title)}</b>${card.year ? ` (${card.year})` : ''} — ${name} tilida qonuniy ko'rish:`,
+    '',
+    "Pastdagi tugmalar rasmiy platformalarda shu kinoni qidiradi.",
+  ];
+  if (platforms.some((p) => p.suggested)) lines.push("⭐ — sun'iy intellekt fikricha shu yerda bo'lishi ehtimoli yuqori");
+  if (platforms.some((p) => p.free)) lines.push("🆓 — bepul (reklama bilan) ko'rish imkoni bor platforma");
+  if (lang === 'uz') lines.push('', "ℹ️ Rasmiy o'zbekcha dublyaj hamma kinoda bo'lavermaydi.");
+  lines.push('', "🔒 Faqat qonuniy manbalar. To'liq kinoni fayl qilib yubormayman — bu mualliflik huquqini buzadi.");
+
+  const rows = platforms.map((p) => [
+    Markup.button.url(`${p.suggested ? '⭐ ' : ''}${p.free ? '🆓 ' : ''}${p.name}`, p.url(card)),
+  ]);
+  await ctx.reply(lines.join('\n'), {
+    parse_mode: 'HTML',
+    link_preview_options: { is_disabled: true },
+    reply_parameters: msg ? { message_id: msg.message_id, allow_sending_without_reply: true } : undefined,
+    ...Markup.inlineKeyboard(rows),
+  });
 });
 
-bot.action(/^u:(.+)$/, async (ctx) => {
-  await ctx.answerCbQuery("O'girilmoqda…");
-  try {
-    const r = await resolveRef(ctx.match[1]);
-    if (!r) return ctx.reply("Ma'lumot eskirgan — parchani qayta yuboring.");
-    const { guess, details } = r;
-    const title = details?.originalTitle || guess.title_original;
-    const links = searchLinks(title);
-
-    let overviewUz = guess?.overview_uz || '';
-    if (details?.overview && aiReady()) overviewUz = (await translateToUzbek(details.overview)) || '';
-
-    const lines = [`🇺🇿 <b>${esc(details?.title || guess.title_ru || title)}</b>`];
-    lines.push('', overviewUz ? esc(cut(overviewUz, 3000)) : 'Bu kino uchun tavsif topilmadi.');
-    lines.push('', "🎧 O'zbek tilidagi versiyasini qidirish uchun pastdagi tugmani bosing.");
-
-    await ctx.reply(lines.join('\n'), {
-      parse_mode: 'HTML',
-      ...Markup.inlineKeyboard([[Markup.button.url("🔎 O'zbek tilida qidirish", links.uzbek)]]),
-    });
-  } catch (err) {
-    console.error('Tarjima xatosi:', err);
-    await ctx.reply("⚠️ Tarjima qilib bo'lmadi, keyinroq urinib ko'ring.");
-  }
-});
+// Eski versiyadagi tugmalar
+bot.on('callback_query', (ctx) =>
+  ctx.answerCbQuery("Bu tugma eskirgan — parchani qayta yuboring.", { show_alert: true }).catch(() => {}),
+);
 
 bot.catch((err, ctx) => console.error(`Update ${ctx.updateType} xatosi:`, err));
 
@@ -368,9 +315,8 @@ async function startWebhook() {
   await bot.telegram.setWebhook(url, {
     secret_token: secret,
     allowed_updates: ['message', 'callback_query'],
-    drop_pending_updates: false,
   });
-  console.log('✅ Webhook o‘rnatildi:', config.webhookDomain);
+  console.log(`✅ Webhook o'rnatildi: ${config.webhookDomain} (@${bot.botInfo.username})`);
 }
 
 async function main() {
@@ -378,7 +324,8 @@ async function main() {
     { command: 'start', description: 'Botni boshlash' },
     { command: 'help', description: 'Qanday foydalaniladi' },
   ]);
-  if (!aiReady()) console.warn("⚠️ ANTHROPIC_API_KEY yo'q — bot javob beradi, lekin kinoni aniqlay olmaydi.");
+  if (!aiReady()) console.warn("⚠️ GEMINI_API_KEY yo'q — bot javob beradi, lekin kinoni aniqlay olmaydi.");
+  else console.log(`🧠 Gemini modellari: ${config.models.join(' → ')}`);
   if (!tmdbEnabled()) console.warn("ℹ️ TMDB_API_KEY yo'q — poster va reyting ko'rsatilmaydi.");
 
   if (config.webhookDomain) {

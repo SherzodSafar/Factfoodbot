@@ -9,12 +9,25 @@ function required(name) {
   return value;
 }
 
+// Bepul tarifda model band (503) yoki limit tugagan (429) bo'lsa, navbatdagisiga o'tiladi.
+// Tartib: avval barqaror ishlaganlar, keyin yangi (ko'pincha band) modellar, oxirida tez "lite" modellar.
+const DEFAULT_MODELS = [
+  'gemini-3.5-flash',
+  'gemini-3-flash-preview',
+  'gemini-3.8-flash',
+  'gemini-3.7-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-flash-lite-latest',
+];
+
 export const config = {
   botToken: required('BOT_TOKEN'),
-  model: process.env.CLAUDE_MODEL || 'claude-opus-5-5',
+  geminiKey: process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '',
+  models: (process.env.GEMINI_MODELS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
   tmdbKey: process.env.TMDB_API_KEY || '',
-  // Qayerda ko'rish ro'yxati uchun mamlakat (TMDB watch providers)
-  watchRegion: process.env.WATCH_REGION || 'RU',
   // Webhook rejimi (Render va h.k.). Bo'sh bo'lsa — polling.
   webhookDomain: process.env.WEBHOOK_DOMAIN || process.env.RENDER_EXTERNAL_URL || '',
   port: Number(process.env.PORT || 3000),
@@ -26,6 +39,7 @@ export const config = {
   // Ixtiyoriy: Instagram/YouTube uchun cookies.txt (Netscape formati) matni
   ytdlpCookies: process.env.YTDLP_COOKIES || '',
 };
+if (!config.models.length) config.models = DEFAULT_MODELS;
 
-/** Claude kaliti bormi? Yo'q bo'lsa bot ishlaydi, lekin kinoni aniqlay olmaydi. */
-export const aiReady = () => Boolean(process.env.ANTHROPIC_API_KEY);
+/** Gemini kaliti bormi? Yo'q bo'lsa bot ishlaydi, lekin kinoni aniqlay olmaydi. */
+export const aiReady = () => Boolean(config.geminiKey);

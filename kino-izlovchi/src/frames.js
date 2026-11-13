@@ -42,6 +42,30 @@ export async function toJpeg(imageBuffer) {
 }
 
 /**
+ * Videodan audio yo'lini ajratadi (mono, 16 kHz, mp3) — subtitr uchun.
+ * Qaytaradi: base64 mp3 yoki null (ovoz bo'lmasa).
+ */
+export async function extractAudio(videoBuffer, maxSec = 120) {
+  const dir = await mkdtemp(path.join(tmpdir(), 'aud-'));
+  try {
+    const input = path.join(dir, 'input');
+    const out = path.join(dir, 'audio.mp3');
+    await writeFile(input, videoBuffer);
+    await run(ffmpegBin(), [
+      '-v', 'error', '-i', input, '-t', String(maxSec),
+      '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'libmp3lame', '-b:a', '32k', '-y', out,
+    ], { timeout: 60_000 });
+    const buf = await readFile(out);
+    // 1 soniyadan qisqa audio (~4 KB) — amalda ovozsiz
+    return buf.length > 4000 ? buf.toString('base64') : null;
+  } catch {
+    return null; // videoda audio yo'li yo'q
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+/**
  * Videodan teng oraliqlarda `count` ta kadr (JPEG) ajratadi.
  * Qaytaradi: base64 satrlar massivi.
  */
