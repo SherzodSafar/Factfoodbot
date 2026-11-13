@@ -4,6 +4,7 @@ Telegram'ga bog'liq emas: har bir tugma bosilganda nima qilishni qaytaradi,
 bot.py esa uni Telegram'ga yuboradi (xabarni tahrirlash yoki yangi xabar)."""
 from commands import HELP_SECTIONS, STRATEGY_NAMES
 from fmt import sana
+from market import status as market_status
 from universe import TIER_NAME
 
 
@@ -32,7 +33,7 @@ class Menu:
         if self.paper.active:
             started = self.paper.state.get("started")
             head = ("📈 Demo savdo boti" + (f" — {sana(started)}dan beri" if started else "")
-                    + "\n\n" + self.svc._summary())
+                    + "\n\n" + self.svc._summary() + "\n\n" + market_status())
         else:
             head = ("📈 Demo savdo boti\n\nDemo hali boshlanmagan. «🚀 Yangi demo» ni bosib, "
                     "virtual summani tanlang.")
@@ -41,6 +42,7 @@ class Menu:
             [("📅 Natijalar", "m:rep"), ("🌍 Bozor", "c:bozor")],
             [("⚡️ Kunlik savdo (day trade)", "m:day")],
             [("🧭 Tahlil", "c:tahlil"), ("🎓 Real pulga tayyormi?", "c:baho")],
+            [("🕘 Birja vaqti", "c:birja")],
             [("⚙️ Sozlamalar", "m:set"), ("❓ Yordam", "m:help")],
             [("🚀 Yangi demo", "m:cap"), ("🧪 Tarixda sinash", "c:test")],
         ])

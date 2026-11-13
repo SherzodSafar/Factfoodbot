@@ -226,7 +226,7 @@ COMMANDS = [("menyu", "Menyu va sozlamalar (tugmalar)"), ("aksiyalar", "Aksiyala
             ("savdolar", "Savdolar tarixi"), ("holat", "Portfel holati"), ("hisobot", "Hisobot: kunlik/haftalik/oylik"),
             ("bozor", "Bozor holati"), ("tahlil", "Tahlil va yaxshilash"), ("test", "O'tgan davrda sinash"),
             ("tanlash", "Aksiyalarni qayta tanlash"), ("demo_boshlash", "Boshlash: umumiy summa, masalan 3000"),
-            ("kunlik", "⚡️ Kunlik savdo (day trade)"), ("baho", "Real pulga tayyorlik"), ("sozlamalar", "Sozlamalar"), ("yordam", "Yordam")]
+            ("kunlik", "⚡️ Kunlik savdo (day trade)"), ("birja", "Birja ochiqmi, qachon"), ("baho", "Real pulga tayyorlik"), ("sozlamalar", "Sozlamalar"), ("yordam", "Yordam")]
 
 
 def show_menu(chat_id, page="main"):

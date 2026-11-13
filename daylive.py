@@ -10,6 +10,7 @@ import pandas as pd
 
 from daytrade import OPEN_BAR, DayBook, DayParams, _tod, day_stats, first_bar_avgs, split_days
 from fmt import dona, foiz, natija, pul, sana
+from market import is_trading_day, status as market_status
 from universe import UNIVERSE
 
 # Kunlik strategiyalar: real sinovdagi eng yaxshi sozlamalari bilan
@@ -56,7 +57,7 @@ class DayService:
                 self.paper.state = {}
             p = DayParams(**params)
             self.paper.state["day"] = dict(enabled=True, params=p.to_dict(), book=DayBook(p, capital).to_dict(),
-                                           started=str(self.now().date()), skip=None)
+                                           started=str(pd.Timestamp(self.now()).date()), skip=None)
             self.paper.save()
 
     def stop(self):
@@ -100,9 +101,9 @@ class DayService:
         """Yuboriladigan xabarlar ro'yxatini qaytaradi."""
         if not self.active:
             return []
-        now = self.now()
-        if now.weekday() >= 5:
-            return []
+        now = pd.Timestamp(self.now())     # datetime ham, Timestamp ham kelishi mumkin
+        if not is_trading_day(now):
+            return []                      # dam olish yoki AQSh bayrami
         tod = now - now.normalize()
         today = str(now.date())
         if tod < START_AFTER or self.st.get("skip") == today:
@@ -243,7 +244,7 @@ class DayService:
 
     def status(self):
         if not self.st:
-            return ("⚡️ Kunlik savdo (day trade) demo hali boshlanmagan.\n\n" + HOW +
+            return ("⚡️ Kunlik savdo (day trade) demo hali boshlanmagan.\n" + market_status() + "\n\n" + HOW +
                     "\n\nBoshlash: /menyu → ⚡️ Kunlik savdo → summani tanlang (yoki /kunlik_boshlash 1000).")
         book = self._book()
         stt = day_stats(book)
@@ -254,6 +255,8 @@ class DayService:
                  f"Savdo kunlari: {stt['days']} • savdolar: {stt['n']} ta (✅ {stt['wins']} / 🔴 {stt['n'] - stt['wins']})"
                  + (f" • foydali kunlar: {stt['green_days']}" if stt["days"] else ""),
                  f"🧠 Strategiya: {DAY_NAMES.get(book.p.strategy, book.p.strategy)}"]
+        if not book.day:
+            lines.append("\nHali savdo kuni bo'lmagan. Birja ochilgach (9:36 NY) bot nomzodlarni tanlaydi va xabar beradi.")
         if book.day:
             lines.append(f"\n📆 {sana(book.day, kun=True)}")
             if book.watch:
@@ -274,7 +277,7 @@ class DayService:
             prev = [book.capital] + [x for _, x in book.days[:-1]]
             for (d, x), pv in list(zip(book.days, prev))[-7:]:
                 lines.append(f"  {sana(d, kun=True)}: {pul(x - pv, 2, True)}")
-        lines.append("\n🕘 Savdo vaqti: AQSh birjasi ochiq paytda — Toshkent vaqti bilan taxminan 19:30 dan 02:00 gacha.")
+        lines.append("\n" + market_status())
         return "\n".join(lines)
 
 

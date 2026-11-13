@@ -99,7 +99,7 @@ def load_intraday(tickers, period="20d", interval="5m") -> dict:
 
 
 def ny_now():
-    return datetime.now(NY).replace(tzinfo=None)
+    return pd.Timestamp(datetime.now(NY).replace(tzinfo=None))
 
 
 def scan_gainers(min_gain=10.0, min_price=0.5, min_volume=500_000, size=100) -> list:

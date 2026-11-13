@@ -27,6 +27,7 @@ Buyruqlar (xohlasangiz yozib ham ishlatsa bo'ladi):
 /qabul — tahlil taklifini qo'llash (/qabul arzon — bitta guruhga)
 /baho — real pulga o'tishga tayyorlik
 /kunlik — ⚡️ kunlik savdo (day trade) demo holati
+/birja — AQSh birjasi hozir ochiqmi, qachon ochiladi (Toshkent vaqtida)
 /kunlik_boshlash 1000 — kunlik savdo demosini boshlash, /kunlik_toxtatish, /kunlik_davom, /kunlik_savdolar
 /test — o'tgan 2 yilda sinash (/test AAPL,F 2024-01-01 2025-12-31 3000)
 /strategiya momentum | breakout | combo | pullback
@@ -319,6 +320,8 @@ class Service:
         lines.append("")
         lines.append(f"Bugun: {len(trades)} ta savdo (har biri alohida xabarda)." if trades else
                      "Bugun xarid yoki sotuv bo'lmadi.")
+        if not trades:
+            lines.append(self._why_quiet())
         if other:
             lines += ["", other]
         if not n:
@@ -344,6 +347,24 @@ class Service:
                     body = e.split(": ", 1)[1] if ": " in e.split("\n")[0] else e
                     out.append(f"{head} — {TIER_NAME[tier]}" + (f"\n{day}" if day else "") + f"\n\n{body}")
         return out
+
+    def _why_quiet(self):
+        """Savdo bo'lmaganini oddiy tilda tushuntirish."""
+        p = self.paper.params(self.paper.tiers()[0])
+        full = [TIER_SHORT[t] for t in self.paper.tiers()
+                if len(self.paper.portfolio(t).positions) >= self.paper.params(t).max_pos]
+        out = []
+        if p.strategy in ("momentum", "combo"):
+            out.append("ℹ️ Yangi aksiyalar har juma tanlanadi va dushanba kuni olinadi.")
+        out.append("Sotuv faqat narx himoya narxiga tushganda bo'ladi — oldindan belgilangan foyda maqsadi yo'q, "
+                   "aksiya o'sayotgan ekan ushlab turiladi.")
+        if full:
+            out.append("📦 Joy to'la: " + ", ".join(full) + " — biror aksiya sotilmaguncha yangi xarid bo'lmaydi.")
+        return "\n".join(out)
+
+    def cmd_market_hours(self):
+        from market import schedule_text, status
+        return [status() + "\n\n" + schedule_text()]
 
     def _last_date(self):
         return max((self.paper.portfolio(t).last_date or "" for t in self.paper.tiers()), default="") or None
@@ -414,9 +435,13 @@ class Service:
             pf = self.paper.portfolio(tier)
             v = pf.value()
             inv = v - pf.cash
+            p = self.paper.params(tier)
+            free = max(p.max_pos - len(pf.positions), 0)
             lines = [f"{TIER_NAME[tier].upper()}",
                      f"Jami {_money(v)} ({foiz((v / pf.capital - 1) * 100)}) — naqd {_money(pf.cash)}, "
-                     f"aksiyalarda {_money(inv)}"]
+                     f"aksiyalarda {_money(inv)}",
+                     f"📦 Bo'sh joy: {free} / {p.max_pos}" + (" — to'la, yangi xarid uchun biror aksiya sotilishi kerak"
+                                                              if not free else "")]
             if not pf.positions:
                 lines.append("\nHozircha aksiya yo'q.")
             items = sorted(pf.positions.items(), key=lambda x: x[1]["entry_date"])
@@ -708,7 +733,7 @@ class Service:
             "/kasr": lambda: self.cmd_fractional(args), "/strategiya": lambda: self.cmd_strategy(args),
             "/filtr": lambda: self.cmd_filter(args),
             "/baho": self.cmd_grade,
-            "/kunlik": self.cmd_day, "/kunlik_boshlash": lambda: self.cmd_day_start(args),
+            "/kunlik": self.cmd_day, "/birja": self.cmd_market_hours, "/kunlik_boshlash": lambda: self.cmd_day_start(args),
             "/kunlik_toxtatish": self.cmd_day_stop, "/kunlik_davom": self.cmd_day_resume,
             "/kunlik_savdolar": self.cmd_day_trades,
         }
