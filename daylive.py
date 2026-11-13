@@ -17,10 +17,11 @@ from universe import UNIVERSE
 DAY_PRESETS = {
     "orb": dict(strategy="orb", rvol_min=3.0, top_n=5, spy_filter=True, target_r=2.0, target_pct=0.0, stop_pct=0.0,
                 time_stop=0, slippage=0.0005, risk_pct=0.5, max_pos_pct=25.0),
-    "runner": dict(strategy="runner", min_gain=20.0, runner_vol=5.0, target_pct=10.0, stop_pct=5.0, time_stop=60,
-                   spy_filter=False, target_r=0.0, slippage=0.003, risk_pct=0.5, max_pos_pct=20.0, max_trades=8),
+    "runner": dict(strategy="runner", entry="dip", min_gain=10.0, runner_vol=5.0, dip_min=8.0, target_hod=True,
+                   target_pct=5.0, stop_pct=0.0, time_stop=0, spy_filter=False, target_r=0.0, slippage=0.003,
+                   risk_pct=0.5, max_pos_pct=20.0, max_trades=8),
 }
-DAY_NAMES = {"orb": "Ochilishda hajmi oshganlar (tavsiya)", "runner": "Tez uchayotganlar (runner) — tajriba"}
+DAY_NAMES = {"orb": "Ochilishda hajmi oshganlar", "runner": "Tez uchayotganlar — qaytgach kirish (runner)"}
 
 START_AFTER = pd.Timedelta(hours=9, minutes=36)
 CLOSE_AFTER = pd.Timedelta(hours=16, minutes=5)
@@ -285,14 +286,16 @@ class DayService:
 
 
 RUNNER_HOW = """🚀 Tez uchayotganlar (runner) — qanday ishlaydi:
-• Har 5 daqiqada Yahoo skaneridan bugun kamida +20% o'sgan aksiyalar olinadi (narx cheklovi yo'q, 0.5$ dan qimmat).
-• 5 daqiqalik hajm odatdagidan ≥5 baravar ko'p va sham yuqorida yopilsa — "🚀 uchmoqda" xabari.
-• Narx shu shamning yuqorisidan oshsa — sotib oladi.
-• Maqsad +10% — yetsa foydani olib sotadi; himoya −5%; 60 daqiqada maqsadga yetmasa — sotadi.
+• Har 5 daqiqada Yahoo skaneridan bugun kamida +10% o'sgan aksiyalar olinadi (narx cheklovi yo'q, 0.5$ dan qimmat).
+• 5 daqiqalik hajm odatdagidan ≥5 baravar oshsa — "🚀 uchmoqda" xabari (cho'qqida KIRMAYDI).
+• Narx kunning cho'qqisidan kamida 8% pastga qaytib, kunlik o'rtacha narx (VWAP) ustida qolsa va yashil sham
+  bilan qayta ko'tarila boshlasa — "🎯" xabari; narx shu shamning yuqorisidan oshsa sotib oladi.
+• Maqsad — kunning cho'qqisiga qaytish (kamida +5%) — yetsa foydani olib sotadi.
+• Himoya — qaytishdagi eng past narx: shunga tushsa sotadi. Kun oxirida qolganlari sotiladi.
 
-⚠️ Real sinov (1 093 aksiya, 49 kun): BARCHA 10 variant zararda bo'lgan — eng yaxshisi −3.1%,
-boshqalari −8% dan −35% gacha. Sabab: hajm portlashi ko'ringanda o'sishning ko'p qismi o'tib bo'lgan,
-kichik aksiyalar keskin qaytadi. Faqat kuzatish va o'rganish uchun — real pulda tavsiya etilmaydi."""
+📊 Real sinov (1 000+ aksiya, 49 kun, xarajat 0.3%): +3.1%, savdolarning 58% i foydali, pasayish −4%.
+Cho'qqida yorib kirish usuli esa zarar bergan (−3% … −35%).
+⚠️ Foydaning katta qismi bir-ikki katta savdodan — ustunlik hali kichik. Faqat demoda kuzating."""
 
 HOW = """Qanday ishlaydi:
 • AQSh birjasi ochilgach (Toshkentda ~19:30) birinchi 5 daqiqada savdo hajmi odatdagidan kamida 3 baravar
