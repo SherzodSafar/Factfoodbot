@@ -4,7 +4,7 @@
 //   3) Gemini nomzodlar orasidan tanlaydi
 //   4) Aniq bo'lmasa — ovoz subtitrga aylantirilib, jarayon dialog bilan qaytariladi
 import { analyze, choose, transcribe } from './identify.js';
-import { actorFilms, labels, pageDetails, searchPages } from './wiki.js';
+import { actorFilms, labels, pageDetails, searchPages, wikidataDetails } from './wiki.js';
 
 const CONFIDENT = 0.7; // shundan past bo'lsa — ovoz (subtitr) bo'yicha ham tekshiramiz
 export const MIN_CONFIDENCE = 0.4; // shundan past bo'lsa — "topilmadi"
@@ -23,15 +23,21 @@ export async function retrieve(analysis) {
   const ru = [];
 
   const [byCandidate, byQueryEn, byQueryRu, byActor] = await Promise.all([
-    settled(analysis.candidates.map((c) => searchPages(`${c.title_en}${yearOf(c)} film`, 'en', 2))),
+    settled(analysis.candidates.slice(0, 2).map((c) => searchPages(`${c.title_en}${yearOf(c)} film`, 'en', 2))),
     settled(analysis.queries.filter((q) => q.lang === 'en').map((q) => searchPages(q.q, 'en', 3))),
     settled(analysis.queries.filter((q) => q.lang === 'ru').map((q) => searchPages(q.q, 'ru', 3))),
     settled(analysis.actors.slice(0, 3).map((a) => actorFilms(a, 8))),
   ]);
-  en.push(...byCandidate, ...byQueryEn, ...byActor);
+  en.push(...byCandidate, ...byQueryEn, ...byActor.map((f) => f.title));
   ru.push(...byQueryRu);
 
-  const pages = await settled([pageDetails(en, 'en'), pageDetails(ru, 'ru')]);
+  const [enRes, ruRes] = await Promise.allSettled([pageDetails(en, 'en'), pageDetails(ru, 'ru')]);
+  let pages = [...(enRes.value || []), ...(ruRes.value || [])];
+  if (enRes.status === 'rejected') {
+    // Wikipedia javob bermadi — aktyor filmlari bo'yicha Wikidata'dan qisqa ma'lumot olamiz
+    console.warn('Wikipedia xatosi:', enRes.reason?.message, '— Wikidata zaxirasi');
+    pages = [...(await wikidataDetails(byActor).catch(() => [])), ...pages];
+  }
 
   // Bir xil film (Wikidata ID) takrorlanmasin; inglizcha sahifa afzal
   const seen = new Set();
@@ -44,9 +50,10 @@ export async function retrieve(analysis) {
   }
   const list = unique.slice(0, 15);
 
+  const need = list.filter((p) => !p.labels);
   try {
-    const names = await labels(list.map((p) => p.qid));
-    for (const p of list) p.labels = names[p.qid] || null;
+    const names = need.length ? await labels(need.map((p) => p.qid)) : {};
+    for (const p of need) p.labels = names[p.qid] || null;
   } catch (err) {
     console.warn('Wikidata nomlari xatosi:', err.message);
   }
@@ -63,6 +70,15 @@ async function runOnce(input) {
   const choice = await choose({ ...input, analysis, candidates });
   if (!choice) return null;
   const picked = choice.index >= 0 ? candidates[choice.index] : null;
+  if (!picked) {
+    // Nomzodlar orasidan tanlanmadi — faqat model bilimi. Kadrda yoki izohda nomi aniq yozilmagan
+    // bo'lsa, ishonchni cheklaymiz (yangi kinolarni eskisi bilan adashtirmaslik uchun).
+    const evidence = `${input.text || ''} ${analysis?.on_screen_text || ''}`.toLowerCase();
+    const named = [choice.title_en, choice.title_ru, choice.title_original]
+      .filter((t) => t && t.length > 2)
+      .some((t) => evidence.includes(t.toLowerCase()));
+    if (!named) choice.confidence = Math.min(choice.confidence, 0.6);
+  }
   if (picked?.labels) {
     // Wikidata'dagi rasmiy nomlar modelning taxminidan ishonchliroq
     choice.title_ru = picked.labels.ru || choice.title_ru;

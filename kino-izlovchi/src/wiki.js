@@ -1,16 +1,37 @@
 // Wikipedia / Wikidata — bepul, kalitsiz, yangi (2025–2026) kinolar haqida ham ma'lumot beradi.
 // Sun'iy intellekt bilimidan keyin chiqqan kinolarni topish uchun ishlatiladi.
 
-const UA = 'KinoIzlovchiBot/1.2 (Telegram film identification bot)';
+// Wikimedia so'rovchida aloqa ma'lumoti bo'lishini so'raydi — WIKI_USER_AGENT orqali qo'shish mumkin
+const UA = process.env.WIKI_USER_AGENT || 'KinoIzlovchiBot/1.3 (Telegram film identification bot)';
 const TIMEOUT = 10_000;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function getJson(url) {
-  const res = await fetch(url, {
-    headers: { 'user-agent': UA, accept: 'application/json' },
-    signal: AbortSignal.timeout(TIMEOUT),
-  });
-  if (!res.ok) throw new Error(`${new URL(url).host} ${res.status}`);
-  return res.json();
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(url, {
+      headers: { 'user-agent': UA, 'api-user-agent': UA, accept: 'application/json' },
+      signal: AbortSignal.timeout(TIMEOUT),
+    });
+    if (res.ok) return res.json();
+    // Ko'p so'rov (429) yoki vaqtinchalik xato — biroz kutib, bir marta qayta urinamiz
+    if ((res.status === 429 || res.status >= 500) && attempt === 0) {
+      const wait = Math.min(Number(res.headers.get('retry-after')) || 1.5, 3) * 1000;
+      await sleep(wait);
+      continue;
+    }
+    throw new Error(`${new URL(url).host} ${res.status}`);
+  }
+}
+
+// Oddiy xotira keshi: bir xil so'rovlar bir necha soat davomida qayta yuborilmaydi
+const cache = new Map();
+async function cached(key, fn, ttl = 6 * 3600_000) {
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.at < ttl) return hit.value;
+  const value = await fn();
+  cache.set(key, { at: Date.now(), value });
+  if (cache.size > 3000) cache.delete(cache.keys().next().value);
+  return value;
 }
 
 const wikiApi = (lang, params) => {
@@ -33,16 +54,22 @@ function isFilmPage(p) {
 
 /** Wikipedia'da to'liq matnli qidiruv. Qaytaradi: sahifa nomlari. */
 export async function searchPages(query, lang = 'en', limit = 5) {
-  const d = await getJson(
-    wikiApi(lang, { action: 'query', list: 'search', srsearch: query, srlimit: String(limit), srnamespace: '0' }),
-  );
-  return (d.query?.search || []).map((s) => s.title);
+  return cached(`s:${lang}:${limit}:${query}`, async () => {
+    const d = await getJson(
+      wikiApi(lang, { action: 'query', list: 'search', srsearch: query, srlimit: String(limit), srnamespace: '0' }),
+    );
+    return (d.query?.search || []).map((s) => s.title);
+  });
 }
 
 /** Sahifalar haqida qisqa ma'lumot: tavsif, kirish qismi, poster, Wikidata ID. */
 export async function pageDetails(titles, lang = 'en') {
   const list = [...new Set(titles)].slice(0, 20);
   if (!list.length) return [];
+  return cached(`d:${lang}:${list.join('|')}`, () => fetchPageDetails(list, lang));
+}
+
+async function fetchPageDetails(list, lang) {
   const d = await getJson(
     wikiApi(lang, {
       action: 'query',
@@ -83,17 +110,54 @@ export async function pageDetails(titles, lang = 'en') {
 export async function actorFilms(name, limit = 12) {
   const safe = name.replace(/["\\\n]/g, '').trim();
   if (!safe) return [];
-  const sparql = `SELECT ?title (MAX(?d) AS ?date) WHERE {
+  const sparql = `SELECT ?film ?title (MAX(?d) AS ?date) WHERE {
   ?actor rdfs:label "${safe}"@en ; wdt:P31 wd:Q5 .
   ?film wdt:P161 ?actor ; wdt:P31 ?type .
   VALUES ?type { wd:Q11424 wd:Q5398426 wd:Q506240 wd:Q1259759 wd:Q202866 wd:Q229390 }
   OPTIONAL { ?film wdt:P577 ?d }
   ?article schema:about ?film ; schema:isPartOf <https://en.wikipedia.org/> ; schema:name ?title .
-} GROUP BY ?title ORDER BY DESC(?date) LIMIT ${limit}`;
+} GROUP BY ?film ?title ORDER BY DESC(?date) LIMIT ${limit}`;
   const u = new URL('https://query.wikidata.org/sparql');
   u.search = new URLSearchParams({ query: sparql, format: 'json' });
+  return cached(`a:${safe}:${limit}`, async () => {
+    const d = await getJson(u);
+    return (d.results?.bindings || []).map((b) => ({
+      title: b.title.value,
+      qid: b.film.value.split('/').pop(),
+      year: b.date?.value ? Number(b.date.value.slice(0, 4)) : null,
+    }));
+  });
+}
+
+/**
+ * Zaxira: Wikipedia javob bermasa, filmlar haqidagi qisqa ma'lumot Wikidata'dan olinadi
+ * (tavsif, nomlar; syujet va poster bo'lmaydi).
+ */
+export async function wikidataDetails(items) {
+  const list = items.filter((x) => /^Q\d+$/.test(x.qid || '')).slice(0, 30);
+  if (!list.length) return [];
+  const u = new URL('https://www.wikidata.org/w/api.php');
+  u.search = new URLSearchParams({
+    action: 'wbgetentities', ids: list.map((x) => x.qid).join('|'),
+    props: 'labels|descriptions', languages: 'en|ru|uz', format: 'json',
+  });
   const d = await getJson(u);
-  return (d.results?.bindings || []).map((b) => b.title.value);
+  return list
+    .map((x) => {
+      const e = d.entities?.[x.qid];
+      const description = e?.descriptions?.en?.value || e?.descriptions?.ru?.value || '';
+      return {
+        title: x.title,
+        lang: 'en',
+        description: [description, x.year].filter(Boolean).join(', '),
+        extract: '',
+        thumb: null,
+        qid: x.qid,
+        url: `https://en.wikipedia.org/wiki/${encodeURIComponent(x.title.replace(/ /g, '_'))}`,
+        labels: { en: e?.labels?.en?.value || '', ru: e?.labels?.ru?.value || '', uz: e?.labels?.uz?.value || '' },
+      };
+    })
+    .filter((p) => !p.description || FILM_RE.test(p.description));
 }
 
 /** Bir nechta Wikidata obyektining nomlari (en / ru / uz). */
