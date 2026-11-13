@@ -75,29 +75,66 @@ def edit(chat_id, message_id, text, markup=None):
 
 # ---------------- Holatni Telegram'da saqlash ----------------
 def restore_state():
+    """Mahkamlangan zaxiradan holatni tiklaydi. Qaytaradi: "ok" — tiklandi, "none" — zaxira yo'q (yangi bot),
+    "error" — zaxira bor yoki bo'lishi mumkin, lekin o'qib bo'lmadi (bu holda zaxira USTIDAN YOZILMAYDI)."""
     try:
-        chat = tg("getChat", json={"chat_id": OWNER}).get("result", {})
-        pm = chat.get("pinned_message") or {}
+        r = tg("getChat", json={"chat_id": OWNER})
+        if not r.get("ok"):
+            print("Tiklash: getChat xatosi:", r.get("description"), flush=True)
+            return "error"
+        pm = r["result"].get("pinned_message") or {}
         doc = pm.get("document") or {}
+        if not pm:
+            print("Tiklash: mahkamlangan xabar yo'q", flush=True)
+            return "none"
         if doc.get("file_name") != "demo_state.json":
-            return False
+            print(f"Tiklash: mahkamlangan xabar zaxira emas (fayl: {doc.get('file_name')}, "
+                  f"matn: {str(pm.get('text') or pm.get('caption'))[:40]!r})", flush=True)
+            return "error"
         backup_info["msg_id"] = pm["message_id"]
-        if os.path.exists(STATE_FILE):
-            return True
-        path = tg("getFile", json={"file_id": doc["file_id"]})["result"]["file_path"]
-        content = requests.get(f"https://api.telegram.org/file/bot{TOKEN}/{path}", timeout=60).content
+        f = tg("getFile", json={"file_id": doc["file_id"]})
+        if not f.get("ok"):
+            print("Tiklash: getFile xatosi:", f.get("description"), flush=True)
+            return "error"
+        content = requests.get(f"https://api.telegram.org/file/bot{TOKEN}/{f['result']['file_path']}", timeout=60).content
         json.loads(content)  # tekshiruv
-        with open(STATE_FILE, "wb") as f:
-            f.write(content)
+        with open(STATE_FILE, "wb") as fh:
+            fh.write(content)
         backup_info["hash"] = hashlib.md5(content).hexdigest()
-        print("Holat Telegram'dan tiklandi")
-        return True
+        print(f"Holat Telegram'dan tiklandi ({len(content)} bayt)", flush=True)
+        return "ok"
     except Exception:
         traceback.print_exc()
-        return False
+        return "error"
+
+
+def restore_with_retry(tries=5):
+    for i in range(tries):
+        res = restore_state()
+        if res != "error":
+            return res
+        time.sleep(5 * (i + 1))
+    return "error"
+
+
+def restore_watch():
+    """Ishga tushganda tiklab bo'lmagan bo'lsa — har daqiqada qayta urinadi va topilgach holatni yuklaydi."""
+    while backup_info.get("restore") == "error":
+        time.sleep(60)
+        res = restore_state()
+        if res != "error":
+            with paper.lock:
+                paper.reload()
+            backup_info["restore"] = res
+            print("Holat keyinroq tiklandi:\n" + paper.describe(), flush=True)
+            if res == "ok":
+                send(OWNER, "✅ Bot holati zaxiradan tiklandi — demo davom etmoqda.")
 
 
 def backup_state():
+    if backup_info.get("restore") == "error":
+        print("Zaxira yozilmadi: holat hali tiklanmagan (eski zaxirani bo'sh holat bilan almashtirmaslik uchun)", flush=True)
+        return
     try:
         if not os.path.exists(STATE_FILE):
             return
@@ -303,7 +340,7 @@ def main():
     if os.environ.get("PORT"):
         srv = HTTPServer(("0.0.0.0", int(os.environ["PORT"])), Health)
         threading.Thread(target=srv.serve_forever, daemon=True).start()
-    restore_state()
+    backup_info["restore"] = restore_with_retry()
     paper = Paper(STATE_FILE)
     service = Service(paper, data.load, data.last_complete_us_day,
                       DayService(paper, data.load_intraday, data.ny_now, data.scan_gainers))
@@ -316,6 +353,8 @@ def main():
     threading.Thread(target=scheduler, daemon=True).start()
     threading.Thread(target=keep_awake, daemon=True).start()
     threading.Thread(target=intraday, daemon=True).start()
+    if backup_info["restore"] == "error":
+        threading.Thread(target=restore_watch, daemon=True).start()
     print("Bot ishga tushdi\n" + paper.describe(), flush=True)
     offset = None
     while True:
