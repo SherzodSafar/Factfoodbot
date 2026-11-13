@@ -102,7 +102,7 @@ def ny_now():
     return pd.Timestamp(datetime.now(NY).replace(tzinfo=None))
 
 
-def scan_gainers(min_gain=10.0, min_price=0.5, min_volume=500_000, size=100) -> list:
+def scan_gainers(min_gain=10.0, min_price=0.5, min_volume=500_000, size=40) -> list:
     """Yahoo skaneri: bugun kamida min_gain % o'sgan AQSh aksiyalari (eng ko'p o'sganlari birinchi)."""
     import yfinance as yf
     Q = yf.EquityQuery

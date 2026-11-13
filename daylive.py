@@ -19,7 +19,7 @@ DAY_PRESETS = {
                 time_stop=0, slippage=0.0005, risk_pct=0.5, max_pos_pct=25.0),
     "runner": dict(strategy="runner", entry="dip", min_gain=10.0, runner_vol=5.0, dip_min=8.0, target_hod=True,
                    target_pct=5.0, stop_pct=0.0, time_stop=0, spy_filter=False, target_r=0.0, slippage=0.003,
-                   risk_pct=0.5, max_pos_pct=20.0, max_trades=8),
+                   risk_pct=0.5, max_pos_pct=20.0, max_trades=8, bar_minutes=1, min_dollar_vol=50000.0),
 }
 DAY_NAMES = {"orb": "Ochilishda hajmi oshganlar", "runner": "Tez uchayotganlar — qaytgach kirish (runner)"}
 
@@ -153,13 +153,15 @@ class DayService:
         """Runner: har 5 daqiqada skaner + yangi shamlar."""
         st = self.st
         last = st.get("last_tick")
-        if last and now - pd.Timestamp(last) < pd.Timedelta(minutes=4, seconds=30) and tod < CLOSE_AFTER:
+        bm = int(book.p.bar_minutes or 5)
+        bar = pd.Timedelta(minutes=bm)
+        if last and now - pd.Timestamp(last) < bar - pd.Timedelta(seconds=30) and tod < CLOSE_AFTER:
             return []
         msgs = []
         if book.day != today:
             book.new_day(today)
             # kech ishga tushsa — faqat so'nggi shamlardan boshlaymiz (o'tmishdagi "uchish"ni bilib savdo qilmaslik uchun)
-            start = max(now.floor("5min") - pd.Timedelta(minutes=10), now.normalize() + OPEN_BAR)
+            start = max(now.floor(f"{bm}min") - 2 * bar, now.normalize() + OPEN_BAR)
             book.last_bar = str(start)
             with self.paper.lock:
                 st.update(avg_bar={}, prev_close={}, scan=[])
@@ -174,7 +176,7 @@ class DayService:
             st.setdefault("avg_bar", {})
         new = [t for t in scan if t not in st["prev_close"]]
         if new:
-            hist = split_days(self.load(new, period="10d"))
+            hist = split_days(self.load(new, period="5d" if bm == 1 else "10d", interval=f"{bm}m"))
             d0 = pd.Timestamp(today)
             prior = [d for d in hist if d < d0]
             with self.paper.lock:
@@ -185,9 +187,9 @@ class DayService:
                     if len(vols) >= 3 and sum(vols) > 0:
                         st["avg_bar"][tk] = round(sum(vols) / len(vols))
         tks = sorted(set(scan) | set(book.orders) | set(book.positions))
-        frames = self.load(tks, period="1d") if tks else {}
+        frames = self.load(tks, period="1d", interval=f"{bm}m") if tks else {}
         frames = {k: g[g.index.normalize() == pd.Timestamp(today)] for k, g in frames.items()}
-        msgs += self._process(book, frames, now, {k: v for k, v in st["prev_close"].items() if v})
+        msgs += self._process(book, frames, now, {k: v for k, v in st["prev_close"].items() if v}, bar)
         with self.paper.lock:
             st["last_tick"] = str(now)
             if scan:
@@ -199,11 +201,11 @@ class DayService:
         self._save(book)
         return msgs
 
-    def _process(self, book, frames, now, prev_close=None):
+    def _process(self, book, frames, now, prev_close=None, bar=BAR):
         recs = {tk: g.to_dict("index") for tk, g in frames.items()}
         last = pd.Timestamp(book.last_bar) if book.last_bar else None
         times = sorted({ts for r in recs.values() for ts in r
-                        if (last is None or ts > last) and ts + BAR <= now - pd.Timedelta(minutes=1)})
+                        if (last is None or ts > last) and ts + bar <= now - pd.Timedelta(seconds=40)})
         hi = {}
         msgs = []
         for ts in sorted({ts for r in recs.values() for ts in r}):
@@ -286,8 +288,9 @@ class DayService:
 
 
 RUNNER_HOW = """🚀 Tez uchayotganlar (runner) — qanday ishlaydi:
-• Har 5 daqiqada Yahoo skaneridan bugun kamida +10% o'sgan aksiyalar olinadi (narx cheklovi yo'q, 0.5$ dan qimmat).
-• 5 daqiqalik hajm odatdagidan ≥5 baravar oshsa — "🚀 uchmoqda" xabari (cho'qqida KIRMAYDI).
+• HAR DAQIQADA Yahoo skaneridan bugun kamida +10% o'sgan aksiyalar olinadi (narx cheklovi yo'q, 0.5$ dan qimmat)
+  va ularning 1 daqiqalik shamlari tekshiriladi.
+• 1 daqiqalik hajm odatdagidan ≥5 baravar oshsa — "🚀 uchmoqda" xabari (cho'qqida KIRMAYDI).
 • Narx kunning cho'qqisidan kamida 8% pastga qaytib, kunlik o'rtacha narx (VWAP) ustida qolsa va yashil sham
   bilan qayta ko'tarila boshlasa — "🎯" xabari; narx shu shamning yuqorisidan oshsa sotib oladi.
 • Maqsad — kunning cho'qqisiga qaytish (kamida +5%) — yetsa foydani olib sotadi.

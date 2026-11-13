@@ -13,6 +13,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from daytrade import DayBook, DayParams, day_stats, run_day, split_days  # noqa: E402
 
 CAPITAL = 1000.0
+INTERVAL = os.environ.get("INTERVAL", "5m")       # 1m — oxirgi ~7 kun
+PERIOD = os.environ.get("PERIOD", "60d")
+START_I = int(os.environ.get("START_I", "11"))
 SCREENS = ["day_gainers", "small_cap_gainers", "aggressive_small_caps", "most_actives", "most_shorted_stocks",
            "day_losers"]
 
@@ -45,7 +48,7 @@ def download(tks):
     for i in range(0, len(tks), 60):
         part = tks[i:i + 60]
         try:
-            df = yf.download(part, period="60d", interval="5m", group_by="ticker", auto_adjust=False,
+            df = yf.download(part, period=PERIOD, interval=INTERVAL, group_by="ticker", auto_adjust=False,
                              prepost=False, threads=True, progress=False)
         except Exception as ex:
             print("yuklash xatosi", ex)
@@ -66,7 +69,8 @@ def download(tks):
     return out
 
 
-def run(days, p, start_i=11):
+def run(days, p, start_i=None):
+    start_i = START_I if start_i is None else start_i
     book = DayBook(p, CAPITAL)
     keys = list(days)
     for i in range(start_i, len(keys)):
@@ -74,10 +78,11 @@ def run(days, p, start_i=11):
         prev = days[keys[i - 1]]
         pc = {tk: float(g["Close"].iloc[-1]) for tk, g in prev.items() if len(g)}
         hist = [days[k] for k in keys[max(0, i - 10):i]]
+        mind = 2 if INTERVAL == "1m" else 5
         ab = {}
         for tk in days[d]:
             v = [h[tk]["Volume"].mean() for h in hist if tk in h and len(h[tk])]
-            if len(v) >= 5 and sum(v) > 0:
+            if len(v) >= mind and sum(v) > 0:
                 ab[tk] = sum(v) / len(v)
         run_day(book, d, days[d], {}, ab, None, pc)
     return book
@@ -95,8 +100,11 @@ def main():
     px = pd.Series({tk: g["Close"].iloc[-1] for tk, g in df5.items()})
     print(f"Narxlar: <1$: {(px < 1).sum()}, 1–5$: {((px >= 1) & (px < 5)).sum()}, 5–20$: {((px >= 5) & (px < 20)).sum()}, "
           f"20$+: {(px >= 20).sum()}")
-    R = lambda **k: DayParams(**{**dict(strategy="runner", slippage=0.003, risk_pct=0.5, max_pos_pct=20,
-                                        max_trades=8, spy_filter=False, target_r=0), **k})
+    base = dict(strategy="runner", slippage=0.003, risk_pct=0.5, max_pos_pct=20, max_trades=8, spy_filter=False,
+                target_r=0)
+    if INTERVAL == "1m":
+        base.update(bar_minutes=1, min_dollar_vol=50000.0)
+    R = lambda **k: DayParams(**{**base, **k})
     variants = {
         "YORIB: +20%, maqsad +10%, −5%, 60d (eski eng yaxshi)": R(min_gain=20, target_pct=10, stop_pct=5, time_stop=60),
         "DIP: +20%, qaytish ≥8%, maqsad = cho'qqi": R(min_gain=20, entry="dip", dip_min=8, target_hod=True, target_pct=5),

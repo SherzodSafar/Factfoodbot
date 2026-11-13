@@ -53,6 +53,7 @@ class DayParams:
                                  # vwap — VWAP dan pastga tushib, qayta ustiga chiqqanda
     dip_min: float = 8.0         # dip: kunning cho'qqisidan kamida necha % pastga qaytgan bo'lsin
     target_hod: bool = False     # maqsad — kunning cho'qqisi (kamida target_pct)
+    bar_minutes: int = 5         # sham uzunligi (runner uchun 1 — har daqiqada tekshirish)
 
     @classmethod
     def from_dict(cls, d):
@@ -256,7 +257,9 @@ class DayBook:
                     continue
                 green = r["Close"] > r["Open"] and r["Close"] > prev["High"]
                 if p.entry == "dip":
-                    depth = (st["hod"] - (st["low"] or r["Low"])) / st["hod"] * 100 if st["hod"] else 0
+                    # qaytish faqat cho'qqidan KEYINGI shamlarda hisoblanadi (st["low"] cho'qqi yangilanganda tozalanadi);
+                    # shu sham yangi cho'qqi yasagan bo'lsa — bu qaytish emas
+                    depth = (st["hod"] - st["low"]) / st["hod"] * 100 if st["hod"] and st["low"] is not None else 0
                     ok = green and depth >= p.dip_min and r["Close"] > vwap
                 else:
                     ok = green and st["below"] and r["Close"] > vwap and prev["Low"] <= vwap

@@ -41,3 +41,13 @@ jobs:
         with: {python-version: "3.12"}
       - run: pip install -q -r requirements.txt
       - run: python -W ignore research/runner_lab.py
+  runner-1m:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env: {INTERVAL: "1m", PERIOD: "7d", START_I: "3"}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -q -r requirements.txt
+      - run: python -W ignore research/runner_lab.py
